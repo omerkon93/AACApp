@@ -7,16 +7,12 @@ plugins {
 
 android {
     namespace = "com.kon.myaacapp"
-    compileSdk {
-        version = release(36) {
-            minorApiLevel = 1
-        }
-    }
+    compileSdk = 37
 
     defaultConfig {
         applicationId = "com.kon.myaacapp"
         minSdk = 26
-        targetSdk = 36
+        targetSdk = 37
         versionCode = 1
         versionName = "1.0"
 
@@ -39,6 +35,7 @@ android {
     buildFeatures {
         compose = true
     }
+    compileSdkMinor = 0
 }
 
 dependencies {
