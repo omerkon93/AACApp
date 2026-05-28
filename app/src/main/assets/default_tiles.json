@@ -384,7 +384,127 @@
     "grammaticalGender": "F",
     "cellIndex": 2
   },
-
+  {
+    "id": "truck",
+    "label": "משאית",
+    "ttsText": "משאית",
+    "emoji": "🚚",
+    "isCategory": false,
+    "parentId": "vehicles",
+    "partOfSpeech": "NOUN",
+    "grammaticalGender": "F",
+    "cellIndex": 3
+  },
+  {
+    "id": "airplane",
+    "label": "מטוס",
+    "ttsText": "מטוס",
+    "emoji": "✈️",
+    "isCategory": false,
+    "parentId": "vehicles",
+    "partOfSpeech": "NOUN",
+    "grammaticalGender": "M",
+    "cellIndex": 4
+  },
+  {
+    "id": "helicopter",
+    "label": "הליקופטר",
+    "ttsText": "הליקופטר",
+    "emoji": "🚁",
+    "isCategory": false,
+    "parentId": "vehicles",
+    "partOfSpeech": "NOUN",
+    "grammaticalGender": "M",
+    "cellIndex": 5
+  },
+  {
+    "id": "boat",
+    "label": "סירה",
+    "ttsText": "סירה",
+    "emoji": "⛵",
+    "isCategory": false,
+    "parentId": "vehicles",
+    "partOfSpeech": "NOUN",
+    "grammaticalGender": "F",
+    "cellIndex": 6
+  },
+  {
+    "id": "ship",
+    "label": "אונייה",
+    "ttsText": "אונייה",
+    "emoji": "🚢",
+    "isCategory": false,
+    "parentId": "vehicles",
+    "partOfSpeech": "NOUN",
+    "grammaticalGender": "F",
+    "cellIndex": 7
+  },
+  {
+    "id": "bulldozer",
+    "label": "דחפור",
+    "ttsText": "דחפור",
+    "emoji": "🚧",
+    "isCategory": false,
+    "parentId": "vehicles",
+    "partOfSpeech": "NOUN",
+    "grammaticalGender": "M",
+    "cellIndex": 8
+  },
+  {
+    "id": "crane",
+    "label": "מנוף",
+    "ttsText": "מנוף",
+    "emoji": "🏗️",
+    "isCategory": false,
+    "parentId": "vehicles",
+    "partOfSpeech": "NOUN",
+    "grammaticalGender": "M",
+    "cellIndex": 9
+  },
+  {
+    "id": "firetruck",
+    "label": "כבאית",
+    "ttsText": "כבאית",
+    "emoji": "🚒",
+    "isCategory": false,
+    "parentId": "vehicles",
+    "partOfSpeech": "NOUN",
+    "grammaticalGender": "F",
+    "cellIndex": 10
+  },
+  {
+    "id": "police_car",
+    "label": "משטרה",
+    "ttsText": "משטרה",
+    "emoji": "🚓",
+    "isCategory": false,
+    "parentId": "vehicles",
+    "partOfSpeech": "NOUN",
+    "grammaticalGender": "F",
+    "cellIndex": 11
+  },
+  {
+    "id": "ambulance",
+    "label": "אמבולנס",
+    "ttsText": "אמבולנס",
+    "emoji": "🚑",
+    "isCategory": false,
+    "parentId": "vehicles",
+    "partOfSpeech": "NOUN",
+    "grammaticalGender": "M",
+    "cellIndex": 12
+  },
+  {
+    "id": "bicycle",
+    "label": "אופניים",
+    "ttsText": "אופניים",
+    "emoji": "🚲",
+    "isCategory": false,
+    "parentId": "vehicles",
+    "partOfSpeech": "NOUN",
+    "grammaticalGender": "M",
+    "cellIndex": 13
+  },
   {
     "id": "pot",
     "label": "סיר",
