@@ -127,7 +127,7 @@ fun AdminDashboardScreen(
                             viewModel.audioService.stopRecording()
                             // Get the URI (it's predictable based on tileId in AudioRecordingService)
                             val outputDir = java.io.File(context.filesDir, "audio_tiles")
-                            val outputFile = java.io.File(outputDir, "audio_${tile.id}.m4a")
+                            val outputFile = java.io.File(outputDir, "audio_${tile.id}.wav")
                             viewModel.updateTileAudioUri(tile.id, outputFile.absolutePath)
                             recordingTileId = null
                         } else {
