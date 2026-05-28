@@ -17,3 +17,18 @@ val MutedSlateGray = Color(0xFF718096)
 val SoftInteractiveBlue = Color(0xFFE2E8F0)
 val SmoothWhite = Color(0xFFFFFFFF)
 val PrimaryBlue = Color(0xFF3182CE)
+
+/**
+ * Fitzgerald Key color mapping for AAC tiles.
+ * Provides more vibrant colors for better category recognition while maintaining readability.
+ */
+fun resolveFitzgeraldColor(partOfSpeech: String?): Color {
+    return when (partOfSpeech?.uppercase()) {
+        "PRONOUN", "PEOPLE" -> Color(0xFFFFF59D) // Yellow
+        "VERB", "ACTIONS" -> Color(0xFFC8E6C9)   // Green
+        "ADJECTIVE" -> Color(0xFFBBDEFB)         // Blue
+        "NOUN" -> Color(0xFFFFE0B2)              // Orange
+        "SOCIAL" -> Color(0xFFF8BBD0)            // Pink
+        else -> Color.White
+    }
+}

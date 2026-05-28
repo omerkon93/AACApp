@@ -3,6 +3,7 @@ package com.kon.myaacapp
 import android.content.Context
 import android.media.MediaPlayer
 import android.media.MediaRecorder
+import android.os.Build
 import android.util.Log
 import java.io.File
 import java.io.IOException
@@ -26,20 +27,22 @@ class AudioRecordingService(private val context: Context) {
         val outputFile = File(outputDir, "audio_$tileId.m4a")
         currentRecordingFile = outputFile
 
-        mediaRecorder = MediaRecorder().apply {
-            setAudioSource(MediaRecorder.AudioSource.MIC)
-            setOutputFormat(MediaRecorder.OutputFormat.MPEG_4)
-            setAudioEncoder(MediaRecorder.AudioEncoder.AAC)
-            setOutputFile(outputFile.absolutePath)
-
+        mediaRecorder = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S) {
+            MediaRecorder(context)
+        } else {
+            @Suppress("DEPRECATION")
+            MediaRecorder()
+        }.apply {
             try {
+                setAudioSource(MediaRecorder.AudioSource.MIC)
+                setOutputFormat(MediaRecorder.OutputFormat.MPEG_4)
+                setAudioEncoder(MediaRecorder.AudioEncoder.AAC)
+                setOutputFile(outputFile.absolutePath)
+
                 prepare()
                 start()
-            } catch (e: IOException) {
-                Log.e("AudioRecordingService", "prepare() failed", e)
-                return null
-            } catch (e: IllegalStateException) {
-                Log.e("AudioRecordingService", "start() failed", e)
+            } catch (e: Exception) {
+                Log.e("AudioRecordingService", "Failed to start recording", e)
                 return null
             }
         }

@@ -5,9 +5,7 @@ import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.grid.GridCells
 import androidx.compose.foundation.lazy.grid.LazyVerticalGrid
-import androidx.compose.foundation.lazy.grid.items
 import androidx.compose.foundation.shape.RoundedCornerShape
-import androidx.compose.foundation.gestures.detectTapGestures
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.*
 import androidx.compose.material.icons.filled.*
@@ -17,12 +15,8 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.graphics.Color
-import androidx.compose.ui.graphics.painter.Painter
-import androidx.compose.ui.graphics.vector.rememberVectorPainter
-import kotlinx.coroutines.delay
+import androidx.core.graphics.toColorInt
 import androidx.compose.foundation.gestures.awaitFirstDown
-import androidx.compose.ui.input.pointer.pointerInput
-import androidx.compose.ui.input.pointer.AwaitPointerEventScope
 import androidx.compose.ui.util.fastAny
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
@@ -34,14 +28,13 @@ import androidx.compose.ui.draw.clip
 import coil.compose.AsyncImage
 import com.kon.myaacapp.ui.theme.*
 import androidx.compose.ui.tooling.preview.Preview
-import androidx.lifecycle.viewmodel.compose.viewModel
 
 @Composable
 fun MainCommunicationScreen(
     viewModel: AACViewModel,
     onNavigateToCategory: (String) -> Unit,
     onBackClick: () -> Unit,
-    onNavigateToAdmin: () -> Unit
+    onNavigateToAdmin: () -> Unit,
 ) {
     val tiles by viewModel.currentTiles.collectAsState()
     val sentence by viewModel.selectedSentence.collectAsState()
@@ -62,9 +55,10 @@ fun MainCommunicationScreen(
         onClear = { viewModel.clearSentence() },
         onBackspace = { viewModel.backspaceSentence() },
         onTileClick = { tile -> viewModel.selectTile(tile, onNavigateToCategory) },
-        onBackClick = onBackClick,
-        onLongPressSentence = { onNavigateToAdmin() }
-    )
+        onBackClick = onBackClick
+    ) {
+        onNavigateToAdmin()
+    }
 }
 
 @Composable
@@ -81,7 +75,7 @@ fun MainCommunicationScreenContent(
     onBackClick: () -> Unit,
     onLongPressSentence: () -> Unit
 ) {
-    var showPinDialog by remember { mutableStateOf(false) }
+    var showPinDialog by remember { mutableStateOf(value = false) }
 
     CompositionLocalProvider(LocalLayoutDirection provides LayoutDirection.Rtl) {
         Column(
@@ -124,7 +118,7 @@ fun MainCommunicationScreenContent(
                 modifier = Modifier.pointerInput(Unit) {
                     awaitPointerEventScope {
                         while (true) {
-                            val event = awaitFirstDown()
+                            awaitFirstDown()
                             val startTime = System.currentTimeMillis()
                             var isLongPress = false
                             
@@ -135,7 +129,7 @@ fun MainCommunicationScreenContent(
                                 
                                 if (nextEvent == null) {
                                     // Timeout reached, check duration
-                                    if (System.currentTimeMillis() - startTime >= 3000) {
+                                    if ((System.currentTimeMillis() - startTime) >= 3000) {
                                         isLongPress = true
                                         break
                                     }
@@ -269,9 +263,25 @@ fun SentenceBuilder(
                         modifier = Modifier.size(32.dp)
                     )
                 }
+
+                // Clear Button
+                Button(
+                    onClick = onClear,
+                    shape = RoundedCornerShape(12.dp),
+                    colors = ButtonDefaults.buttonColors(containerColor = MaterialTheme.colorScheme.error),
+                    modifier = Modifier.size(64.dp),
+                    contentPadding = PaddingValues(0.dp)
+                ) {
+                    Icon(
+                        Icons.Default.Clear,
+                        contentDescription = "Clear",
+                        tint = MaterialTheme.colorScheme.onError,
+                        modifier = Modifier.size(32.dp)
+                    )
+                }
             }
 
-            // Horizontal list of selected words (Fills the rest of the space)
+            // Horizontal list of selected words (Fills the rest with spaces)
             Row(
                 modifier = Modifier
                     .weight(1f)
@@ -373,8 +383,8 @@ fun AACTileItem(tile: AACTile, userGender: Gender, onClick: () -> Unit) {
     val backgroundColor = remember(tile.backgroundColorHex, tile.partOfSpeech) {
         if (tile.backgroundColorHex != null) {
             try {
-                Color(android.graphics.Color.parseColor(tile.backgroundColorHex))
-            } catch (e: Exception) {
+                Color(tile.backgroundColorHex.toColorInt())
+            } catch (_: Exception) {
                 resolveFitzgeraldColor(tile.partOfSpeech)
             }
         } else {
@@ -454,17 +464,6 @@ fun AACTileItem(tile: AACTile, userGender: Gender, onClick: () -> Unit) {
                 }
             }
         }
-    }
-}
-
-private fun resolveFitzgeraldColor(partOfSpeech: String?): Color {
-    return when (partOfSpeech?.uppercase()) {
-        "PRONOUN", "PEOPLE" -> Color(0xFFFFFDE7) // Yellow
-        "VERB", "ACTIONS" -> Color(0xFFE8F5E9)   // Green
-        "ADJECTIVE" -> Color(0xFFE3F2FD)         // Blue
-        "NOUN" -> Color(0xFFFFF3E0)              // Orange
-        "SOCIAL" -> Color(0xFFFCE4EC)            // Pink
-        else -> Color.White
     }
 }
 

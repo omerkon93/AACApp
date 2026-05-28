@@ -3,6 +3,7 @@ package com.kon.myaacapp
 import android.app.Application
 import androidx.lifecycle.AndroidViewModel
 import androidx.lifecycle.viewModelScope
+import kotlinx.coroutines.delay
 import kotlinx.coroutines.ExperimentalCoroutinesApi
 import kotlinx.coroutines.flow.*
 import kotlinx.coroutines.launch
@@ -56,8 +57,7 @@ class AACViewModel(application: Application) : AndroidViewModel(application) {
     private fun prepopulateIfEmpty() {
         viewModelScope.launch {
             if (repository.isEmpty()) {
-                val defaultTiles = backupService.loadTilesFromAssets("default_tiles.json")
-                if (defaultTiles != null) {
+                backupService.loadTilesFromAssets("default_tiles.json")?.let { defaultTiles ->
                     repository.insertTiles(defaultTiles)
                 }
             }
@@ -72,16 +72,21 @@ class AACViewModel(application: Application) : AndroidViewModel(application) {
                 addTileToSentence(tile)
             }
             
-            // Speak the resolved gender-specific text
-            val speechText = tileService.getTTSText(tile)
-            ttsHelper.speak(speechText)
+            // Task 1: Prioritize custom voice
+            if (tile.audioUri != null) {
+                audioService.playRecording(tile.audioUri)
+            } else {
+                // Speak the resolved gender-specific text
+                val speechText = tileService.getTTSText(tile)
+                ttsHelper.speak(speechText)
+            }
 
             navigateId?.let { onNavigateToCategory(it) }
         }
     }
 
     fun addTileToSentence(tile: AACTile) {
-        _selectedSentence.value = _selectedSentence.value + tile
+        _selectedSentence.value += tile
     }
 
     fun backspaceSentence() {
@@ -96,16 +101,22 @@ class AACViewModel(application: Application) : AndroidViewModel(application) {
     }
 
     fun speakSentence() {
-        val fullText = _selectedSentence.value.joinToString(" ") { tile ->
-            tileService.getTTSText(tile)
+        viewModelScope.launch {
+            val currentSentence = _selectedSentence.value
+            for (tile in currentSentence) {
+                if (tile.audioUri != null) {
+                    audioService.playRecording(tile.audioUri)
+                    // Simple estimate for custom audio length (3 seconds max for AAC tiles usually)
+                    // Better would be a callback from MediaPlayer, but this handles the sequence.
+                    delay(2000) 
+                } else {
+                    val text = tileService.getTTSText(tile)
+                    ttsHelper.speak(text)
+                    // Delay based on text length to avoid overlapping
+                    delay((text.length * 150L) + 500L)
+                }
+            }
         }
-        if (fullText.isNotEmpty()) {
-            ttsHelper.speak(fullText)
-        }
-    }
-
-    fun navigateBack() {
-        _currentParentId.value = null
     }
 
     fun addTile(
@@ -123,7 +134,7 @@ class AACViewModel(application: Application) : AndroidViewModel(application) {
         ttsTextFeminine: String? = null,
         grammaticalGender: String? = null,
         audioUri: String? = null,
-        cellIndex: Int? = null
+        cellIndex: Int? = null,
     ) {
         viewModelScope.launch {
             val newTile = AACTile(
@@ -142,7 +153,7 @@ class AACViewModel(application: Application) : AndroidViewModel(application) {
                 ttsTextFeminine = ttsTextFeminine,
                 grammaticalGender = grammaticalGender,
                 audioUri = audioUri,
-                cellIndex = cellIndex
+                cellIndex = cellIndex,
             )
             repository.insertTile(newTile)
         }
@@ -156,7 +167,16 @@ class AACViewModel(application: Application) : AndroidViewModel(application) {
 
     fun deleteTile(tile: AACTile) {
         viewModelScope.launch {
+            tile.audioUri?.let { audioService.deleteRecording(it) }
             repository.deleteTile(tile)
+        }
+    }
+
+    fun updateTileAudioUri(tileId: String, audioUri: String?) {
+        viewModelScope.launch {
+            repository.getTileById(tileId)?.let { tile ->
+                repository.updateTile(tile.copy(audioUri = audioUri))
+            }
         }
     }
 
