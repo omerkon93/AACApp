@@ -1,0 +1,615 @@
+[
+  {
+    "id": "want",
+    "label": "אני רוצה",
+    "ttsText": "אני רוצה",
+    "emoji": "✋",
+    "isCategory": false,
+    "partOfSpeech": "PRONOUN",
+    "linkedCategoryId": "actions",
+    "cellIndex": 0
+  },
+  {
+    "id": "yes",
+    "label": "כן",
+    "ttsText": "כן",
+    "emoji": "👍",
+    "isCategory": false,
+    "partOfSpeech": "SOCIAL",
+    "isQuickFire": true,
+    "cellIndex": 1
+  },
+  {
+    "id": "no",
+    "label": "לא",
+    "ttsText": "לא",
+    "emoji": "👎",
+    "isCategory": false,
+    "partOfSpeech": "SOCIAL",
+    "isQuickFire": true,
+    "cellIndex": 2
+  },
+  {
+    "id": "more",
+    "label": "עוד",
+    "ttsText": "עוד",
+    "emoji": "➕",
+    "isCategory": false,
+    "partOfSpeech": "ADJECTIVE",
+    "cellIndex": 3
+  },
+  {
+    "id": "done",
+    "label": "סיימתי",
+    "ttsText": "סיימתי",
+    "emoji": "✅",
+    "isCategory": false,
+    "partOfSpeech": "SOCIAL",
+    "isQuickFire": true,
+    "cellIndex": 4
+  },
+  {
+    "id": "drink",
+    "label": "שתייה",
+    "ttsText": "לשתות",
+    "emoji": "🥤",
+    "isCategory": false,
+    "partOfSpeech": "VERB",
+    "linkedCategoryId": "food",
+    "cellIndex": 5
+  },
+  {
+    "id": "food",
+    "label": "אוכל",
+    "ttsText": "אוכל",
+    "emoji": "🍕",
+    "isCategory": true,
+    "cellIndex": 6
+  },
+  {
+    "id": "play",
+    "label": "לשחק",
+    "ttsText": "לשחק",
+    "emoji": "⚽",
+    "isCategory": true,
+    "cellIndex": 7
+  },
+  {
+    "id": "actions",
+    "label": "פעולות",
+    "ttsText": "פעולות",
+    "emoji": "🏃",
+    "isCategory": true,
+    "cellIndex": 8
+  },
+  {
+    "id": "emotions",
+    "label": "רגשות",
+    "ttsText": "רגשות",
+    "emoji": "😊",
+    "isCategory": true,
+    "cellIndex": 9
+  },
+  {
+    "id": "people",
+    "label": "אנשים",
+    "ttsText": "אנשים",
+    "emoji": "👨‍👩‍👧‍👦",
+    "isCategory": true,
+    "cellIndex": 10
+  },
+  {
+    "id": "hygiene",
+    "label": "שירותים",
+    "ttsText": "שירותים",
+    "emoji": "🚽",
+    "isCategory": true,
+    "cellIndex": 11
+  },
+  {
+    "id": "places",
+    "label": "מקומות",
+    "ttsText": "מקומות",
+    "emoji": "🏠",
+    "isCategory": true,
+    "cellIndex": 12
+  },
+
+  {
+    "id": "apple",
+    "label": "תפוח",
+    "ttsText": "תפוח",
+    "emoji": "🍎",
+    "isCategory": false,
+    "parentId": "food",
+    "partOfSpeech": "NOUN",
+    "grammaticalGender": "M",
+    "cellIndex": 0
+  },
+  {
+    "id": "cookie",
+    "label": "עוגייה",
+    "ttsText": "עוגייה",
+    "emoji": "🍪",
+    "isCategory": false,
+    "parentId": "food",
+    "partOfSpeech": "NOUN",
+    "grammaticalGender": "F",
+    "cellIndex": 1
+  },
+  {
+    "id": "bamba",
+    "label": "במבה",
+    "ttsText": "במבה",
+    "emoji": "🥜",
+    "isCategory": false,
+    "parentId": "food",
+    "partOfSpeech": "NOUN",
+    "grammaticalGender": "F",
+    "cellIndex": 2
+  },
+  {
+    "id": "bisli",
+    "label": "ביסלי",
+    "ttsText": "ביסלי",
+    "emoji": "🥨",
+    "isCategory": false,
+    "parentId": "food",
+    "partOfSpeech": "NOUN",
+    "grammaticalGender": "M",
+    "cellIndex": 3
+  },
+  {
+    "id": "banana",
+    "label": "בננה",
+    "ttsText": "בננה",
+    "emoji": "🍌",
+    "isCategory": false,
+    "parentId": "food",
+    "partOfSpeech": "NOUN",
+    "grammaticalGender": "F",
+    "cellIndex": 4
+  },
+  {
+    "id": "schnitzel",
+    "label": "שניצל",
+    "ttsText": "שניצל",
+    "emoji": "🍗",
+    "isCategory": false,
+    "parentId": "food",
+    "partOfSpeech": "NOUN",
+    "grammaticalGender": "M",
+    "cellIndex": 5
+  },
+  {
+    "id": "pita",
+    "label": "פיתה",
+    "ttsText": "פיתה",
+    "emoji": "🥙",
+    "isCategory": false,
+    "parentId": "food",
+    "partOfSpeech": "NOUN",
+    "grammaticalGender": "F",
+    "cellIndex": 6
+  },
+  {
+    "id": "pasta",
+    "label": "פסטה",
+    "ttsText": "פסטה",
+    "emoji": "🍝",
+    "isCategory": false,
+    "parentId": "food",
+    "partOfSpeech": "NOUN",
+    "grammaticalGender": "F",
+    "cellIndex": 7
+  },
+  {
+    "id": "water",
+    "label": "מים",
+    "ttsText": "מים",
+    "emoji": "💧",
+    "isCategory": false,
+    "parentId": "food",
+    "partOfSpeech": "NOUN",
+    "grammaticalGender": "M",
+    "cellIndex": 8
+  },
+  {
+    "id": "milk",
+    "label": "חלב",
+    "ttsText": "חלב",
+    "emoji": "🥛",
+    "isCategory": false,
+    "parentId": "food",
+    "partOfSpeech": "NOUN",
+    "grammaticalGender": "M",
+    "cellIndex": 9
+  },
+
+  {
+    "id": "ball",
+    "label": "כדור",
+    "ttsText": "כדור",
+    "emoji": "🏀",
+    "isCategory": false,
+    "parentId": "play",
+    "partOfSpeech": "NOUN",
+    "grammaticalGender": "M",
+    "cellIndex": 0
+  },
+  {
+    "id": "puzzle",
+    "label": "פאזל",
+    "ttsText": "פאזל",
+    "emoji": "🧩",
+    "isCategory": false,
+    "parentId": "play",
+    "partOfSpeech": "NOUN",
+    "grammaticalGender": "M",
+    "cellIndex": 1
+  },
+  {
+    "id": "blocks",
+    "label": "קוביות",
+    "ttsText": "קוביות",
+    "emoji": "🧱",
+    "isCategory": false,
+    "parentId": "play",
+    "partOfSpeech": "NOUN",
+    "grammaticalGender": "F",
+    "cellIndex": 2
+  },
+  {
+    "id": "animals",
+    "label": "חיות",
+    "ttsText": "חיות",
+    "emoji": "🦁",
+    "isCategory": true,
+    "parentId": "play",
+    "cellIndex": 3
+  },
+  {
+    "id": "vehicles",
+    "label": "כלי רכב",
+    "ttsText": "כלי רכב",
+    "emoji": "🚗",
+    "isCategory": true,
+    "parentId": "play",
+    "cellIndex": 4
+  },
+  {
+    "id": "cooking_game",
+    "label": "מטבח משחק",
+    "ttsText": "מטבח משחק",
+    "emoji": "🍳",
+    "isCategory": true,
+    "parentId": "play",
+    "cellIndex": 5
+  },
+
+  {
+    "id": "dog",
+    "label": "כלב",
+    "ttsText": "כלב",
+    "emoji": "🐶",
+    "isCategory": false,
+    "parentId": "animals",
+    "partOfSpeech": "NOUN",
+    "grammaticalGender": "M",
+    "cellIndex": 0
+  },
+  {
+    "id": "cat",
+    "label": "חתול",
+    "ttsText": "חתול",
+    "emoji": "🐱",
+    "isCategory": false,
+    "parentId": "animals",
+    "partOfSpeech": "NOUN",
+    "grammaticalGender": "M",
+    "cellIndex": 1
+  },
+  {
+    "id": "cow",
+    "label": "פרה",
+    "ttsText": "פרה",
+    "emoji": "🐮",
+    "isCategory": false,
+    "parentId": "animals",
+    "partOfSpeech": "NOUN",
+    "grammaticalGender": "F",
+    "cellIndex": 2
+  },
+
+  {
+    "id": "car",
+    "label": "מכונית",
+    "ttsText": "מכונית",
+    "emoji": "🚗",
+    "isCategory": false,
+    "parentId": "vehicles",
+    "partOfSpeech": "NOUN",
+    "grammaticalGender": "F",
+    "cellIndex": 0
+  },
+  {
+    "id": "tractor",
+    "label": "טרקטור",
+    "ttsText": "טרקטור",
+    "emoji": "🚜",
+    "isCategory": false,
+    "parentId": "vehicles",
+    "partOfSpeech": "NOUN",
+    "grammaticalGender": "M",
+    "cellIndex": 1
+  },
+  {
+    "id": "train",
+    "label": "רכבת",
+    "ttsText": "רכבת",
+    "emoji": "🚂",
+    "isCategory": false,
+    "parentId": "vehicles",
+    "partOfSpeech": "NOUN",
+    "grammaticalGender": "F",
+    "cellIndex": 2
+  },
+
+  {
+    "id": "pot",
+    "label": "סיר",
+    "ttsText": "סיר",
+    "emoji": "🍲",
+    "isCategory": false,
+    "parentId": "cooking_game",
+    "partOfSpeech": "NOUN",
+    "grammaticalGender": "M",
+    "cellIndex": 0
+  },
+  {
+    "id": "plate",
+    "label": "צלחת",
+    "ttsText": "צלחת",
+    "emoji": "🍽️",
+    "isCategory": false,
+    "parentId": "cooking_game",
+    "partOfSpeech": "NOUN",
+    "grammaticalGender": "F",
+    "cellIndex": 1
+  },
+  {
+    "id": "spoon",
+    "label": "כף",
+    "ttsText": "כף",
+    "emoji": "🥄",
+    "isCategory": false,
+    "parentId": "cooking_game",
+    "partOfSpeech": "NOUN",
+    "grammaticalGender": "F",
+    "cellIndex": 2
+  },
+
+  {
+    "id": "eat_action",
+    "label": "לאכול",
+    "ttsText": "לאכול",
+    "emoji": "🍽️",
+    "isCategory": false,
+    "parentId": "actions",
+    "partOfSpeech": "VERB",
+    "linkedCategoryId": "food",
+    "cellIndex": 0
+  },
+  {
+    "id": "sleep_action",
+    "label": "לישון",
+    "ttsText": "לישון",
+    "emoji": "😴",
+    "isCategory": false,
+    "parentId": "actions",
+    "partOfSpeech": "VERB",
+    "cellIndex": 1
+  },
+  {
+    "id": "go_action",
+    "label": "ללכת",
+    "ttsText": "ללכת",
+    "emoji": "🚶",
+    "isCategory": false,
+    "parentId": "actions",
+    "partOfSpeech": "VERB",
+    "linkedCategoryId": "places",
+    "cellIndex": 2
+  },
+  {
+    "id": "stop_action",
+    "label": "לעצור",
+    "ttsText": "די",
+    "emoji": "🛑",
+    "isCategory": false,
+    "parentId": "actions",
+    "partOfSpeech": "SOCIAL",
+    "isQuickFire": true,
+    "cellIndex": 3
+  },
+  {
+    "id": "help_action",
+    "label": "לעזור",
+    "ttsText": "לעזור",
+    "emoji": "🤝",
+    "isCategory": false,
+    "parentId": "actions",
+    "partOfSpeech": "VERB",
+    "cellIndex": 4
+  },
+
+  {
+    "id": "happy",
+    "label": "שמח",
+    "ttsText": "שמח",
+    "labelFeminine": "שמחה",
+    "ttsTextFeminine": "שמחה",
+    "emoji": "😀",
+    "isCategory": false,
+    "parentId": "emotions",
+    "partOfSpeech": "ADJECTIVE",
+    "cellIndex": 0
+  },
+  {
+    "id": "sad",
+    "label": "עצוב",
+    "ttsText": "עצוב",
+    "labelFeminine": "עצובה",
+    "ttsTextFeminine": "עצובה",
+    "emoji": "😢",
+    "isCategory": false,
+    "parentId": "emotions",
+    "partOfSpeech": "ADJECTIVE",
+    "cellIndex": 1
+  },
+  {
+    "id": "angry",
+    "label": "כועס",
+    "ttsText": "כועס",
+    "labelFeminine": "כועסת",
+    "ttsTextFeminine": "כועסת",
+    "emoji": "😡",
+    "isCategory": false,
+    "parentId": "emotions",
+    "partOfSpeech": "ADJECTIVE",
+    "cellIndex": 2
+  },
+  {
+    "id": "tired",
+    "label": "עייף",
+    "ttsText": "עייף",
+    "labelFeminine": "עייפה",
+    "ttsTextFeminine": "עייפה",
+    "emoji": "🥱",
+    "isCategory": false,
+    "parentId": "emotions",
+    "partOfSpeech": "ADJECTIVE",
+    "cellIndex": 3
+  },
+
+  {
+    "id": "me",
+    "label": "אני",
+    "ttsText": "אני",
+    "emoji": "🧒",
+    "isCategory": false,
+    "parentId": "people",
+    "partOfSpeech": "PRONOUN",
+    "cellIndex": 0
+  },
+  {
+    "id": "mom",
+    "label": "אמא",
+    "ttsText": "אמא",
+    "emoji": "👩",
+    "isCategory": false,
+    "parentId": "people",
+    "partOfSpeech": "NOUN",
+    "grammaticalGender": "F",
+    "cellIndex": 1
+  },
+  {
+    "id": "dad",
+    "label": "אבא",
+    "ttsText": "אבא",
+    "emoji": "👨",
+    "isCategory": false,
+    "parentId": "people",
+    "partOfSpeech": "NOUN",
+    "grammaticalGender": "M",
+    "cellIndex": 2
+  },
+  {
+    "id": "grandma",
+    "label": "סבתא",
+    "ttsText": "סבתא",
+    "emoji": "👵",
+    "isCategory": false,
+    "parentId": "people",
+    "partOfSpeech": "NOUN",
+    "grammaticalGender": "F",
+    "cellIndex": 3
+  },
+  {
+    "id": "grandpa",
+    "label": "סבא",
+    "ttsText": "סבא",
+    "emoji": "👴",
+    "isCategory": false,
+    "parentId": "people",
+    "partOfSpeech": "NOUN",
+    "grammaticalGender": "M",
+    "cellIndex": 4
+  },
+
+  {
+    "id": "toilet_action",
+    "label": "שירותים",
+    "ttsText": "שירותים",
+    "emoji": "🚽",
+    "isCategory": false,
+    "parentId": "hygiene",
+    "partOfSpeech": "NOUN",
+    "cellIndex": 0
+  },
+  {
+    "id": "bath_action",
+    "label": "אמבטיה",
+    "ttsText": "אמבטיה",
+    "emoji": "🛁",
+    "isCategory": false,
+    "parentId": "hygiene",
+    "partOfSpeech": "NOUN",
+    "grammaticalGender": "F",
+    "cellIndex": 1
+  },
+  {
+    "id": "wash_hands",
+    "label": "לשטוף ידיים",
+    "ttsText": "לשטוף ידיים",
+    "emoji": "🧼",
+    "isCategory": false,
+    "parentId": "hygiene",
+    "partOfSpeech": "VERB",
+    "cellIndex": 2
+  },
+
+  {
+    "id": "home",
+    "label": "בית",
+    "ttsText": "בית",
+    "emoji": "🏠",
+    "isCategory": false,
+    "parentId": "places",
+    "partOfSpeech": "NOUN",
+    "grammaticalGender": "M",
+    "cellIndex": 0
+  },
+  {
+    "id": "park",
+    "label": "גינה",
+    "ttsText": "גינה",
+    "emoji": "🛝",
+    "isCategory": false,
+    "parentId": "places",
+    "partOfSpeech": "NOUN",
+    "grammaticalGender": "F",
+    "cellIndex": 1
+  },
+  {
+    "id": "kindergarten",
+    "label": "גן",
+    "ttsText": "גן",
+    "emoji": "🎨",
+    "isCategory": false,
+    "parentId": "places",
+    "partOfSpeech": "NOUN",
+    "grammaticalGender": "M",
+    "cellIndex": 2
+  }
+]
