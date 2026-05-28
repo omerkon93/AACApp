@@ -3,7 +3,6 @@ package com.kon.myaacapp
 import android.app.Application
 import androidx.lifecycle.AndroidViewModel
 import androidx.lifecycle.viewModelScope
-import kotlinx.coroutines.delay
 import kotlinx.coroutines.ExperimentalCoroutinesApi
 import kotlinx.coroutines.flow.*
 import kotlinx.coroutines.launch
@@ -11,6 +10,7 @@ import kotlinx.coroutines.launch
 @OptIn(ExperimentalCoroutinesApi::class)
 class AACViewModel(application: Application) : AndroidViewModel(application) {
     private val repository: AACRepository
+    private val settingsRepository: SettingsRepository
     private val ttsHelper: TextToSpeechHelper
     
     val tileService: AACTileService
@@ -20,6 +20,7 @@ class AACViewModel(application: Application) : AndroidViewModel(application) {
     init {
         val database = AACDatabase.getDatabase(application)
         repository = AACRepository(database.aacTileDao())
+        settingsRepository = SettingsRepository(application)
         ttsHelper = TextToSpeechHelper(application)
         
         tileService = AACTileService(repository)
@@ -48,6 +49,15 @@ class AACViewModel(application: Application) : AndroidViewModel(application) {
     val allCategories: StateFlow<List<AACTile>> = repository.getAllCategories()
         .stateIn(viewModelScope, SharingStarted.Lazily, emptyList())
 
+    val speakOnTilePress: StateFlow<Boolean> = settingsRepository.speakOnTilePressFlow
+        .stateIn(viewModelScope, SharingStarted.Lazily, true)
+
+    fun updateSpeakOnTilePress(speak: Boolean) {
+        viewModelScope.launch {
+            settingsRepository.updateSpeakOnTilePress(speak)
+        }
+    }
+
     private val _selectedSentence = MutableStateFlow<List<AACTile>>(emptyList())
     val selectedSentence: StateFlow<List<AACTile>> = _selectedSentence.asStateFlow()
 
@@ -72,13 +82,21 @@ class AACViewModel(application: Application) : AndroidViewModel(application) {
                 addTileToSentence(tile)
             }
             
-            // Task 1: Prioritize custom voice
-            if (tile.audioUri != null) {
-                audioService.playRecording(tile.audioUri)
+            val shouldSpeak = if (tile.isQuickFire) {
+                true // ALWAYS speak quickfire
             } else {
-                // Speak the resolved gender-specific text
-                val speechText = tileService.getTTSText(tile)
-                ttsHelper.speak(speechText)
+                // If it was added to sentence (or is a category that doesn't add),
+                // only speak if setting is ON.
+                speakOnTilePress.value
+            }
+
+            if (shouldSpeak) {
+                if (tile.audioUri != null) {
+                    audioService.playRecording(tile.audioUri)
+                } else {
+                    val speechText = tileService.getTTSText(tile)
+                    ttsHelper.speak(speechText)
+                }
             }
 
             navigateId?.let { onNavigateToCategory(it) }
@@ -102,20 +120,7 @@ class AACViewModel(application: Application) : AndroidViewModel(application) {
 
     fun speakSentence() {
         viewModelScope.launch {
-            val currentSentence = _selectedSentence.value
-            for (tile in currentSentence) {
-                if (tile.audioUri != null) {
-                    audioService.playRecording(tile.audioUri)
-                    // Simple estimate for custom audio length (3 seconds max for AAC tiles usually)
-                    // Better would be a callback from MediaPlayer, but this handles the sequence.
-                    delay(2000) 
-                } else {
-                    val text = tileService.getTTSText(tile)
-                    ttsHelper.speak(text)
-                    // Delay based on text length to avoid overlapping
-                    delay((text.length * 150L) + 500L)
-                }
-            }
+            audioService.speakSentence(_selectedSentence.value, ttsHelper, tileService)
         }
     }
 

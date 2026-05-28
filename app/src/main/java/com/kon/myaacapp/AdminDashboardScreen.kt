@@ -41,6 +41,7 @@ fun AdminDashboardScreen(
     val importExportStatus by viewModel.importExportStatus.collectAsState()
     val showTileDialog = remember { mutableStateOf(value = false) }
     val editingTile = remember { mutableStateOf<AACTile?>(null) }
+    val tileToDelete = remember { mutableStateOf<AACTile?>(null) }
     val snackbarHostState = remember { SnackbarHostState() }
     val context = LocalContext.current
 
@@ -111,17 +112,48 @@ fun AdminDashboardScreen(
             }
         },
     ) { padding ->
+        val speakOnTilePress by viewModel.speakOnTilePress.collectAsState()
+
         LazyColumn(
             modifier = Modifier
                 .padding(paddingValues = padding)
                 .fillMaxSize(),
         ) {
+            item {
+                Column(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .padding(16.dp)
+                ) {
+                    Text(
+                        text = "Global Settings",
+                        style = MaterialTheme.typography.titleLarge,
+                        color = MaterialTheme.colorScheme.primary
+                    )
+                    Spacer(modifier = Modifier.height(8.dp))
+                    Row(
+                        modifier = Modifier.fillMaxWidth(),
+                        verticalAlignment = Alignment.CenterVertically,
+                        horizontalArrangement = Arrangement.SpaceBetween
+                    ) {
+                        Text("Speak Words on Tap")
+                        Switch(
+                            checked = speakOnTilePress,
+                            onCheckedChange = { viewModel.updateSpeakOnTilePress(it) }
+                        )
+                    }
+                    HorizontalDivider(modifier = Modifier.padding(top = 16.dp))
+                }
+            }
+
             items(tiles) { tile ->
                 val isThisTileRecording = recordingTileId == tile.id
                 TileRow(
                     tile = tile,
                     isRecording = isThisTileRecording,
-                    onDelete = { viewModel.deleteTile(tile) },
+                    onDelete = { tileToDelete.value = tile },
+                    onPlayAudio = { tile.audioUri?.let { viewModel.audioService.playRecording(it) } },
+                    onClearAudio = { viewModel.updateTileAudioUri(tile.id, null) },
                     onQuickRecord = {
                         if (isThisTileRecording) {
                             viewModel.audioService.stopRecording()
@@ -161,6 +193,30 @@ fun AdminDashboardScreen(
         }
     }
 
+    if (tileToDelete.value != null) {
+        AlertDialog(
+            onDismissRequest = { tileToDelete.value = null },
+            title = { Text("Delete Tile?") },
+            text = { Text("This action will permanently remove '${tileToDelete.value?.label}' and any associated custom voice recordings. This cannot be undone.") },
+            confirmButton = {
+                Button(
+                    onClick = {
+                        tileToDelete.value?.let { viewModel.deleteTile(it) }
+                        tileToDelete.value = null
+                    },
+                    colors = ButtonDefaults.buttonColors(containerColor = MaterialTheme.colorScheme.error)
+                ) {
+                    Text("Delete")
+                }
+            },
+            dismissButton = {
+                TextButton(onClick = { tileToDelete.value = null }) {
+                    Text("Cancel")
+                }
+            }
+        )
+    }
+
     if (showTileDialog.value) {
         TileDialog(
             viewModel = viewModel,
@@ -178,6 +234,8 @@ fun TileRow(
     isRecording: Boolean,
     onDelete: () -> Unit,
     onQuickRecord: () -> Unit,
+    onPlayAudio: () -> Unit,
+    onClearAudio: () -> Unit,
     onClick: () -> Unit
 ) {
     Row(
@@ -229,20 +287,59 @@ fun TileRow(
             }
         }
 
-        IconButton(onClick = onQuickRecord) {
-            Icon(
-                imageVector = if (isRecording) Icons.Filled.Stop else Icons.Filled.Mic,
-                contentDescription = "Quick Record",
-                tint = when {
-                    isRecording -> MaterialTheme.colorScheme.error
-                    tile.audioUri != null -> MaterialTheme.colorScheme.primary
-                    else -> Color.Gray
+        // Audio Controls
+        Row(verticalAlignment = Alignment.CenterVertically) {
+            if (isRecording) {
+                IconButton(onClick = onQuickRecord) {
+                    Icon(
+                        imageVector = Icons.Default.Stop,
+                        contentDescription = "Stop Recording",
+                        tint = MaterialTheme.colorScheme.error
+                    )
                 }
-            )
+            } else if (tile.audioUri != null) {
+                IconButton(onClick = onPlayAudio) {
+                    Icon(
+                        imageVector = Icons.Default.PlayArrow,
+                        contentDescription = "Play Recording",
+                        tint = MaterialTheme.colorScheme.primary
+                    )
+                }
+                IconButton(onClick = onClearAudio) {
+                    Icon(
+                        imageVector = Icons.Default.Close,
+                        contentDescription = "Clear Recording",
+                        tint = MaterialTheme.colorScheme.outline
+                    )
+                }
+            } else {
+                IconButton(onClick = onQuickRecord) {
+                    Icon(
+                        imageVector = Icons.Default.Mic,
+                        contentDescription = "Start Recording",
+                        tint = MaterialTheme.colorScheme.outline
+                    )
+                }
+            }
         }
+
+        // Separation
+        Spacer(modifier = Modifier.width(8.dp))
+        Box(
+            modifier = Modifier
+                .width(1.dp)
+                .height(24.dp)
+                .background(MaterialTheme.colorScheme.outlineVariant)
+        )
+        Spacer(modifier = Modifier.width(8.dp))
         
+        // Tile Deletion
         IconButton(onClick = onDelete) {
-            Icon(Icons.Default.Delete, contentDescription = "Delete", tint = MaterialTheme.colorScheme.error)
+            Icon(
+                imageVector = Icons.Default.Delete,
+                contentDescription = "Delete Tile",
+                tint = MaterialTheme.colorScheme.outline
+            )
         }
     }
 }

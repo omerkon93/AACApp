@@ -361,7 +361,7 @@ fun AdminPinDialog(
     onAuthenticated: () -> Unit
 ) {
     var password by remember { mutableStateOf("") }
-    val correctPassword = "admin"
+    val correctPassword = "1234"
 
     AlertDialog(
         onDismissRequest = onDismiss,
@@ -378,7 +378,7 @@ fun AdminPinDialog(
                 )
                 Spacer(modifier = Modifier.height(4.dp))
                 Text(
-                    text = "Default password: admin",
+                    text = "Default password: 1234",
                     style = MaterialTheme.typography.bodySmall,
                     color = MaterialTheme.colorScheme.onSurfaceVariant
                 )

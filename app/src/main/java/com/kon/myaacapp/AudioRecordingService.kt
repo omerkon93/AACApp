@@ -14,6 +14,7 @@ import java.io.IOException
 import java.io.OutputStream
 import java.nio.ByteBuffer
 import java.nio.ByteOrder
+import kotlin.coroutines.resume
 
 class AudioRecordingService(private val context: Context) {
 
@@ -39,7 +40,7 @@ class AudioRecordingService(private val context: Context) {
         val outputFile = File(outputDir, "audio_$tileId.wav")
         
         val bufferSize = AudioRecord.getMinBufferSize(SAMPLE_RATE, CHANNEL_CONFIG, AUDIO_FORMAT)
-        if (bufferSize == AudioRecord.ERROR || (bufferSize == AudioRecord.ERROR_BAD_VALUE)) {
+        if ((bufferSize == AudioRecord.ERROR) || (bufferSize == AudioRecord.ERROR_BAD_VALUE)) {
             Log.e("AudioRecordingService", "Invalid buffer size")
             return null
         }
@@ -137,7 +138,7 @@ class AudioRecordingService(private val context: Context) {
     private fun writeWavHeader(
         out: OutputStream,
         totalAudioLen: Long,
-        totalDataLen: Long
+        totalDataLen: Long,
     ) {
         val channels = 1
         val byteRate = (SAMPLE_RATE * channels * 16 / 8).toLong()
@@ -199,6 +200,51 @@ class AudioRecordingService(private val context: Context) {
             } catch (e: IOException) {
                 Log.e("AudioRecordingService", "playRecording() failed", e)
             }
+        }
+    }
+
+    suspend fun playRecordingSuspend(path: String) = suspendCancellableCoroutine { continuation ->
+        stopPlayback()
+        val player = MediaPlayer()
+        mediaPlayer = player
+        try {
+            player.setDataSource(path)
+            player.setOnCompletionListener {
+                stopPlayback()
+                if (continuation.isActive) continuation.resume(Unit)
+            }
+            player.setOnErrorListener { _, what, extra ->
+                Log.e("AudioRecordingService", "MediaPlayer error: $what, $extra")
+                stopPlayback()
+                if (continuation.isActive) continuation.resume(Unit)
+                true
+            }
+            player.prepare()
+            player.start()
+        } catch (e: Exception) {
+            Log.e("AudioRecordingService", "playRecordingSuspend() failed", e)
+            stopPlayback()
+            if (continuation.isActive) continuation.resume(Unit)
+        }
+
+        continuation.invokeOnCancellation {
+            stopPlayback()
+        }
+    }
+
+    suspend fun speakSentence(
+        sentence: List<AACTile>,
+        ttsHelper: TextToSpeechHelper,
+        tileService: AACTileService
+    ) {
+        for (tile in sentence) {
+            if (tile.audioUri != null) {
+                playRecordingSuspend(tile.audioUri)
+            } else {
+                val text = tileService.getTTSText(tile)
+                ttsHelper.speakSuspend(text)
+            }
+            delay(150)
         }
     }
 
