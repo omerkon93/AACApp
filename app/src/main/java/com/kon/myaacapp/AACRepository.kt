@@ -24,10 +24,6 @@ class AACRepository(private val aacTileDao: AACTileDao) {
         return aacTileDao.getTileById(id)
     }
 
-    fun getTileByIdFlow(id: String): Flow<AACTile?> {
-        return aacTileDao.getTileByIdFlow(id)
-    }
-
     suspend fun insertTile(tile: AACTile) {
         aacTileDao.insertTile(tile)
     }

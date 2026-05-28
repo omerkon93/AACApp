@@ -80,7 +80,7 @@ class AudioRecordingService(private val context: Context) {
         return outputFile.absolutePath
     }
 
-    fun stopRecording() {
+    suspend fun stopRecording() {
         isRecording = false
         audioRecord?.apply {
             if (recordingState == AudioRecord.RECORDSTATE_RECORDING) {
@@ -89,20 +89,19 @@ class AudioRecordingService(private val context: Context) {
             release()
         }
         audioRecord = null
-        // We don't necessarily need to join the job here if the UI doesn't wait for it,
-        // but for safety in this app's flow, we let it finish in the background.
+        recordingJob?.join()
+        recordingJob = null
     }
 
     private fun processAndSaveAudio(rawShorts: List<Short>, outputFile: File) {
         if (rawShorts.isEmpty()) return
 
-        // 1. Strip Leading Silence
+        // Use a more memory-efficient way to find start/end indices
         var startIdx = 0
         while (startIdx < rawShorts.size && kotlin.math.abs(rawShorts[startIdx].toInt()) < SILENCE_THRESHOLD) {
             startIdx++
         }
 
-        // 2. Strip Trailing Silence
         var endIdx = rawShorts.size - 1
         while (endIdx > startIdx && kotlin.math.abs(rawShorts[endIdx].toInt()) < SILENCE_THRESHOLD) {
             endIdx--
@@ -113,21 +112,27 @@ class AudioRecordingService(private val context: Context) {
             return
         }
 
-        val trimmedShorts = rawShorts.subList(startIdx, endIdx + 1)
-        val byteData = ByteBuffer.allocate(trimmedShorts.size * 2).apply {
-            order(ByteOrder.LITTLE_ENDIAN)
-            for (s in trimmedShorts) {
-                putShort(s)
-            }
-        }.array()
+        val trimmedSize = endIdx - startIdx + 1
 
         try {
             FileOutputStream(outputFile).use { fos ->
-                val totalAudioLen = byteData.size.toLong()
+                val totalAudioLen = (trimmedSize * 2).toLong()
                 val totalDataLen = totalAudioLen + 36
 
                 writeWavHeader(fos, totalAudioLen, totalDataLen)
-                fos.write(byteData)
+                
+                // Write in chunks to be safer, although we still have rawShorts in memory
+                val buffer = ByteBuffer.allocate(2048).order(ByteOrder.LITTLE_ENDIAN)
+                for (i in startIdx..endIdx) {
+                    if (!buffer.hasRemaining()) {
+                        fos.write(buffer.array())
+                        buffer.clear()
+                    }
+                    buffer.putShort(rawShorts[i])
+                }
+                if (buffer.position() > 0) {
+                    fos.write(buffer.array(), 0, buffer.position())
+                }
             }
             Log.d("AudioRecordingService", "Saved trimmed WAV to ${outputFile.absolutePath}")
         } catch (e: Exception) {

@@ -20,9 +20,6 @@ interface AACTileDao {
     @Query("SELECT * FROM aac_tiles WHERE id = :id")
     suspend fun getTileById(id: String): AACTile?
 
-    @Query("SELECT * FROM aac_tiles WHERE id = :id")
-    fun getTileByIdFlow(id: String): Flow<AACTile?>
-
     @Query("SELECT * FROM aac_tiles WHERE parentId = :parentId ORDER BY cellIndex ASC, sortOrder ASC")
     fun getTilesByParentId(parentId: String?): Flow<List<AACTile>>
 

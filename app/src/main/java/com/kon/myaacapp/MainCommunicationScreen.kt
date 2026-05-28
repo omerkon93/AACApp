@@ -12,6 +12,7 @@ import androidx.compose.material.icons.automirrored.filled.*
 import androidx.compose.material.icons.filled.*
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
+import androidx.lifecycle.viewModelScope
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.input.pointer.pointerInput
@@ -53,7 +54,8 @@ fun MainCommunicationScreen(
         userGender = userGender,
         onToggleGender = { 
             viewModel.tileService.setUserGender(
-                if (userGender == Gender.MALE) Gender.FEMALE else Gender.MALE
+                if (userGender == Gender.MALE) Gender.FEMALE else Gender.MALE,
+                viewModel.viewModelScope
             )
         },
         onSpeak = { viewModel.speakSentence() },

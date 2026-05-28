@@ -97,7 +97,12 @@ class BackupService(private val context: Context, private val repository: AACRep
             }
 
             tilesJson?.let { jsonStr ->
-                val importedTiles = json.decodeFromString<List<AACTile>>(jsonStr)
+                val importedTiles = try {
+                    json.decodeFromString<List<AACTile>>(jsonStr)
+                } catch (e: Exception) {
+                    e.printStackTrace()
+                    return@withContext false
+                }
                 
                 // Remap URIs to current device paths
                 val remappedTiles = importedTiles.map { tile ->

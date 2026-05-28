@@ -36,6 +36,16 @@ android {
         compose = true
     }
     compileSdkMinor = 0
+    
+    testOptions {
+        unitTests {
+            isIncludeAndroidResources = true
+        }
+    }
+}
+
+kotlin {
+    jvmToolchain(17)
 }
 
 dependencies {

@@ -29,6 +29,8 @@ import coil.compose.AsyncImage
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.draw.clip
 import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.lifecycle.viewModelScope
+import kotlinx.coroutines.launch
 import com.kon.myaacapp.ui.theme.resolveFitzgeraldColor
 
 @OptIn(ExperimentalMaterial3Api::class)
@@ -155,31 +157,33 @@ fun AdminDashboardScreen(
                     onPlayAudio = { tile.audioUri?.let { viewModel.audioService.playRecording(it) } },
                     onClearAudio = { viewModel.updateTileAudioUri(tile.id, null) },
                     onQuickRecord = {
-                        if (isThisTileRecording) {
-                            viewModel.audioService.stopRecording()
-                            // Get the URI (it's predictable based on tileId in AudioRecordingService)
-                            val outputDir = java.io.File(context.filesDir, "audio_tiles")
-                            val outputFile = java.io.File(outputDir, "audio_${tile.id}.wav")
-                            viewModel.updateTileAudioUri(tile.id, outputFile.absolutePath)
-                            recordingTileId = null
-                        } else {
-                            // Stop any other active recording first (safety)
-                            if (recordingTileId != null) {
+                        viewModel.viewModelScope.launch {
+                            if (isThisTileRecording) {
                                 viewModel.audioService.stopRecording()
+                                // Get the URI (it's predictable based on tileId in AudioRecordingService)
+                                val outputDir = java.io.File(context.filesDir, "audio_tiles")
+                                val outputFile = java.io.File(outputDir, "audio_${tile.id}.wav")
+                                viewModel.updateTileAudioUri(tile.id, outputFile.absolutePath)
                                 recordingTileId = null
-                            }
-
-                            val hasPermission = ContextCompat.checkSelfPermission(
-                                context,
-                                Manifest.permission.RECORD_AUDIO,
-                            ) == PackageManager.PERMISSION_GRANTED
-
-                            recordingTileId = tile.id
-                            if (hasPermission) {
-                                val newUri = viewModel.audioService.startRecording(tile.id)
-                                if (newUri == null) recordingTileId = null
                             } else {
-                                permissionLauncher.launch(Manifest.permission.RECORD_AUDIO)
+                                // Stop any other active recording first (safety)
+                                if (recordingTileId != null) {
+                                    viewModel.audioService.stopRecording()
+                                    recordingTileId = null
+                                }
+
+                                val hasPermission = ContextCompat.checkSelfPermission(
+                                    context,
+                                    Manifest.permission.RECORD_AUDIO,
+                                ) == PackageManager.PERMISSION_GRANTED
+
+                                recordingTileId = tile.id
+                                if (hasPermission) {
+                                    val newUri = viewModel.audioService.startRecording(tile.id)
+                                    if (newUri == null) recordingTileId = null
+                                } else {
+                                    permissionLauncher.launch(Manifest.permission.RECORD_AUDIO)
+                                }
                             }
                         }
                     },
@@ -469,21 +473,23 @@ fun TileDialog(
                     Column(modifier = Modifier.fillMaxWidth()) {
                         Button(
                             onClick = {
-                                if (isRecording) {
-                                    viewModel.audioService.stopRecording()
-                                    isRecording = false
-                                } else {
-                                    val hasPermission = ContextCompat.checkSelfPermission(
-                                        context,
-                                        Manifest.permission.RECORD_AUDIO,
-                                    ) == PackageManager.PERMISSION_GRANTED
-
-                                    if (hasPermission) {
-                                        val tempId = java.util.UUID.randomUUID().toString()
-                                        audioUri = viewModel.audioService.startRecording(tempId)
-                                        if (audioUri != null) isRecording = true
+                                viewModel.viewModelScope.launch {
+                                    if (isRecording) {
+                                        viewModel.audioService.stopRecording()
+                                        isRecording = false
                                     } else {
-                                        permissionLauncher.launch(Manifest.permission.RECORD_AUDIO)
+                                        val hasPermission = ContextCompat.checkSelfPermission(
+                                            context,
+                                            Manifest.permission.RECORD_AUDIO,
+                                        ) == PackageManager.PERMISSION_GRANTED
+
+                                        if (hasPermission) {
+                                            val tempId = java.util.UUID.randomUUID().toString()
+                                            audioUri = viewModel.audioService.startRecording(tempId)
+                                            if (audioUri != null) isRecording = true
+                                        } else {
+                                            permissionLauncher.launch(Manifest.permission.RECORD_AUDIO)
+                                        }
                                     }
                                 }
                             },

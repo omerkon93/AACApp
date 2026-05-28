@@ -23,7 +23,7 @@ class AACViewModel(application: Application) : AndroidViewModel(application) {
         settingsRepository = SettingsRepository(application)
         ttsHelper = TextToSpeechHelper(application)
         
-        tileService = AACTileService(repository)
+        tileService = AACTileService(repository, settingsRepository, viewModelScope)
         audioService = AudioRecordingService(application)
         backupService = BackupService(application, repository)
         

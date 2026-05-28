@@ -1,28 +1,28 @@
 package com.kon.myaacapp
 
-import kotlinx.coroutines.flow.MutableStateFlow
+import kotlinx.coroutines.flow.SharingStarted
 import kotlinx.coroutines.flow.StateFlow
-import kotlinx.coroutines.flow.asStateFlow
+import kotlinx.coroutines.flow.stateIn
+import kotlinx.coroutines.launch
 
 enum class Gender { MALE, FEMALE }
 
-class AACTileService(private val repository: AACRepository) {
+class AACTileService(
+    private val repository: AACRepository,
+    private val settingsRepository: SettingsRepository,
+    scope: kotlinx.coroutines.CoroutineScope
+) {
 
-    private val _userGender = MutableStateFlow(Gender.MALE)
-    val userGender: StateFlow<Gender> = _userGender.asStateFlow()
+    val userGender: StateFlow<Gender> = settingsRepository.userGenderFlow
+        .stateIn(
+            scope = scope,
+            started = SharingStarted.Eagerly,
+            initialValue = Gender.MALE
+        )
 
-    fun setUserGender(gender: Gender) {
-        _userGender.value = gender
-    }
-
-    /**
-     * Resolves the correct display label based on user's gender profile.
-     */
-    fun getDisplayLabel(tile: AACTile): String {
-        return if (_userGender.value == Gender.FEMALE) {
-            tile.labelFeminine ?: tile.label
-        } else {
-            tile.label
+    fun setUserGender(gender: Gender, scope: kotlinx.coroutines.CoroutineScope) {
+        scope.launch {
+            settingsRepository.updateUserGender(gender)
         }
     }
 
@@ -30,7 +30,7 @@ class AACTileService(private val repository: AACRepository) {
      * Resolves the correct TTS text based on user's gender profile.
      */
     fun getTTSText(tile: AACTile): String {
-        return if (_userGender.value == Gender.FEMALE) {
+        return if (userGender.value == Gender.FEMALE) {
             tile.ttsTextFeminine ?: tile.ttsText
         } else {
             tile.ttsText
