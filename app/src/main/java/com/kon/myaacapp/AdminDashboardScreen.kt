@@ -60,7 +60,7 @@ fun AdminDashboardScreen(
     }
 
     val exportLauncher = rememberLauncherForActivityResult(
-        contract = ActivityResultContracts.CreateDocument("application/json"),
+        contract = ActivityResultContracts.CreateDocument("application/zip"),
     ) { uri ->
         uri?.let { viewModel.exportDatabase(it, context.contentResolver) }
     }
@@ -88,10 +88,10 @@ fun AdminDashboardScreen(
                     }
                 },
                 actions = {
-                    IconButton(onClick = { exportLauncher.launch("myaac_backup.json") }) {
+                    IconButton(onClick = { exportLauncher.launch("myaac_backup.zip") }) {
                         Icon(Icons.Default.IosShare, contentDescription = "Export")
                     }
-                    IconButton(onClick = { importLauncher.launch(arrayOf("application/json")) }) {
+                    IconButton(onClick = { importLauncher.launch(arrayOf("application/zip")) }) {
                         Icon(Icons.Default.FileDownload, contentDescription = "Import")
                     }
                 },

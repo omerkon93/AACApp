@@ -340,32 +340,38 @@ fun AdminPinDialog(
     onDismiss: () -> Unit,
     onAuthenticated: () -> Unit
 ) {
-    var pin by remember { mutableStateOf("") }
-    val correctPin = "1234"
+    var password by remember { mutableStateOf("") }
+    val correctPassword = "admin"
 
     AlertDialog(
         onDismissRequest = onDismiss,
         title = { Text("Admin Access") },
         text = {
             Column {
-                Text("Enter 4-digit PIN")
+                Text("Enter Admin Password")
                 Spacer(modifier = Modifier.height(8.dp))
                 OutlinedTextField(
-                    value = pin,
-                    onValueChange = { if (it.length <= 4) pin = it },
-                    label = { Text("PIN") },
+                    value = password,
+                    onValueChange = { password = it },
+                    label = { Text("Password") },
                     modifier = Modifier.fillMaxWidth()
+                )
+                Spacer(modifier = Modifier.height(4.dp))
+                Text(
+                    text = "Default password: admin",
+                    style = MaterialTheme.typography.bodySmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant
                 )
             }
         },
         confirmButton = {
             Button(
                 onClick = {
-                    if (pin == correctPin) {
+                    if (password == correctPassword) {
                         onAuthenticated()
                     }
                 },
-                enabled = pin.length == 4
+                enabled = password.isNotBlank()
             ) {
                 Text("Unlock")
             }
