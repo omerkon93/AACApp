@@ -124,6 +124,16 @@ class AACViewModel(application: Application) : AndroidViewModel(application) {
         }
     }
 
+    fun playPreviewAudio(ttsText: String, audioUri: String?) {
+        viewModelScope.launch {
+            if (audioUri != null) {
+                audioService.playRecording(audioUri)
+            } else if (ttsText.isNotBlank()) {
+                ttsHelper.speak(ttsText)
+            }
+        }
+    }
+
     fun addTile(
         label: String,
         ttsText: String,

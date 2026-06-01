@@ -62,10 +62,9 @@ fun MainCommunicationScreen(
         onClear = { viewModel.clearSentence() },
         onBackspace = { viewModel.backspaceSentence() },
         onTileClick = { tile -> viewModel.selectTile(tile, onNavigateToCategory) },
-        onBackClick = onBackClick
-    ) {
-        onNavigateToAdmin()
-    }
+        onBackClick = onBackClick,
+        onNavigateToAdmin = onNavigateToAdmin
+    )
 }
 
 @Composable
@@ -80,7 +79,7 @@ fun MainCommunicationScreenContent(
     onBackspace: () -> Unit,
     onTileClick: (AACTile) -> Unit,
     onBackClick: () -> Unit,
-    onLongPressSentence: () -> Unit
+    onNavigateToAdmin: () -> Unit
 ) {
     var showPinDialog by remember { mutableStateOf(value = false) }
     val configuration = LocalConfiguration.current
@@ -172,7 +171,7 @@ fun MainCommunicationScreenContent(
                     onDismiss = { showPinDialog = false },
                     onAuthenticated = {
                         showPinDialog = false
-                        onLongPressSentence()
+                        onNavigateToAdmin()
                     }
                 )
             }
@@ -525,7 +524,7 @@ fun MainCommunicationScreenPreview() {
             onBackspace = {},
             onTileClick = {},
             onBackClick = {},
-            onLongPressSentence = {}
+            onNavigateToAdmin = {}
         )
     }
 }

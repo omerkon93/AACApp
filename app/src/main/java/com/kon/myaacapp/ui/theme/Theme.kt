@@ -17,10 +17,24 @@ private val DarkColorScheme = darkColorScheme(
 )
 
 private val LightColorScheme = lightColorScheme(
-    primary = PrimarySlateDark,
-    secondary = MutedSlateGray,
-    background = SandBeigeBackground,
-    surface = SmoothWhite
+    primary = ProfPrimary,
+    onPrimary = ProfOnPrimary,
+    primaryContainer = ProfPrimaryContainer,
+    onPrimaryContainer = ProfOnPrimaryContainer,
+    secondary = ProfSecondary,
+    onSecondary = ProfOnSecondary,
+    secondaryContainer = ProfSecondaryContainer,
+    onSecondaryContainer = ProfOnSecondaryContainer,
+    background = ProfBackground,
+    onBackground = ProfOnBackground,
+    surface = ProfSurface,
+    onSurface = ProfOnSurface,
+    surfaceVariant = ProfSurfaceVariant,
+    onSurfaceVariant = ProfOnSurfaceVariant,
+    outline = ProfOutline,
+    outlineVariant = ProfOutlineVariant,
+    error = ProfError,
+    errorContainer = ProfErrorContainer
 )
 
 @Composable
