@@ -6,7 +6,6 @@ import android.util.Log
 import androidx.core.content.FileProvider
 import java.io.File
 import java.io.FileOutputStream
-import java.io.InputStream
 import java.util.*
 
 class ImageStorageService(private val context: Context) {
@@ -25,8 +24,7 @@ class ImageStorageService(private val context: Context) {
         val outputFile = File(imagesDir, fileName)
 
         return try {
-            val inputStream: InputStream? = context.contentResolver.openInputStream(uri)
-            if (inputStream == null) return null
+            val inputStream = context.contentResolver.openInputStream(uri) ?: return null
 
             FileOutputStream(outputFile).use { outputStream ->
                 inputStream.copyTo(outputStream)
