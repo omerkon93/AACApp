@@ -427,8 +427,33 @@ fun AACTileItem(tile: AACTile, userGender: Gender, orientation: Int, onClick: ()
 
     val aspectRatio = if (orientation == Configuration.ORIENTATION_LANDSCAPE) 1.2f else 1.0f
 
+    TileUI(
+        label = displayLabel,
+        imageUri = tile.imageUri,
+        emoji = tile.emoji,
+        backgroundColor = backgroundColor,
+        aspectRatio = aspectRatio,
+        isCategory = tile.isCategory,
+        onClick = onClick
+    )
+}
+
+@Composable
+fun TileUI(
+    label: String,
+    imageUri: String?,
+    emoji: String?,
+    backgroundColor: Color,
+    aspectRatio: Float,
+    isCategory: Boolean,
+    onClick: () -> Unit,
+    modifier: Modifier = Modifier,
+    labelFontSize: androidx.compose.ui.unit.TextUnit = 18.sp,
+    showSpeakerIcon: Boolean = false,
+    contentColor: Color = contentColorFor(backgroundColor)
+) {
     OutlinedCard(
-        modifier = Modifier
+        modifier = modifier
             .aspectRatio(aspectRatio)
             .clickable { onClick() },
         shape = RoundedCornerShape(16.dp),
@@ -440,7 +465,7 @@ fun AACTileItem(tile: AACTile, userGender: Gender, orientation: Int, onClick: ()
         )
     ) {
         Box(modifier = Modifier.fillMaxSize()) {
-            if (tile.isCategory) {
+            if (isCategory) {
                 Icon(
                     imageVector = Icons.Default.Folder,
                     contentDescription = null,
@@ -448,7 +473,7 @@ fun AACTileItem(tile: AACTile, userGender: Gender, orientation: Int, onClick: ()
                         .align(Alignment.TopEnd)
                         .padding(8.dp)
                         .size(16.dp),
-                    tint = contentColorFor(backgroundColor).copy(alpha = 0.6f)
+                    tint = contentColor.copy(alpha = 0.6f)
                 )
             }
 
@@ -463,16 +488,16 @@ fun AACTileItem(tile: AACTile, userGender: Gender, orientation: Int, onClick: ()
                         .fillMaxWidth(),
                     contentAlignment = Alignment.Center
                 ) {
-                    if (tile.imageUri != null) {
+                    if (imageUri != null) {
                         AsyncImage(
-                            model = tile.imageUri,
-                            contentDescription = tile.label,
+                            model = imageUri,
+                            contentDescription = label,
                             modifier = Modifier.fillMaxSize(),
                             contentScale = ContentScale.Crop
                         )
-                    } else if (tile.emoji != null) {
+                    } else if (emoji != null) {
                         Text(
-                            text = tile.emoji,
+                            text = emoji,
                             fontSize = 64.sp
                         )
                     }
@@ -482,16 +507,32 @@ fun AACTileItem(tile: AACTile, userGender: Gender, orientation: Int, onClick: ()
                     modifier = Modifier.fillMaxWidth(),
                     color = Color.Black.copy(alpha = 0.05f)
                 ) {
-                    Text(
-                        text = displayLabel,
-                        fontSize = 18.sp,
-                        fontWeight = FontWeight.Bold,
-                        color = contentColorFor(backgroundColor),
-                        modifier = Modifier.padding(vertical = 4.dp),
-                        textAlign = androidx.compose.ui.text.style.TextAlign.Center,
-                        maxLines = 1,
-                        overflow = TextOverflow.Ellipsis
-                    )
+                    Box(modifier = Modifier.fillMaxWidth()) {
+                        Text(
+                            text = label,
+                            fontSize = labelFontSize,
+                            fontWeight = FontWeight.Bold,
+                            color = contentColor,
+                            modifier = Modifier
+                                .padding(vertical = 4.dp, horizontal = 8.dp)
+                                .align(Alignment.Center),
+                            textAlign = androidx.compose.ui.text.style.TextAlign.Center,
+                            maxLines = 1,
+                            overflow = TextOverflow.Ellipsis
+                        )
+                        
+                        if (showSpeakerIcon) {
+                            Icon(
+                                imageVector = Icons.AutoMirrored.Filled.VolumeUp,
+                                contentDescription = null,
+                                tint = contentColor.copy(alpha = 0.5f),
+                                modifier = Modifier
+                                    .align(Alignment.CenterEnd)
+                                    .padding(end = 8.dp)
+                                    .size(16.dp)
+                            )
+                        }
+                    }
                 }
             }
         }

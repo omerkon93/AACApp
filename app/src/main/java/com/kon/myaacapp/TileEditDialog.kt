@@ -26,6 +26,8 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.draw.shadow
+import androidx.compose.ui.focus.FocusRequester
+import androidx.compose.ui.focus.focusRequester
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.platform.LocalContext
@@ -44,7 +46,12 @@ import kotlinx.coroutines.launch
 import java.util.UUID
 import androidx.compose.ui.tooling.preview.Preview
 import com.kon.myaacapp.ui.theme.MyAACAppTheme
-import androidx.lifecycle.viewmodel.compose.viewModel
+import android.net.Uri
+import androidx.compose.ui.platform.LocalConfiguration
+import com.canhub.cropper.CropImageContract
+import com.canhub.cropper.CropImageContractOptions
+import com.canhub.cropper.CropImageOptions
+import android.content.res.Configuration
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
@@ -70,15 +77,17 @@ fun TileEditDialog(
     var audioUri by remember { mutableStateOf(existingTile?.audioUri) }
     var cellIndex by remember { mutableStateOf(existingTile?.cellIndex?.toString() ?: "") }
 
+    // Dropdown and Overwrite Logic
+    val maxCapacity = 15 // 0-14
+    val tilesInParent by viewModel.getTilesByParentId(parentId).collectAsState(initial = emptyList())
+    var showOverwriteDialog by remember { mutableStateOf(false) }
+    var pendingCellIndex by remember { mutableStateOf("") }
+    var dropdownExpanded by remember { mutableStateOf(false) }
+
     // Emoji Picker State
     var showEmojiPicker by remember { mutableStateOf(false) }
-    val commonEmojis = listOf(
-        "🖐️", "👍", "👎", "✅", "❌", "➕", "🍕", "🥤", "⚽", "🏃",
-        "😊", "😢", "😠", "😴", "😮", "🤔", "🏠", "🏫", "🌳", "🚗",
-        "🍎", "🍌", "🥛", "🥣", "🧸", "📚", "✏️", "🚽", "👕", "👖",
-        "👨‍👩‍👧‍👦", "👨", "👩", "👦", "👧", "👶", "👴", "👵", "🐶", "🐱",
-        "❤️", "💡", "⏰", "🛁", "🧼", "🚲", "🎨", "🎵", "🎁", "🎈"
-    )
+    var tempEmoji by remember { mutableStateOf("") }
+    val focusRequester = remember { FocusRequester() }
 
     // Recording State
     var isRecording by remember { mutableStateOf(false) }
@@ -99,6 +108,70 @@ fun TileEditDialog(
     val categories by viewModel.allCategories.collectAsState()
     val posOptions = listOf("NONE", "NOUN", "VERB", "ADJECTIVE", "PRONOUN", "SOCIAL")
     val context = LocalContext.current
+    val imageStorageService = remember { ImageStorageService(context) }
+    val configuration = LocalConfiguration.current
+    val orientation = configuration.orientation
+
+    var tempCameraUri by remember { mutableStateOf<Uri?>(null) }
+
+    val cropLauncher = rememberLauncherForActivityResult(
+        contract = CropImageContract(),
+    ) { result ->
+        if (result.isSuccessful) {
+            val croppedUri = result.uriContent
+            if (croppedUri != null) {
+                val savedPath = imageStorageService.saveImage(croppedUri)
+                if (savedPath != null) {
+                    imageUri = savedPath
+                    emoji = ""
+                }
+            }
+        }
+    }
+
+    val cameraLauncher = rememberLauncherForActivityResult(
+        contract = ActivityResultContracts.TakePicture(),
+    ) { success ->
+        if (success) {
+            tempCameraUri?.let { uri ->
+                val cropOptions = CropImageContractOptions(
+                    uri = uri,
+                    cropImageOptions = CropImageOptions(
+                        aspectRatioX = if (orientation == Configuration.ORIENTATION_LANDSCAPE) 12 else 10,
+                        aspectRatioY = 10,
+                        fixAspectRatio = true
+                    )
+                )
+                cropLauncher.launch(cropOptions)
+            }
+        }
+    }
+
+    val galleryLauncher = rememberLauncherForActivityResult(
+        contract = ActivityResultContracts.PickVisualMedia(),
+    ) { uri ->
+        if (uri != null) {
+            val cropOptions = CropImageContractOptions(
+                uri = uri,
+                cropImageOptions = CropImageOptions(
+                    aspectRatioX = if (orientation == Configuration.ORIENTATION_LANDSCAPE) 12 else 10,
+                    aspectRatioY = 10,
+                    fixAspectRatio = true
+                )
+            )
+            cropLauncher.launch(cropOptions)
+        }
+    }
+
+    val cameraPermissionLauncher = rememberLauncherForActivityResult(
+        contract = ActivityResultContracts.RequestPermission(),
+    ) { isGranted ->
+        if (isGranted) {
+            val uri = imageStorageService.getTempUri()
+            tempCameraUri = uri
+            cameraLauncher.launch(uri)
+        }
+    }
 
     val permissionLauncher = rememberLauncherForActivityResult(
         contract = ActivityResultContracts.RequestPermission(),
@@ -107,19 +180,6 @@ fun TileEditDialog(
             val tempId = UUID.randomUUID().toString()
             audioUri = viewModel.audioService.startRecording(tempId)
             if (audioUri != null) isRecording = true
-        }
-    }
-
-    val photoPickerLauncher = rememberLauncherForActivityResult(
-        contract = ActivityResultContracts.PickVisualMedia(),
-    ) { uri ->
-        if (uri != null) {
-            context.contentResolver.takePersistableUriPermission(
-                uri,
-                Intent.FLAG_GRANT_READ_URI_PERMISSION,
-            )
-            imageUri = uri.toString()
-            emoji = "" // Clear emoji if image is selected
         }
     }
 
@@ -155,38 +215,74 @@ fun TileEditDialog(
                         }
                     }
 
+                    if (showOverwriteDialog) {
+                        AlertDialog(
+                            onDismissRequest = { showOverwriteDialog = false },
+                            title = { Text("תא תפוס", textAlign = TextAlign.Right, modifier = Modifier.fillMaxWidth()) },
+                            text = {
+                                val occupiedTile = tilesInParent.find { it.cellIndex?.toString() == pendingCellIndex }
+                                Text(
+                                    "תא זה תפוס כרגע על ידי '${occupiedTile?.label ?: ""}'. האם אתה בטוח שברצונך לבחור בו? שמירה זו תדרוס את האריח הקיים.",
+                                    textAlign = TextAlign.Right,
+                                    modifier = Modifier.fillMaxWidth()
+                                )
+                            },
+                            confirmButton = {
+                                TextButton(onClick = {
+                                    cellIndex = pendingCellIndex
+                                    showOverwriteDialog = false
+                                }) {
+                                    Text("אישור")
+                                }
+                            },
+                            dismissButton = {
+                                TextButton(onClick = { showOverwriteDialog = false }) {
+                                    Text("ביטול")
+                                }
+                            }
+                        )
+                    }
+
                     if (showEmojiPicker) {
                         AlertDialog(
                             onDismissRequest = { showEmojiPicker = false },
-                            title = { Text("בחר אימוג'י", textAlign = TextAlign.Center, modifier = Modifier.fillMaxWidth()) },
+                            title = { Text("הזן אימוג'י", textAlign = TextAlign.Center, modifier = Modifier.fillMaxWidth()) },
                             text = {
-                                Box(modifier = Modifier.fillMaxWidth().height(300.dp)) {
-                                    LazyVerticalGrid(
-                                        columns = GridCells.Fixed(5),
-                                        contentPadding = PaddingValues(8.dp),
-                                        horizontalArrangement = Arrangement.spacedBy(12.dp),
-                                        verticalArrangement = Arrangement.spacedBy(12.dp)
-                                    ) {
-                                        items(commonEmojis) { e ->
-                                            Box(
-                                                modifier = Modifier
-                                                    .aspectRatio(1f)
-                                                    .clip(RoundedCornerShape(12.dp))
-                                                    .background(MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.5f))
-                                                    .clickable {
-                                                        emoji = e
-                                                        imageUri = null
-                                                        showEmojiPicker = false
-                                                    },
-                                                contentAlignment = Alignment.Center
-                                            ) {
-                                                Text(e, fontSize = 28.sp)
+                                Column(horizontalAlignment = Alignment.CenterHorizontally) {
+                                    OutlinedTextField(
+                                        value = tempEmoji,
+                                        onValueChange = {
+                                            if (it.length <= 4) { // Allow for compound emojis
+                                                tempEmoji = it
                                             }
-                                        }
+                                        },
+                                        modifier = Modifier
+                                            .fillMaxWidth()
+                                            .focusRequester(focusRequester),
+                                        placeholder = { Text("הקלד אימוג'י כאן...") },
+                                        textStyle = LocalTextStyle.current.copy(textAlign = TextAlign.Center, fontSize = 24.sp),
+                                        singleLine = true
+                                    )
+                                    LaunchedEffect(Unit) {
+                                        focusRequester.requestFocus()
                                     }
                                 }
                             },
                             confirmButton = {
+                                Button(
+                                    onClick = {
+                                        if (tempEmoji.isNotBlank()) {
+                                            emoji = tempEmoji
+                                            imageUri = null
+                                            showEmojiPicker = false
+                                        }
+                                    },
+                                    enabled = tempEmoji.isNotBlank()
+                                ) {
+                                    Text("אישור")
+                                }
+                            },
+                            dismissButton = {
                                 TextButton(onClick = { showEmojiPicker = false }) {
                                     Text("ביטול")
                                 }
@@ -255,13 +351,45 @@ fun TileEditDialog(
                                         modifier = Modifier.fillMaxWidth(),
                                         horizontalArrangement = Arrangement.spacedBy(16.dp)
                                     ) {
-                                        // Image Picker
+                                        // Camera Picker
                                         Surface(
                                             modifier = Modifier
                                                 .weight(1f)
                                                 .height(100.dp)
                                                 .clickable {
-                                                    photoPickerLauncher.launch(
+                                                    val hasPermission = ContextCompat.checkSelfPermission(
+                                                        context,
+                                                        Manifest.permission.CAMERA,
+                                                    ) == PackageManager.PERMISSION_GRANTED
+
+                                                    if (hasPermission) {
+                                                        val uri = imageStorageService.getTempUri()
+                                                        tempCameraUri = uri
+                                                        cameraLauncher.launch(uri)
+                                                    } else {
+                                                        cameraPermissionLauncher.launch(Manifest.permission.CAMERA)
+                                                    }
+                                                },
+                                            shape = RoundedCornerShape(16.dp),
+                                            border = BorderStroke(2.dp, MaterialTheme.colorScheme.outlineVariant),
+                                            color = Color.Transparent
+                                        ) {
+                                            Column(
+                                                horizontalAlignment = Alignment.CenterHorizontally,
+                                                verticalArrangement = Arrangement.Center
+                                            ) {
+                                                Icon(Icons.Default.PhotoCamera, contentDescription = null)
+                                                Text("צלם תמונה", style = MaterialTheme.typography.labelSmall)
+                                            }
+                                        }
+
+                                        // Gallery Picker
+                                        Surface(
+                                            modifier = Modifier
+                                                .weight(1f)
+                                                .height(100.dp)
+                                                .clickable {
+                                                    galleryLauncher.launch(
                                                         PickVisualMediaRequest(ActivityResultContracts.PickVisualMedia.ImageOnly)
                                                     )
                                                 },
@@ -273,8 +401,8 @@ fun TileEditDialog(
                                                 horizontalAlignment = Alignment.CenterHorizontally,
                                                 verticalArrangement = Arrangement.Center
                                             ) {
-                                                Icon(Icons.Default.AddAPhoto, contentDescription = null)
-                                                Text("העלה תמונה", style = MaterialTheme.typography.labelSmall)
+                                                Icon(Icons.Default.PhotoLibrary, contentDescription = null)
+                                                Text("בחר מגלריה", style = MaterialTheme.typography.labelSmall)
                                             }
                                         }
 
@@ -283,7 +411,10 @@ fun TileEditDialog(
                                             modifier = Modifier
                                                 .weight(1f)
                                                 .height(100.dp)
-                                                .clickable { showEmojiPicker = true },
+                                                .clickable { 
+                                                    tempEmoji = emoji
+                                                    showEmojiPicker = true 
+                                                },
                                             shape = RoundedCornerShape(16.dp),
                                             border = BorderStroke(2.dp, MaterialTheme.colorScheme.primary.copy(alpha = 0.5f)),
                                             color = MaterialTheme.colorScheme.primaryContainer.copy(alpha = 0.1f)
@@ -442,27 +573,51 @@ fun TileEditDialog(
 
                                     Column(verticalArrangement = Arrangement.spacedBy(4.dp)) {
                                         Text("מיקום בגריד (Cell Index)", style = MaterialTheme.typography.labelLarge, fontWeight = FontWeight.SemiBold, color = MaterialTheme.colorScheme.onSurfaceVariant)
-                                        Row(
-                                            modifier = Modifier.fillMaxWidth(),
-                                            verticalAlignment = Alignment.CenterVertically,
-                                            horizontalArrangement = Arrangement.spacedBy(12.dp)
+                                        ExposedDropdownMenuBox(
+                                            expanded = dropdownExpanded,
+                                            onExpandedChange = { dropdownExpanded = it },
+                                            modifier = Modifier.fillMaxWidth()
                                         ) {
-                                            Text(
-                                                "הבא פנוי: 13", 
-                                                style = MaterialTheme.typography.bodyMedium, 
-                                                fontStyle = androidx.compose.ui.text.font.FontStyle.Italic,
-                                                color = MaterialTheme.colorScheme.onSurfaceVariant,
-                                                modifier = Modifier.weight(1f),
-                                                textAlign = TextAlign.End
-                                            )
                                             OutlinedTextField(
-                                                value = cellIndex,
-                                                onValueChange = { cellIndex = it },
-                                                modifier = Modifier.width(100.dp),
+                                                value = if (cellIndex.isEmpty()) "בחר מיקום..." else {
+                                                    val tile = tilesInParent.find { it.cellIndex?.toString() == cellIndex }
+                                                    if (tile != null) "$cellIndex - ${tile.label}" else cellIndex
+                                                },
+                                                onValueChange = {},
+                                                readOnly = true,
+                                                modifier = Modifier.menuAnchor().fillMaxWidth(),
                                                 shape = RoundedCornerShape(12.dp),
-                                                singleLine = true,
-                                                textStyle = LocalTextStyle.current.copy(textAlign = TextAlign.Center)
+                                                trailingIcon = { ExposedDropdownMenuDefaults.TrailingIcon(expanded = dropdownExpanded) },
+                                                colors = ExposedDropdownMenuDefaults.outlinedTextFieldColors()
                                             )
+                                            ExposedDropdownMenu(
+                                                expanded = dropdownExpanded,
+                                                onDismissRequest = { dropdownExpanded = false }
+                                            ) {
+                                                (0 until maxCapacity).forEach { index ->
+                                                    val idxStr = index.toString()
+                                                    val tileAtIdx = tilesInParent.find { it.cellIndex == index }
+                                                    val isOccupied = tileAtIdx != null && tileAtIdx.id != existingTile?.id
+
+                                                    DropdownMenuItem(
+                                                        text = {
+                                                            Text(
+                                                                text = if (tileAtIdx != null) "$index - ${tileAtIdx.label}" else idxStr,
+                                                                color = if (isOccupied) MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.6f) else MaterialTheme.colorScheme.onSurface
+                                                            )
+                                                        },
+                                                        onClick = {
+                                                            if (isOccupied) {
+                                                                pendingCellIndex = idxStr
+                                                                showOverwriteDialog = true
+                                                            } else {
+                                                                cellIndex = idxStr
+                                                            }
+                                                            dropdownExpanded = false
+                                                        }
+                                                    )
+                                                }
+                                            }
                                         }
                                     }
 
@@ -542,7 +697,8 @@ fun TileEditDialog(
                         // Live Preview Card
                         item {
                             val tileColor = resolveFitzgeraldColor(partOfSpeech)
-                            val contentColor = if (partOfSpeech == "NONE") MaterialTheme.colorScheme.onPrimary else Color.Black
+                            val displayLabel = label.ifBlank { "תפוח" }
+                            val aspectRatio = if (orientation == Configuration.ORIENTATION_LANDSCAPE) 1.2f else 1.0f
 
                             Column(
                                 modifier = Modifier
@@ -551,40 +707,21 @@ fun TileEditDialog(
                                 horizontalAlignment = Alignment.CenterHorizontally
                             ) {
                                 Text("תצוגה מקדימה חיה", style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.Bold, modifier = Modifier.padding(bottom = 12.dp))
-                                Surface(
-                                    modifier = Modifier
-                                        .size(200.dp)
-                                        .shadow(12.dp, RoundedCornerShape(32.dp))
-                                        .clickable {
-                                            viewModel.playPreviewAudio(ttsText, audioUri)
-                                        },
-                                    shape = RoundedCornerShape(32.dp),
-                                    color = if (partOfSpeech == "NONE") MaterialTheme.colorScheme.primary else tileColor,
-                                    contentColor = contentColor
-                                ) {
-                                    Box(contentAlignment = Alignment.Center, modifier = Modifier.fillMaxSize()) {
-                                        Column(horizontalAlignment = Alignment.CenterHorizontally) {
-                                            if (imageUri != null) {
-                                                AsyncImage(
-                                                    model = imageUri,
-                                                    contentDescription = null,
-                                                    modifier = Modifier.size(80.dp).clip(RoundedCornerShape(12.dp)),
-                                                    contentScale = ContentScale.Crop
-                                                )
-                                            } else {
-                                                Text(emoji.ifBlank { "🍎" }, fontSize = 72.sp)
-                                            }
-                                            Spacer(Modifier.height(12.dp))
-                                            Text(label.ifBlank { "תפוח" }, style = MaterialTheme.typography.headlineSmall, fontWeight = FontWeight.Bold)
-                                        }
-                                        Icon(
-                                            Icons.AutoMirrored.Filled.VolumeUp,
-                                            contentDescription = null,
-                                            tint = contentColor.copy(alpha = 0.5f),
-                                            modifier = Modifier.align(Alignment.BottomEnd).padding(16.dp)
-                                        )
-                                    }
-                                }
+                                
+                                TileUI(
+                                    label = displayLabel,
+                                    imageUri = imageUri,
+                                    emoji = if (imageUri == null) emoji.ifBlank { "🍎" } else null,
+                                    backgroundColor = if (partOfSpeech == "NONE") MaterialTheme.colorScheme.primary else tileColor,
+                                    aspectRatio = aspectRatio,
+                                    isCategory = isCategory,
+                                    onClick = {
+                                        viewModel.playPreviewAudio(ttsText, audioUri)
+                                    },
+                                    modifier = Modifier.width(200.dp),
+                                    labelFontSize = 24.sp,
+                                    showSpeakerIcon = true
+                                )
                             }
                         }
 
@@ -710,9 +847,7 @@ fun EditSection(
 @Composable
 fun TileEditDialogPreview() {
     MyAACAppTheme {
-        TileEditDialog(
-            viewModel = viewModel(),
-            onDismiss = {}
-        )
+        // Mocking the viewModel call for preview
+        // TileEditDialog(...)
     }
 }

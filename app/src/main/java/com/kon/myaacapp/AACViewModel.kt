@@ -37,6 +37,10 @@ class AACViewModel(application: Application) : AndroidViewModel(application) {
         _currentParentId.value = parentId
     }
 
+    fun getTilesByParentId(parentId: String?): Flow<List<AACTile>> {
+        return repository.getTilesByParentId(parentId)
+    }
+
     val currentTiles: StateFlow<List<AACTile>> = _currentParentId
         .flatMapLatest { parentId ->
             repository.getTilesByParentId(parentId)
