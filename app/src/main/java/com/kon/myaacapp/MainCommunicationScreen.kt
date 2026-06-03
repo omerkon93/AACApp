@@ -135,31 +135,33 @@ fun MainCommunicationScreenContent(
                 modifier = Modifier.pointerInput(Unit) {
                     awaitPointerEventScope {
                         while (true) {
-                            awaitFirstDown()
-                            val startTime = System.currentTimeMillis()
-                            var isLongPress = false
-                            
-                            while (true) {
-                                val nextEvent = withTimeoutOrNull(100) {
-                                    awaitPointerEvent()
+                            val event = awaitPointerEvent()
+                            if (event.changes.fastAny { it.pressed }) {
+                                val startTime = System.currentTimeMillis()
+                                var isLongPress = false
+                                
+                                while (true) {
+                                    val nextEvent = withTimeoutOrNull(100) {
+                                        awaitPointerEvent()
+                                    }
+                                    
+                                    if (nextEvent == null) {
+                                        // Timeout reached, check duration
+                                        if ((System.currentTimeMillis() - startTime) >= 2000) {
+                                            isLongPress = true
+                                            break
+                                        }
+                                    } else {
+                                        // Check if pointer is still down
+                                        if (nextEvent.changes.fastAny { it.pressed.not() }) {
+                                            break
+                                        }
+                                    }
                                 }
                                 
-                                if (nextEvent == null) {
-                                    // Timeout reached, check duration
-                                    if ((System.currentTimeMillis() - startTime) >= 3000) {
-                                        isLongPress = true
-                                        break
-                                    }
-                                } else {
-                                    // Check if pointer is still down
-                                    if (nextEvent.changes.fastAny { it.pressed.not() }) {
-                                        break
-                                    }
+                                if (isLongPress) {
+                                    showPinDialog = true
                                 }
-                            }
-                            
-                            if (isLongPress) {
-                                showPinDialog = true
                             }
                         }
                     }

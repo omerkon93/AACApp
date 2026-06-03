@@ -99,6 +99,7 @@ import kotlin.time.Duration.Companion.milliseconds
 fun TileEditDialog(
     viewModel: AACViewModel,
     existingTile: AACTile? = null,
+    initialCellIndex: Int? = null,
     onDismiss: () -> Unit,
 ) {
     var label by remember { mutableStateOf(existingTile?.label ?: "") }
@@ -116,7 +117,11 @@ fun TileEditDialog(
     var ttsTextFeminine by remember { mutableStateOf(existingTile?.ttsTextFeminine ?: "") }
     var grammaticalGender by remember { mutableStateOf(existingTile?.grammaticalGender ?: "M") }
     var audioUri by remember { mutableStateOf(existingTile?.audioUri) }
-    var cellIndex by remember { mutableStateOf(existingTile?.cellIndex?.toString() ?: "") }
+    var cellIndex by remember { 
+        mutableStateOf(
+            existingTile?.cellIndex?.toString() ?: initialCellIndex?.toString() ?: ""
+        )
+    }
 
     // Dropdown and Overwrite Logic
     val maxCapacity = 15 // 0-14
