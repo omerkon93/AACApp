@@ -28,10 +28,12 @@
             </intent-filter>
         </activity>
 
+        <!-- Silenced the deprecation warning using tools:ignore -->
+        <!--suppress DeprecatedClassUsageInspection -->
         <activity
             android:name="com.canhub.cropper.CropImageActivity"
-            android:theme="@style/Theme.AppCompat.Light.DarkActionBar" />
-
+            android:theme="@style/Theme.AppCompat.Light.DarkActionBar"
+            tools:ignore="Deprecated" />
 
         <provider
             android:name="androidx.core.content.FileProvider"
