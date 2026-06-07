@@ -104,6 +104,7 @@ fun TileEditDialog(
 ) {
     var label by remember { mutableStateOf(existingTile?.label ?: "") }
     var ttsText by remember { mutableStateOf(existingTile?.ttsText ?: "") }
+    var tileId by remember { mutableStateOf(existingTile?.id ?: "") }
     var emoji by remember { mutableStateOf(existingTile?.emoji ?: "") }
     var imageUri by remember { mutableStateOf(existingTile?.imageUri) }
     var isCategory by remember { mutableStateOf(existingTile?.isCategory ?: false) }
@@ -607,6 +608,25 @@ fun TileEditDialog(
                             ) {
                                 Column(verticalArrangement = Arrangement.spacedBy(16.dp)) {
                                     Column(verticalArrangement = Arrangement.spacedBy(4.dp)) {
+                                        Text("מזהה ייחודי (ID) - למתקדמים", style = MaterialTheme.typography.labelLarge, fontWeight = FontWeight.SemiBold, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                                        OutlinedTextField(
+                                            value = tileId,
+                                            onValueChange = { tileId = it.trim() },
+                                            placeholder = { Text("לדוגמה: my_custom_id") },
+                                            modifier = Modifier.fillMaxWidth(),
+                                            shape = RoundedCornerShape(12.dp),
+                                            enabled = existingTile == null,
+                                            supportingText = {
+                                                if (existingTile != null) {
+                                                    Text("לא ניתן לשנות מזהה (ID) של אריח קיים.", color = MaterialTheme.colorScheme.error)
+                                                } else {
+                                                    Text("השאר ריק כדי שהמערכת תיצור ID אקראי באופן אוטומטי.")
+                                                }
+                                            }
+                                        )
+                                    }
+
+                                    Column(verticalArrangement = Arrangement.spacedBy(4.dp)) {
                                         Text(stringResource(R.string.parent_category_label), style = MaterialTheme.typography.labelLarge, fontWeight = FontWeight.SemiBold, color = MaterialTheme.colorScheme.onSurfaceVariant)
                                         var parentExpanded by remember { mutableStateOf(value = false) }
                                         Box {
@@ -812,6 +832,7 @@ fun TileEditDialog(
                                     if (label.isNotBlank() && ttsText.isNotBlank()) {
                                         if (existingTile == null) {
                                             viewModel.addTile(
+                                                id = tileId.ifBlank { null },
                                                 label = label,
                                                 ttsText = ttsText,
                                                 emoji = emoji.ifBlank { null },

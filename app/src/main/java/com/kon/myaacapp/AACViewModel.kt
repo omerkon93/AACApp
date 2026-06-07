@@ -26,8 +26,6 @@ class AACViewModel(application: Application) : AndroidViewModel(application) {
         tileService = AACTileService(repository, settingsRepository, viewModelScope)
         audioService = AudioRecordingService(application)
         backupService = BackupService(application, repository)
-        
-        prepopulateIfEmpty()
     }
 
     private val _currentParentId = MutableStateFlow<String?>(null)
@@ -79,14 +77,6 @@ class AACViewModel(application: Application) : AndroidViewModel(application) {
 
     private val _importExportStatus = MutableStateFlow<String?>(null)
     val importExportStatus: StateFlow<String?> = _importExportStatus.asStateFlow()
-
-    private fun prepopulateIfEmpty() {
-        viewModelScope.launch {
-            if (repository.isEmpty()) {
-                backupService.importFromAssets("initial_data.zip")
-            }
-        }
-    }
 
     fun resetToDefault(context: android.content.Context) {
         viewModelScope.launch {
@@ -161,6 +151,7 @@ class AACViewModel(application: Application) : AndroidViewModel(application) {
     }
 
     fun addTile(
+        id: String? = null, // <--- 1. ADD THIS NEW PARAMETER
         label: String,
         ttsText: String,
         emoji: String?,
@@ -179,7 +170,7 @@ class AACViewModel(application: Application) : AndroidViewModel(application) {
     ) {
         viewModelScope.launch {
             val newTile = AACTile(
-                id = java.util.UUID.randomUUID().toString(),
+                id = if (id.isNullOrBlank()) java.util.UUID.randomUUID().toString() else id,
                 label = label,
                 ttsText = ttsText,
                 emoji = emoji,

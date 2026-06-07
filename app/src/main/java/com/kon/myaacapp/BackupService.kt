@@ -6,6 +6,7 @@ import android.net.Uri
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.withContext
+import kotlinx.serialization.encodeToString
 import kotlinx.serialization.json.Json
 import java.io.File
 import java.io.InputStreamReader
@@ -24,15 +25,28 @@ class BackupService(private val context: Context, private val repository: AACRep
     suspend fun exportDatabase(contentResolver: ContentResolver, uri: Uri): Boolean = withContext(Dispatchers.IO) {
         try {
             val allTiles = repository.getEverythingFlow().first()
-            val jsonString = json.encodeToString(allTiles)
             
+            // Group tiles by parentId
+            // parentId == null -> export_00_core.json
+            // parentId != null -> export_[parentId].json
+            val groupedTiles = allTiles.groupBy { it.parentId }
+
             contentResolver.openOutputStream(uri)?.use { outputStream ->
                 ZipOutputStream(outputStream).use { zos ->
-                    // 1. Write tiles.json
-                    val jsonEntry = ZipEntry("tiles.json")
-                    zos.putNextEntry(jsonEntry)
-                    zos.write(jsonString.toByteArray())
-                    zos.closeEntry()
+                    // 1. Write grouped JSON files
+                    groupedTiles.forEach { (parentId, tiles) ->
+                        val fileName = if (parentId == null) {
+                            "export_00_core.json"
+                        } else {
+                            "export_${parentId.replace("[^a-zA-Z0-9]".toRegex(), "_")}.json"
+                        }
+                        
+                        val jsonString = json.encodeToString(tiles)
+                        val jsonEntry = ZipEntry(fileName)
+                        zos.putNextEntry(jsonEntry)
+                        zos.write(jsonString.toByteArray())
+                        zos.closeEntry()
+                    }
 
                     // 2. Write media files
                     allTiles.forEach { tile ->
@@ -85,8 +99,38 @@ class BackupService(private val context: Context, private val repository: AACRep
 
     suspend fun importFromAssets(fileName: String): Boolean = withContext(Dispatchers.IO) {
         try {
-            context.assets.open(fileName).use { inputStream ->
-                importDatabaseFromStream(inputStream)
+            if (fileName.endsWith(".zip")) {
+                context.assets.open(fileName).use { inputStream ->
+                    importDatabaseFromStream(inputStream)
+                }
+            } else {
+                importTilesFromJsonAssets("seed")
+            }
+        } catch (e: Exception) {
+            e.printStackTrace()
+            false
+        }
+    }
+
+    suspend fun importTilesFromJsonAssets(directory: String): Boolean = withContext(Dispatchers.IO) {
+        try {
+            val assetManager = context.assets
+            val files = assetManager.list(directory) ?: return@withContext false
+            val allTiles = mutableListOf<AACTile>()
+
+            files.filter { it.endsWith(".json") }.forEach { fileName ->
+                val inputStream = assetManager.open("$directory/$fileName")
+                val jsonString = inputStream.bufferedReader().use { it.readText() }
+                val tiles = json.decodeFromString<List<AACTile>>(jsonString)
+                allTiles.addAll(tiles)
+            }
+
+            if (allTiles.isNotEmpty()) {
+                repository.deleteAllTiles()
+                repository.insertTiles(allTiles)
+                true
+            } else {
+                false
             }
         } catch (e: Exception) {
             e.printStackTrace()
@@ -95,18 +139,23 @@ class BackupService(private val context: Context, private val repository: AACRep
     }
 
     private suspend fun importDatabaseFromStream(inputStream: java.io.InputStream): Boolean {
-        var tilesJson: String? = null
+        val allImportedTiles = mutableListOf<AACTile>()
         
         ZipInputStream(inputStream).use { zis ->
             var entry = zis.nextEntry
             while (entry != null) {
-                // Handle both / and \ as separators
                 val normalizedName = entry.name.replace('\\', '/')
                 val fileName = File(normalizedName).name
                 
                 when {
-                    normalizedName == "tiles.json" -> {
-                        tilesJson = zis.bufferedReader().readText()
+                    normalizedName.endsWith(".json") -> {
+                        val jsonStr = zis.bufferedReader().readText()
+                        try {
+                            val tiles = json.decodeFromString<List<AACTile>>(jsonStr)
+                            allImportedTiles.addAll(tiles)
+                        } catch (e: Exception) {
+                            e.printStackTrace()
+                        }
                     }
                     normalizedName.startsWith("audio/") -> {
                         extractFile(zis, File(context.filesDir, "audio_tiles/$fileName"))
@@ -120,16 +169,9 @@ class BackupService(private val context: Context, private val repository: AACRep
             }
         }
 
-        tilesJson?.let { jsonStr ->
-            val importedTiles = try {
-                json.decodeFromString<List<AACTile>>(jsonStr)
-            } catch (e: Exception) {
-                e.printStackTrace()
-                return false
-            }
-            
+        if (allImportedTiles.isNotEmpty()) {
             // Remap URIs to current device paths
-            val remappedTiles = importedTiles.map { tile ->
+            val remappedTiles = allImportedTiles.map { tile ->
                 var updatedTile = tile
                 tile.audioUri?.let { oldPath ->
                     val fileName = File(oldPath).name

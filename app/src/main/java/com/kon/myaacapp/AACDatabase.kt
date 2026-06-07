@@ -6,6 +6,9 @@ import androidx.room.Room
 import androidx.room.RoomDatabase
 import androidx.room.migration.Migration
 import androidx.sqlite.db.SupportSQLiteDatabase
+import kotlinx.coroutines.CoroutineScope
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.launch
 
 @Database(entities = [AACTile::class], version = 4, exportSchema = false)
 abstract class AACDatabase : RoomDatabase() {
@@ -29,6 +32,18 @@ abstract class AACDatabase : RoomDatabase() {
                     "aac_database"
                 )
                 .addMigrations(MIGRATION_3_4)
+                .addCallback(object : RoomDatabase.Callback() {
+                    override fun onCreate(db: SupportSQLiteDatabase) {
+                        super.onCreate(db)
+                        // Prepopulate the database when it is first created
+                        CoroutineScope(Dispatchers.IO).launch {
+                            val database = getDatabase(context)
+                            val repository = AACRepository(database.aacTileDao())
+                            val backupService = BackupService(context.applicationContext, repository)
+                            backupService.importFromAssets("initial_data.zip")
+                        }
+                    }
+                })
                 .fallbackToDestructiveMigration()
                 .build()
                 INSTANCE = instance
