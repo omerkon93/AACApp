@@ -18,6 +18,9 @@ import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.platform.LocalLayoutDirection
+import androidx.compose.ui.platform.LocalContext
+import androidx.activity.compose.rememberLauncherForActivityResult
+import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.LayoutDirection
@@ -26,7 +29,7 @@ import androidx.compose.ui.unit.sp
 import coil.compose.AsyncImage
 
 enum class AdminTab {
-    HOME, SETTINGS
+    HOME, SETTINGS, SYSTEM
 }
 
 @OptIn(ExperimentalMaterial3Api::class)
@@ -48,7 +51,11 @@ fun AdminDashboardScreen(
                 TopAppBar(
                     title = { 
                         Text(
-                            if (selectedTab == AdminTab.HOME) "עורך לוח" else "הגדרות אריחים",
+                            when (selectedTab) {
+                                AdminTab.HOME -> "עורך לוח"
+                                AdminTab.SETTINGS -> "הגדרות אריחים"
+                                AdminTab.SYSTEM -> "הגדרות מערכת"
+                            },
                             fontWeight = FontWeight.Bold
                         ) 
                     },
@@ -95,6 +102,9 @@ fun AdminDashboardScreen(
                                 tileToDelete = tile
                             }
                         )
+                    }
+                    AdminTab.SYSTEM -> {
+                        AdminSystemSettings(viewModel = viewModel)
                     }
                 }
             }
@@ -285,7 +295,100 @@ fun AdminBottomNavigation(
             selected = selectedTab == AdminTab.SETTINGS,
             onClick = { onTabSelected(AdminTab.SETTINGS) },
             icon = { Icon(Icons.Default.Settings, contentDescription = null) },
-            label = { Text("הגדרות") }
+            label = { Text("אריחים") }
         )
+        NavigationBarItem(
+            selected = selectedTab == AdminTab.SYSTEM,
+            onClick = { onTabSelected(AdminTab.SYSTEM) },
+            icon = { Icon(Icons.Default.Build, contentDescription = null) },
+            label = { Text("מערכת") }
+        )
+    }
+}
+
+@Composable
+fun AdminSystemSettings(viewModel: AACViewModel) {
+    val speakOnTilePress by viewModel.speakOnTilePress.collectAsState()
+    val importExportStatus by viewModel.importExportStatus.collectAsState()
+    val context = LocalContext.current
+    val contentResolver = context.contentResolver
+
+    val exportLauncher = rememberLauncherForActivityResult(
+        contract = ActivityResultContracts.CreateDocument("application/zip"),
+    ) { uri ->
+        uri?.let { viewModel.exportDatabase(it, contentResolver) }
+    }
+
+    val importLauncher = rememberLauncherForActivityResult(
+        contract = ActivityResultContracts.OpenDocument(),
+    ) { uri ->
+        uri?.let { viewModel.importDatabase(it, contentResolver) }
+    }
+
+    LaunchedEffect(importExportStatus) {
+        importExportStatus?.let {
+            android.widget.Toast.makeText(context, it, android.widget.Toast.LENGTH_LONG).show()
+            viewModel.clearImportExportStatus()
+        }
+    }
+
+    Column(
+        modifier = Modifier
+            .fillMaxSize()
+            .padding(16.dp),
+        verticalArrangement = Arrangement.spacedBy(16.dp)
+    ) {
+        Card(
+            modifier = Modifier.fillMaxWidth(),
+            shape = RoundedCornerShape(16.dp)
+        ) {
+            Column(modifier = Modifier.padding(16.dp)) {
+                Text("הגדרות כלליות", style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.Bold)
+                Spacer(modifier = Modifier.height(8.dp))
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    verticalAlignment = Alignment.CenterVertically,
+                    horizontalArrangement = Arrangement.SpaceBetween
+                ) {
+                    Text("הקרא בלחיצה על אריח")
+                    Switch(
+                        checked = speakOnTilePress,
+                        onCheckedChange = { viewModel.updateSpeakOnTilePress(it) }
+                    )
+                }
+            }
+        }
+
+        Card(
+            modifier = Modifier.fillMaxWidth(),
+            shape = RoundedCornerShape(16.dp)
+        ) {
+            Column(modifier = Modifier.padding(16.dp)) {
+                Text("גיבוי ושחזור", style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.Bold)
+                Spacer(modifier = Modifier.height(16.dp))
+                
+                Button(
+                    onClick = { exportLauncher.launch("myaac_backup_${System.currentTimeMillis()}.zip") },
+                    modifier = Modifier.fillMaxWidth(),
+                    shape = RoundedCornerShape(12.dp)
+                ) {
+                    Icon(Icons.Default.Upload, contentDescription = null)
+                    Spacer(Modifier.width(8.dp))
+                    Text("ייצוא מסד נתונים (Backup)")
+                }
+                
+                Spacer(modifier = Modifier.height(8.dp))
+                
+                OutlinedButton(
+                    onClick = { importLauncher.launch(arrayOf("application/zip", "application/octet-stream")) },
+                    modifier = Modifier.fillMaxWidth(),
+                    shape = RoundedCornerShape(12.dp)
+                ) {
+                    Icon(Icons.Default.Download, contentDescription = null)
+                    Spacer(Modifier.width(8.dp))
+                    Text("ייבוא מסד נתונים (Restore)")
+                }
+            }
+        }
     }
 }

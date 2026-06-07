@@ -3,37 +3,75 @@ package com.kon.myaacapp
 import android.content.res.Configuration
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
-import androidx.compose.foundation.layout.*
+import androidx.compose.foundation.layout.Arrangement
+import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.PaddingValues
+import androidx.compose.foundation.layout.Row
+import androidx.compose.foundation.layout.Spacer
+import androidx.compose.foundation.layout.aspectRatio
+import androidx.compose.foundation.layout.fillMaxHeight
+import androidx.compose.foundation.layout.fillMaxSize
+import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.heightIn
+import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.size
+import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.lazy.grid.GridCells
 import androidx.compose.foundation.lazy.grid.LazyVerticalGrid
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.automirrored.filled.*
-import androidx.compose.material.icons.filled.*
-import androidx.compose.material3.*
-import androidx.compose.runtime.*
-import androidx.lifecycle.viewModelScope
+import androidx.compose.material.icons.automirrored.filled.ArrowBack
+import androidx.compose.material.icons.automirrored.filled.Backspace
+import androidx.compose.material.icons.automirrored.filled.VolumeUp
+import androidx.compose.material.icons.filled.Clear
+import androidx.compose.material.icons.filled.Female
+import androidx.compose.material.icons.filled.Folder
+import androidx.compose.material.icons.filled.Male
+import androidx.compose.material3.AlertDialog
+import androidx.compose.material3.Button
+import androidx.compose.material3.ButtonDefaults
+import androidx.compose.material3.CardDefaults
+import androidx.compose.material3.Icon
+import androidx.compose.material3.IconButton
+import androidx.compose.material3.MaterialTheme
+import androidx.compose.material3.OutlinedCard
+import androidx.compose.material3.OutlinedTextField
+import androidx.compose.material3.Surface
+import androidx.compose.material3.Text
+import androidx.compose.material3.TextButton
+import androidx.compose.material3.contentColorFor
+import androidx.compose.runtime.Composable
+import androidx.compose.runtime.CompositionLocalProvider
+import androidx.compose.runtime.collectAsState
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.remember
+import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.input.pointer.pointerInput
+import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
-import androidx.core.graphics.toColorInt
-import androidx.compose.foundation.gestures.awaitFirstDown
-import androidx.compose.ui.util.fastAny
-import androidx.compose.ui.text.font.FontWeight
-import androidx.compose.ui.unit.dp
-import androidx.compose.ui.unit.sp
+import androidx.compose.ui.input.pointer.pointerInput
+import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.platform.LocalConfiguration
 import androidx.compose.ui.platform.LocalDensity
-import androidx.compose.ui.platform.LocalWindowInfo
 import androidx.compose.ui.platform.LocalLayoutDirection
-import androidx.compose.ui.unit.LayoutDirection
+import androidx.compose.ui.platform.LocalWindowInfo
+import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
-import androidx.compose.ui.layout.ContentScale
-import androidx.compose.ui.draw.clip
-import coil.compose.AsyncImage
-import com.kon.myaacapp.ui.theme.*
 import androidx.compose.ui.tooling.preview.Preview
+import androidx.compose.ui.unit.LayoutDirection
+import androidx.compose.ui.unit.dp
+import androidx.compose.ui.unit.sp
+import androidx.compose.ui.util.fastAny
+import androidx.core.graphics.toColorInt
+import androidx.lifecycle.viewModelScope
+import coil.compose.AsyncImage
+import com.kon.myaacapp.ui.theme.MyAACAppTheme
+import com.kon.myaacapp.ui.theme.PrimaryBlue
+import com.kon.myaacapp.ui.theme.resolveFitzgeraldColor
 
 @Composable
 fun MainCommunicationScreen(
@@ -46,6 +84,8 @@ fun MainCommunicationScreen(
     val sentence by viewModel.selectedSentence.collectAsState()
     val currentParentId by viewModel.currentParentId.collectAsState()
     val userGender by viewModel.tileService.userGender.collectAsState()
+
+    val speakOnTilePress by viewModel.speakOnTilePress.collectAsState()
 
     MainCommunicationScreenContent(
         tiles = tiles,
@@ -61,7 +101,12 @@ fun MainCommunicationScreen(
         onSpeak = { viewModel.speakSentence() },
         onClear = { viewModel.clearSentence() },
         onBackspace = { viewModel.backspaceSentence() },
-        onTileClick = { tile -> viewModel.selectTile(tile, onNavigateToCategory) },
+        onTileClick = { tile -> 
+            viewModel.selectTile(tile, onNavigateToCategory)
+            if (speakOnTilePress) {
+                viewModel.playPreviewAudio(tile.ttsText, tile.audioUri)
+            }
+        },
         onBackClick = onBackClick,
         onNavigateToAdmin = onNavigateToAdmin
     )
