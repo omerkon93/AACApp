@@ -37,29 +37,41 @@ class AACViewModel(application: Application) : AndroidViewModel(application) {
         _currentParentId.value = parentId
     }
 
+    val speakOnTilePress: StateFlow<Boolean> = settingsRepository.speakOnTilePressFlow
+        .stateIn(viewModelScope, SharingStarted.Lazily, true)
+
+    val languageCode: StateFlow<String> = settingsRepository.languageCodeFlow
+        .onEach { lang -> ttsHelper.setLanguage(lang) }
+        .stateIn(viewModelScope, SharingStarted.Lazily, "he")
+
     fun getTilesByParentId(parentId: String?): Flow<List<AACTile>> {
-        return repository.getTilesByParentId(parentId)
+        return repository.getTilesByParentId(parentId, languageCode.value)
     }
 
-    val currentTiles: StateFlow<List<AACTile>> = _currentParentId
-        .flatMapLatest { parentId ->
-            repository.getTilesByParentId(parentId)
+    val currentTiles: StateFlow<List<AACTile>> = combine(_currentParentId, languageCode) { parentId, lang ->
+            parentId to lang
+        }
+        .flatMapLatest { (parentId, lang) ->
+            repository.getTilesByParentId(parentId, lang)
         }
         .stateIn(viewModelScope, SharingStarted.Lazily, emptyList())
 
-    val allTiles: StateFlow<List<AACTile>> = repository.getAllTiles()
+    val allTiles: StateFlow<List<AACTile>> = languageCode
+        .flatMapLatest { lang -> repository.getAllTiles(lang) }
         .stateIn(viewModelScope, SharingStarted.Lazily, emptyList())
 
-    val allCategories: StateFlow<List<AACTile>> = repository.getAllCategories()
+    val allCategories: StateFlow<List<AACTile>> = languageCode
+        .flatMapLatest { lang -> repository.getAllCategories(lang) }
         .stateIn(viewModelScope, SharingStarted.Lazily, emptyList())
-
-    val speakOnTilePress: StateFlow<Boolean> = settingsRepository.speakOnTilePressFlow
-        .stateIn(viewModelScope, SharingStarted.Lazily, true)
 
     fun updateSpeakOnTilePress(speak: Boolean) {
         viewModelScope.launch {
             settingsRepository.updateSpeakOnTilePress(speak)
         }
+    }
+
+    suspend fun updateLanguageCode(lang: String) {
+        settingsRepository.updateLanguageCode(lang)
     }
 
     private val _selectedSentence = MutableStateFlow<List<AACTile>>(emptyList())
@@ -71,9 +83,19 @@ class AACViewModel(application: Application) : AndroidViewModel(application) {
     private fun prepopulateIfEmpty() {
         viewModelScope.launch {
             if (repository.isEmpty()) {
-                backupService.loadTilesFromAssets("default_tiles.json")?.let { defaultTiles ->
-                    repository.insertTiles(defaultTiles)
-                }
+                backupService.importFromAssets("initial_data.zip")
+            }
+        }
+    }
+
+    fun resetToDefault(context: android.content.Context) {
+        viewModelScope.launch {
+            _importExportStatus.value = context.getString(R.string.resetting)
+            val success = backupService.importFromAssets("initial_data.zip")
+            _importExportStatus.value = if (success) {
+                context.getString(R.string.reset_success)
+            } else {
+                context.getString(R.string.reset_failed)
             }
         }
     }
@@ -173,6 +195,7 @@ class AACViewModel(application: Application) : AndroidViewModel(application) {
                 grammaticalGender = grammaticalGender,
                 audioUri = audioUri,
                 cellIndex = cellIndex,
+                languageCode = languageCode.value
             )
             repository.insertTile(newTile)
         }
@@ -202,14 +225,22 @@ class AACViewModel(application: Application) : AndroidViewModel(application) {
     fun exportDatabase(uri: android.net.Uri, contentResolver: android.content.ContentResolver) {
         viewModelScope.launch {
             val success = backupService.exportDatabase(contentResolver, uri)
-            _importExportStatus.value = if (success) "Database exported successfully" else "Export failed"
+            _importExportStatus.value = if (success) {
+                getApplication<Application>().getString(R.string.export_success)
+            } else {
+                getApplication<Application>().getString(R.string.export_failed)
+            }
         }
     }
 
     fun importDatabase(uri: android.net.Uri, contentResolver: android.content.ContentResolver) {
         viewModelScope.launch {
             val success = backupService.importDatabase(contentResolver, uri)
-            _importExportStatus.value = if (success) "Database imported successfully" else "Import failed"
+            _importExportStatus.value = if (success) {
+                getApplication<Application>().getString(R.string.import_success)
+            } else {
+                getApplication<Application>().getString(R.string.import_failed)
+            }
         }
     }
 

@@ -43,6 +43,7 @@ import androidx.compose.ui.graphics.PathEffect
 import androidx.compose.ui.graphics.drawscope.Stroke
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.platform.LocalConfiguration
+import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
@@ -78,7 +79,7 @@ fun AdminEditableGridScreen(
             verticalAlignment = Alignment.CenterVertically
         ) {
             Text(
-                text = if (currentParentId == null) "עריכת מסך ראשי" else "עריכת קטגוריה",
+                text = if (currentParentId == null) stringResource(R.string.edit_main_screen) else stringResource(R.string.edit_category),
                 style = MaterialTheme.typography.titleLarge
             )
 
@@ -87,7 +88,7 @@ fun AdminEditableGridScreen(
                     TextButton(onClick = { viewModel.setCategory(null) }) {
                         Icon(Icons.Default.Home, contentDescription = null)
                         Spacer(Modifier.width(4.dp))
-                        Text("בית")
+                        Text(stringResource(R.string.home))
                     }
                     
                     TextButton(onClick = {
@@ -97,7 +98,7 @@ fun AdminEditableGridScreen(
                     }) {
                         Icon(Icons.Default.ArrowUpward, contentDescription = null)
                         Spacer(Modifier.width(4.dp))
-                        Text("למעלה")
+                        Text(stringResource(R.string.up))
                     }
                 }
             }
@@ -283,7 +284,7 @@ fun EmptySlot(
         
         Icon(
             imageVector = Icons.Default.Add,
-            contentDescription = "הוסף",
+            contentDescription = stringResource(R.string.add),
             modifier = Modifier.align(Alignment.Center).size(32.dp),
             tint = color
         )

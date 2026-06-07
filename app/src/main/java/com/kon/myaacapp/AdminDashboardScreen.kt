@@ -21,12 +21,14 @@ import androidx.compose.ui.platform.LocalLayoutDirection
 import androidx.compose.ui.platform.LocalContext
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
+import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.LayoutDirection
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import coil.compose.AsyncImage
+import kotlinx.coroutines.launch
 
 enum class AdminTab {
     HOME, SETTINGS, SYSTEM
@@ -44,24 +46,27 @@ fun AdminDashboardScreen(
     var tileToDelete by remember { mutableStateOf<AACTile?>(null) }
     var initialCellIndex by remember { mutableStateOf<Int?>(null) }
     var showTilePicker by remember { mutableStateOf(false) }
+    
+    val langCode by viewModel.languageCode.collectAsState()
+    val layoutDir = if (langCode == "he") LayoutDirection.Rtl else LayoutDirection.Ltr
 
-    CompositionLocalProvider(LocalLayoutDirection provides LayoutDirection.Rtl) {
+    CompositionLocalProvider(LocalLayoutDirection provides layoutDir) {
         Scaffold(
             topBar = {
                 TopAppBar(
                     title = { 
                         Text(
                             when (selectedTab) {
-                                AdminTab.HOME -> "עורך לוח"
-                                AdminTab.SETTINGS -> "הגדרות אריחים"
-                                AdminTab.SYSTEM -> "הגדרות מערכת"
+                                AdminTab.HOME -> stringResource(R.string.admin_tab_home)
+                                AdminTab.SETTINGS -> stringResource(R.string.admin_tab_settings)
+                                AdminTab.SYSTEM -> stringResource(R.string.admin_tab_system)
                             },
                             fontWeight = FontWeight.Bold
                         ) 
                     },
                     navigationIcon = {
                         IconButton(onClick = onNavigateBack) {
-                            Icon(Icons.AutoMirrored.Filled.ArrowBack, contentDescription = "חזרה")
+                            Icon(Icons.AutoMirrored.Filled.ArrowBack, contentDescription = stringResource(R.string.back))
                         }
                     }
                 )
@@ -136,8 +141,8 @@ fun AdminDashboardScreen(
     if (tileToDelete != null) {
         AlertDialog(
             onDismissRequest = { tileToDelete = null },
-            title = { Text("מחיקת אריח?") },
-            text = { Text("האם אתה בטוח שברצונך למחוק את '${tileToDelete?.label}'?") },
+            title = { Text(stringResource(R.string.delete_tile_title)) },
+            text = { Text(stringResource(R.string.delete_tile_confirm_msg, tileToDelete?.label ?: "")) },
             confirmButton = {
                 Button(
                     onClick = {
@@ -146,12 +151,12 @@ fun AdminDashboardScreen(
                     },
                     colors = ButtonDefaults.buttonColors(containerColor = MaterialTheme.colorScheme.error)
                 ) {
-                    Text("מחק")
+                    Text(stringResource(R.string.delete))
                 }
             },
             dismissButton = {
                 TextButton(onClick = { tileToDelete = null }) {
-                    Text("ביטול")
+                    Text(stringResource(R.string.cancel))
                 }
             }
         )
@@ -194,14 +199,14 @@ fun TilePickerDialog(
 
     AlertDialog(
         onDismissRequest = onDismiss,
-        title = { Text("בחר אריח או צור חדש", fontWeight = FontWeight.Bold) },
+        title = { Text(stringResource(R.string.pick_or_create_tile), fontWeight = FontWeight.Bold) },
         text = {
             Column(modifier = Modifier.fillMaxWidth().heightIn(max = 500.dp)) {
                 OutlinedTextField(
                     value = searchQuery,
                     onValueChange = { searchQuery = it },
                     modifier = Modifier.fillMaxWidth().padding(bottom = 16.dp),
-                    placeholder = { Text("חיפוש אריח קיים...") },
+                    placeholder = { Text(stringResource(R.string.search_existing_tile)) },
                     leadingIcon = { Icon(Icons.Default.Search, contentDescription = null) },
                     shape = RoundedCornerShape(12.dp),
                     singleLine = true
@@ -223,7 +228,7 @@ fun TilePickerDialog(
                             Box(modifier = Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
                                 Column(horizontalAlignment = Alignment.CenterHorizontally) {
                                     Icon(Icons.Default.Add, contentDescription = null)
-                                    Text("חדש", style = MaterialTheme.typography.labelSmall)
+                                    Text(stringResource(R.string.new_tile), style = MaterialTheme.typography.labelSmall)
                                 }
                             }
                         }
@@ -274,7 +279,7 @@ fun TilePickerDialog(
         },
         confirmButton = {},
         dismissButton = {
-            TextButton(onClick = onDismiss) { Text("ביטול") }
+            TextButton(onClick = onDismiss) { Text(stringResource(R.string.cancel)) }
         }
     )
 }
@@ -289,19 +294,19 @@ fun AdminBottomNavigation(
             selected = selectedTab == AdminTab.HOME,
             onClick = { onTabSelected(AdminTab.HOME) },
             icon = { Icon(Icons.Default.Home, contentDescription = null) },
-            label = { Text("בית") }
+            label = { Text(stringResource(R.string.bottom_nav_home)) }
         )
         NavigationBarItem(
             selected = selectedTab == AdminTab.SETTINGS,
             onClick = { onTabSelected(AdminTab.SETTINGS) },
             icon = { Icon(Icons.Default.Settings, contentDescription = null) },
-            label = { Text("אריחים") }
+            label = { Text(stringResource(R.string.bottom_nav_tiles)) }
         )
         NavigationBarItem(
             selected = selectedTab == AdminTab.SYSTEM,
             onClick = { onTabSelected(AdminTab.SYSTEM) },
             icon = { Icon(Icons.Default.Build, contentDescription = null) },
-            label = { Text("מערכת") }
+            label = { Text(stringResource(R.string.bottom_nav_system)) }
         )
     }
 }
@@ -309,9 +314,12 @@ fun AdminBottomNavigation(
 @Composable
 fun AdminSystemSettings(viewModel: AACViewModel) {
     val speakOnTilePress by viewModel.speakOnTilePress.collectAsState()
+    val langCode by viewModel.languageCode.collectAsState()
     val importExportStatus by viewModel.importExportStatus.collectAsState()
     val context = LocalContext.current
     val contentResolver = context.contentResolver
+    val scope = rememberCoroutineScope()
+    var showResetConfirm by remember { mutableStateOf(false) }
 
     val exportLauncher = rememberLauncherForActivityResult(
         contract = ActivityResultContracts.CreateDocument("application/zip"),
@@ -332,6 +340,30 @@ fun AdminSystemSettings(viewModel: AACViewModel) {
         }
     }
 
+    if (showResetConfirm) {
+        AlertDialog(
+            onDismissRequest = { showResetConfirm = false },
+            title = { Text(stringResource(R.string.reset_confirm_title)) },
+            text = { Text(stringResource(R.string.reset_confirm_msg)) },
+            confirmButton = {
+                Button(
+                    onClick = {
+                        showResetConfirm = false
+                        viewModel.resetToDefault(context)
+                    },
+                    colors = ButtonDefaults.buttonColors(containerColor = MaterialTheme.colorScheme.error)
+                ) {
+                    Text(stringResource(R.string.ok))
+                }
+            },
+            dismissButton = {
+                TextButton(onClick = { showResetConfirm = false }) {
+                    Text(stringResource(R.string.cancel))
+                }
+            }
+        )
+    }
+
     Column(
         modifier = Modifier
             .fillMaxSize()
@@ -343,17 +375,48 @@ fun AdminSystemSettings(viewModel: AACViewModel) {
             shape = RoundedCornerShape(16.dp)
         ) {
             Column(modifier = Modifier.padding(16.dp)) {
-                Text("הגדרות כלליות", style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.Bold)
+                Text(stringResource(R.string.general_settings), style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.Bold)
                 Spacer(modifier = Modifier.height(8.dp))
                 Row(
                     modifier = Modifier.fillMaxWidth(),
                     verticalAlignment = Alignment.CenterVertically,
                     horizontalArrangement = Arrangement.SpaceBetween
                 ) {
-                    Text("הקרא בלחיצה על אריח")
+                    Text(stringResource(R.string.speak_on_press))
                     Switch(
                         checked = speakOnTilePress,
                         onCheckedChange = { viewModel.updateSpeakOnTilePress(it) }
+                    )
+                }
+                
+                Spacer(modifier = Modifier.height(16.dp))
+                
+                // Language Selector
+                Text(stringResource(R.string.language), style = MaterialTheme.typography.bodyMedium)
+                Spacer(modifier = Modifier.height(8.dp))
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    horizontalArrangement = Arrangement.spacedBy(8.dp)
+                ) {
+                    FilterChip(
+                        selected = langCode == "he",
+                        onClick = { 
+                            scope.launch {
+                                viewModel.updateLanguageCode("he")
+                                (context as? android.app.Activity)?.recreate()
+                            }
+                        },
+                        label = { Text(stringResource(R.string.hebrew)) }
+                    )
+                    FilterChip(
+                        selected = langCode == "en",
+                        onClick = { 
+                            scope.launch {
+                                viewModel.updateLanguageCode("en")
+                                (context as? android.app.Activity)?.recreate()
+                            }
+                        },
+                        label = { Text(stringResource(R.string.english)) }
                     )
                 }
             }
@@ -364,7 +427,7 @@ fun AdminSystemSettings(viewModel: AACViewModel) {
             shape = RoundedCornerShape(16.dp)
         ) {
             Column(modifier = Modifier.padding(16.dp)) {
-                Text("גיבוי ושחזור", style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.Bold)
+                Text(stringResource(R.string.backup_and_restore), style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.Bold)
                 Spacer(modifier = Modifier.height(16.dp))
                 
                 Button(
@@ -374,7 +437,7 @@ fun AdminSystemSettings(viewModel: AACViewModel) {
                 ) {
                     Icon(Icons.Default.Upload, contentDescription = null)
                     Spacer(Modifier.width(8.dp))
-                    Text("ייצוא מסד נתונים (Backup)")
+                    Text(stringResource(R.string.export_db))
                 }
                 
                 Spacer(modifier = Modifier.height(8.dp))
@@ -386,7 +449,21 @@ fun AdminSystemSettings(viewModel: AACViewModel) {
                 ) {
                     Icon(Icons.Default.Download, contentDescription = null)
                     Spacer(Modifier.width(8.dp))
-                    Text("ייבוא מסד נתונים (Restore)")
+                    Text(stringResource(R.string.import_db))
+                }
+
+                Spacer(modifier = Modifier.height(16.dp))
+                HorizontalDivider(modifier = Modifier.padding(vertical = 8.dp), thickness = 0.5.dp, color = MaterialTheme.colorScheme.outlineVariant)
+                Spacer(modifier = Modifier.height(16.dp))
+
+                TextButton(
+                    onClick = { showResetConfirm = true },
+                    modifier = Modifier.fillMaxWidth(),
+                    colors = ButtonDefaults.textButtonColors(contentColor = MaterialTheme.colorScheme.error)
+                ) {
+                    Icon(Icons.Default.Refresh, contentDescription = null)
+                    Spacer(Modifier.width(8.dp))
+                    Text(stringResource(R.string.reset_to_default))
                 }
             }
         }

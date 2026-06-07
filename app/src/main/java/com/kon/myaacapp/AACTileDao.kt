@@ -20,20 +20,26 @@ interface AACTileDao {
     @Query("SELECT * FROM aac_tiles WHERE id = :id")
     suspend fun getTileById(id: String): AACTile?
 
-    @Query("SELECT * FROM aac_tiles WHERE parentId = :parentId ORDER BY cellIndex ASC, sortOrder ASC")
-    fun getTilesByParentId(parentId: String?): Flow<List<AACTile>>
+    @Query("SELECT * FROM aac_tiles WHERE parentId = :parentId AND languageCode = :langCode ORDER BY cellIndex ASC, sortOrder ASC")
+    fun getTilesByParentId(parentId: String?, langCode: String): Flow<List<AACTile>>
 
-    @Query("SELECT * FROM aac_tiles WHERE parentId IS NULL ORDER BY cellIndex ASC, sortOrder ASC")
-    fun getRootTiles(): Flow<List<AACTile>>
+    @Query("SELECT * FROM aac_tiles WHERE parentId IS NULL AND languageCode = :langCode ORDER BY cellIndex ASC, sortOrder ASC")
+    fun getRootTiles(langCode: String): Flow<List<AACTile>>
 
     @Query("UPDATE aac_tiles SET clickCount = clickCount + 1 WHERE id = :id")
     suspend fun incrementClickCount(id: String)
 
     @Query("SELECT * FROM aac_tiles")
-    fun getAllTiles(): Flow<List<AACTile>>
+    fun getAllTilesSync(): List<AACTile>
 
-    @Query("SELECT * FROM aac_tiles WHERE isCategory = 1")
-    fun getAllCategories(): Flow<List<AACTile>>
+    @Query("SELECT * FROM aac_tiles")
+    fun getEverythingFlow(): Flow<List<AACTile>>
+
+    @Query("SELECT * FROM aac_tiles WHERE languageCode = :langCode")
+    fun getAllTiles(langCode: String): Flow<List<AACTile>>
+
+    @Query("SELECT * FROM aac_tiles WHERE isCategory = 1 AND languageCode = :langCode")
+    fun getAllCategories(langCode: String): Flow<List<AACTile>>
 
     @Query("SELECT COUNT(*) FROM aac_tiles")
     suspend fun getCount(): Int

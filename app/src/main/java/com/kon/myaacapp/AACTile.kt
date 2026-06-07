@@ -40,4 +40,5 @@ data class AACTile(
     val isQuickFire: Boolean = false, // Speaks instantly, doesn't add to sentence strip
     val isHidden: Boolean = false,    // Hides from UI without deleting
     val clickCount: Int = 0,           // Analytics for therapists/parents
+    val languageCode: String = "he",   // "he", "en", etc.
 )

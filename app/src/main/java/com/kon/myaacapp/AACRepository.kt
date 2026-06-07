@@ -4,20 +4,24 @@ import kotlinx.coroutines.flow.Flow
 
 class AACRepository(private val aacTileDao: AACTileDao) {
     
-    fun getTilesByParentId(parentId: String?): Flow<List<AACTile>> {
+    fun getTilesByParentId(parentId: String?, langCode: String): Flow<List<AACTile>> {
         return if (parentId == null) {
-            aacTileDao.getRootTiles()
+            aacTileDao.getRootTiles(langCode)
         } else {
-            aacTileDao.getTilesByParentId(parentId)
+            aacTileDao.getTilesByParentId(parentId, langCode)
         }
     }
 
-    fun getAllTiles(): Flow<List<AACTile>> {
-        return aacTileDao.getAllTiles()
+    fun getAllTiles(langCode: String): Flow<List<AACTile>> {
+        return aacTileDao.getAllTiles(langCode)
     }
 
-    fun getAllCategories(): Flow<List<AACTile>> {
-        return aacTileDao.getAllCategories()
+    fun getEverythingFlow(): Flow<List<AACTile>> {
+        return aacTileDao.getEverythingFlow()
+    }
+
+    fun getAllCategories(langCode: String): Flow<List<AACTile>> {
+        return aacTileDao.getAllCategories(langCode)
     }
 
     suspend fun getTileById(id: String): AACTile? {

@@ -7,7 +7,8 @@ import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.withContext
 import kotlinx.serialization.json.Json
-import java.io.*
+import java.io.File
+import java.io.InputStreamReader
 import java.util.zip.ZipEntry
 import java.util.zip.ZipInputStream
 import java.util.zip.ZipOutputStream
@@ -22,7 +23,7 @@ class BackupService(private val context: Context, private val repository: AACRep
 
     suspend fun exportDatabase(contentResolver: ContentResolver, uri: Uri): Boolean = withContext(Dispatchers.IO) {
         try {
-            val allTiles = repository.getAllTiles().first()
+            val allTiles = repository.getEverythingFlow().first()
             val jsonString = json.encodeToString(allTiles)
             
             contentResolver.openOutputStream(uri)?.use { outputStream ->
@@ -73,65 +74,81 @@ class BackupService(private val context: Context, private val repository: AACRep
 
     suspend fun importDatabase(contentResolver: ContentResolver, uri: Uri): Boolean = withContext(Dispatchers.IO) {
         try {
-            var tilesJson: String? = null
-            
             contentResolver.openInputStream(uri)?.use { inputStream ->
-                ZipInputStream(inputStream).use { zis ->
-                    var entry = zis.nextEntry
-                    while (entry != null) {
-                        when {
-                            entry.name == "tiles.json" -> {
-                                tilesJson = zis.bufferedReader().readText()
-                            }
-                            entry.name.startsWith("audio/") -> {
-                                extractFile(zis, File(context.filesDir, "audio_tiles/${File(entry.name).name}"))
-                            }
-                            entry.name.startsWith("images/") -> {
-                                extractFile(zis, File(context.filesDir, "image_tiles/${File(entry.name).name}"))
-                            }
-                        }
-                        zis.closeEntry()
-                        entry = zis.nextEntry
-                    }
-                }
-            }
-
-            tilesJson?.let { jsonStr ->
-                val importedTiles = try {
-                    json.decodeFromString<List<AACTile>>(jsonStr)
-                } catch (e: Exception) {
-                    e.printStackTrace()
-                    return@withContext false
-                }
-                
-                // Remap URIs to current device paths
-                val remappedTiles = importedTiles.map { tile ->
-                    var updatedTile = tile
-                    tile.audioUri?.let { oldPath ->
-                        if (isInternalPath(oldPath)) {
-                            val fileName = File(oldPath).name
-                            val newPath = File(context.filesDir, "audio_tiles/$fileName").absolutePath
-                            updatedTile = updatedTile.copy(audioUri = newPath)
-                        }
-                    }
-                    tile.imageUri?.let { oldPath ->
-                        if (isInternalPath(oldPath)) {
-                            val fileName = File(oldPath).name
-                            val newPath = File(context.filesDir, "image_tiles/$fileName").absolutePath
-                            updatedTile = updatedTile.copy(imageUri = newPath)
-                        }
-                    }
-                    updatedTile
-                }
-
-                repository.deleteAllTiles()
-                repository.insertTiles(remappedTiles)
-                true
+                importDatabaseFromStream(inputStream)
             } ?: false
         } catch (e: Exception) {
             e.printStackTrace()
             false
         }
+    }
+
+    suspend fun importFromAssets(fileName: String): Boolean = withContext(Dispatchers.IO) {
+        try {
+            context.assets.open(fileName).use { inputStream ->
+                importDatabaseFromStream(inputStream)
+            }
+        } catch (e: Exception) {
+            e.printStackTrace()
+            false
+        }
+    }
+
+    private suspend fun importDatabaseFromStream(inputStream: java.io.InputStream): Boolean {
+        var tilesJson: String? = null
+        
+        ZipInputStream(inputStream).use { zis ->
+            var entry = zis.nextEntry
+            while (entry != null) {
+                // Handle both / and \ as separators
+                val normalizedName = entry.name.replace('\\', '/')
+                val fileName = File(normalizedName).name
+                
+                when {
+                    normalizedName == "tiles.json" -> {
+                        tilesJson = zis.bufferedReader().readText()
+                    }
+                    normalizedName.startsWith("audio/") -> {
+                        extractFile(zis, File(context.filesDir, "audio_tiles/$fileName"))
+                    }
+                    normalizedName.startsWith("images/") -> {
+                        extractFile(zis, File(context.filesDir, "image_tiles/$fileName"))
+                    }
+                }
+                zis.closeEntry()
+                entry = zis.nextEntry
+            }
+        }
+
+        tilesJson?.let { jsonStr ->
+            val importedTiles = try {
+                json.decodeFromString<List<AACTile>>(jsonStr)
+            } catch (e: Exception) {
+                e.printStackTrace()
+                return false
+            }
+            
+            // Remap URIs to current device paths
+            val remappedTiles = importedTiles.map { tile ->
+                var updatedTile = tile
+                tile.audioUri?.let { oldPath ->
+                    val fileName = File(oldPath).name
+                    val newPath = File(context.filesDir, "audio_tiles/$fileName").absolutePath
+                    updatedTile = updatedTile.copy(audioUri = newPath)
+                }
+                tile.imageUri?.let { oldPath ->
+                    val fileName = File(oldPath).name
+                    val newPath = File(context.filesDir, "image_tiles/$fileName").absolutePath
+                    updatedTile = updatedTile.copy(imageUri = newPath)
+                }
+                updatedTile
+            }
+
+            repository.deleteAllTiles()
+            repository.insertTiles(remappedTiles)
+            return true
+        }
+        return false
     }
 
     private fun extractFile(zis: ZipInputStream, targetFile: File) {

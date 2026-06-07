@@ -59,6 +59,7 @@ import androidx.compose.ui.platform.LocalConfiguration
 import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.platform.LocalLayoutDirection
 import androidx.compose.ui.platform.LocalWindowInfo
+import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.tooling.preview.Preview
@@ -84,6 +85,7 @@ fun MainCommunicationScreen(
     val sentence by viewModel.selectedSentence.collectAsState()
     val currentParentId by viewModel.currentParentId.collectAsState()
     val userGender by viewModel.tileService.userGender.collectAsState()
+    val langCode by viewModel.languageCode.collectAsState()
 
     val speakOnTilePress by viewModel.speakOnTilePress.collectAsState()
 
@@ -92,6 +94,7 @@ fun MainCommunicationScreen(
         sentence = sentence,
         currentParentId = currentParentId,
         userGender = userGender,
+        langCode = langCode,
         onToggleGender = { 
             viewModel.tileService.setUserGender(
                 if (userGender == Gender.MALE) Gender.FEMALE else Gender.MALE,
@@ -118,6 +121,7 @@ fun MainCommunicationScreenContent(
     sentence: List<AACTile>,
     currentParentId: String?,
     userGender: Gender,
+    langCode: String,
     onToggleGender: () -> Unit,
     onSpeak: () -> Unit,
     onClear: () -> Unit,
@@ -139,7 +143,9 @@ fun MainCommunicationScreenContent(
         if (screenWidthDp >= 600) 4 else 3
     }
 
-    CompositionLocalProvider(LocalLayoutDirection provides LayoutDirection.Rtl) {
+    val layoutDir = if (langCode == "he") LayoutDirection.Rtl else LayoutDirection.Ltr
+
+    CompositionLocalProvider(LocalLayoutDirection provides layoutDir) {
         Column(
             modifier = Modifier
                 .fillMaxSize()
@@ -153,7 +159,7 @@ fun MainCommunicationScreenContent(
                 verticalAlignment = Alignment.CenterVertically
             ) {
                 Text(
-                    text = if (currentParentId == null) "מסך ראשי" else "קטגוריה",
+                    text = if (currentParentId == null) stringResource(R.string.main_screen) else stringResource(R.string.category),
                     style = MaterialTheme.typography.headlineSmall,
                     color = MaterialTheme.colorScheme.onBackground
                 )
@@ -161,7 +167,7 @@ fun MainCommunicationScreenContent(
                 IconButton(onClick = onToggleGender) {
                     Icon(
                         imageVector = if (userGender == Gender.MALE) Icons.Default.Male else Icons.Default.Female,
-                        contentDescription = "Toggle Gender",
+                        contentDescription = stringResource(R.string.toggle_gender),
                         tint = if (userGender == Gender.MALE) Color(0xFF2196F3) else Color(0xFFE91E63)
                     )
                 }
@@ -295,7 +301,7 @@ fun SentenceBuilder(
                     ) {
                         Icon(
                             Icons.AutoMirrored.Filled.ArrowBack,
-                            contentDescription = "Back",
+                            contentDescription = stringResource(R.string.back),
                             modifier = Modifier.size(32.dp)
                         )
                     }
@@ -311,7 +317,7 @@ fun SentenceBuilder(
                 ) {
                     Icon(
                         Icons.AutoMirrored.Filled.VolumeUp,
-                        contentDescription = "Speak",
+                        contentDescription = stringResource(R.string.speak),
                         modifier = Modifier.size(32.dp)
                     )
                 }
@@ -326,7 +332,7 @@ fun SentenceBuilder(
                 ) {
                     Icon(
                         Icons.AutoMirrored.Filled.Backspace,
-                        contentDescription = "Backspace",
+                        contentDescription = stringResource(R.string.backspace),
                         tint = MaterialTheme.colorScheme.onErrorContainer,
                         modifier = Modifier.size(32.dp)
                     )
@@ -342,7 +348,7 @@ fun SentenceBuilder(
                 ) {
                     Icon(
                         Icons.Default.Clear,
-                        contentDescription = "Clear",
+                        contentDescription = stringResource(R.string.clear),
                         tint = MaterialTheme.colorScheme.onError,
                         modifier = Modifier.size(32.dp)
                     )
@@ -413,20 +419,20 @@ fun AdminPinDialog(
 
     AlertDialog(
         onDismissRequest = onDismiss,
-        title = { Text("Admin Access") },
+        title = { Text(stringResource(R.string.admin_access)) },
         text = {
             Column {
-                Text("Enter Admin Password")
+                Text(stringResource(R.string.enter_admin_password))
                 Spacer(modifier = Modifier.height(8.dp))
                 OutlinedTextField(
                     value = password,
                     onValueChange = { password = it },
-                    label = { Text("Password") },
+                    label = { Text(stringResource(R.string.password)) },
                     modifier = Modifier.fillMaxWidth()
                 )
                 Spacer(modifier = Modifier.height(4.dp))
                 Text(
-                    text = "Default password: 1234",
+                    text = stringResource(R.string.default_password_hint),
                     style = MaterialTheme.typography.bodySmall,
                     color = MaterialTheme.colorScheme.onSurfaceVariant
                 )
@@ -441,12 +447,12 @@ fun AdminPinDialog(
                 },
                 enabled = password.isNotBlank()
             ) {
-                Text("Unlock")
+                Text(stringResource(R.string.unlock))
             }
         },
         dismissButton = {
             TextButton(onClick = onDismiss) {
-                Text("Cancel")
+                Text(stringResource(R.string.cancel))
             }
         }
     )
@@ -606,6 +612,7 @@ fun MainCommunicationScreenPreview() {
             sentence = sampleSentence,
             currentParentId = "some_id",
             userGender = Gender.MALE,
+            langCode = "he",
             onToggleGender = {},
             onSpeak = {},
             onClear = {},

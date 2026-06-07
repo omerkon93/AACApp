@@ -20,6 +20,7 @@ class SettingsRepository(private val context: Context) {
     private object PreferencesKeys {
         val SPEAK_ON_TILE_PRESS = booleanPreferencesKey("speak_on_tile_press")
         val USER_GENDER = stringPreferencesKey("user_gender")
+        val LANGUAGE_CODE = stringPreferencesKey("language_code")
     }
 
     val speakOnTilePressFlow: Flow<Boolean> = context.dataStore.data
@@ -55,6 +56,18 @@ class SettingsRepository(private val context: Context) {
             }
         }
 
+    val languageCodeFlow: Flow<String> = context.dataStore.data
+        .catch { exception ->
+            if (exception is IOException) {
+                emit(emptyPreferences())
+            } else {
+                throw exception
+            }
+        }
+        .map { preferences ->
+            preferences[PreferencesKeys.LANGUAGE_CODE] ?: "he"
+        }
+
     suspend fun updateSpeakOnTilePress(speak: Boolean) {
         context.dataStore.edit { preferences ->
             preferences[PreferencesKeys.SPEAK_ON_TILE_PRESS] = speak
@@ -64,6 +77,12 @@ class SettingsRepository(private val context: Context) {
     suspend fun updateUserGender(gender: Gender) {
         context.dataStore.edit { preferences ->
             preferences[PreferencesKeys.USER_GENDER] = gender.name
+        }
+    }
+
+    suspend fun updateLanguageCode(languageCode: String) {
+        context.dataStore.edit { preferences ->
+            preferences[PreferencesKeys.LANGUAGE_CODE] = languageCode
         }
     }
 }

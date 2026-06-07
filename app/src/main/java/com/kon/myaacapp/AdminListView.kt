@@ -20,6 +20,7 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.layout.ContentScale
+import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
@@ -57,12 +58,12 @@ fun AdminListView(
             modifier = Modifier
                 .fillMaxWidth()
                 .padding(vertical = 16.dp),
-            placeholder = { Text("חיפוש לפי שם אריח או טקסט הקראה...") },
+            placeholder = { Text(stringResource(R.string.search_tiles_placeholder)) },
             leadingIcon = { Icon(Icons.Default.Search, contentDescription = null) },
             trailingIcon = if (searchQuery.isNotEmpty()) {
                 {
                     IconButton(onClick = { searchQuery = "" }) {
-                        Icon(Icons.Default.Clear, contentDescription = "נקה")
+                        Icon(Icons.Default.Clear, contentDescription = stringResource(R.string.clear_action))
                     }
                 }
             } else null,
@@ -158,21 +159,21 @@ fun AdminTileListCard(
                 IconButton(onClick = onTestAudio) {
                     Icon(
                         imageVector = Icons.AutoMirrored.Filled.VolumeUp,
-                        contentDescription = "שמע",
+                        contentDescription = stringResource(R.string.test_audio),
                         tint = MaterialTheme.colorScheme.primary
                     )
                 }
                 IconButton(onClick = onEdit) {
                     Icon(
                         imageVector = Icons.Default.Edit,
-                        contentDescription = "עריכה",
+                        contentDescription = stringResource(R.string.edit),
                         tint = MaterialTheme.colorScheme.onSurfaceVariant
                     )
                 }
                 IconButton(onClick = onDelete) {
                     Icon(
                         imageVector = Icons.Default.Delete,
-                        contentDescription = "מחיקה",
+                        contentDescription = stringResource(R.string.delete_action),
                         tint = MaterialTheme.colorScheme.error
                     )
                 }

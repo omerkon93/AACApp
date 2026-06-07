@@ -4,14 +4,22 @@ import android.content.Context
 import androidx.room.Database
 import androidx.room.Room
 import androidx.room.RoomDatabase
+import androidx.room.migration.Migration
+import androidx.sqlite.db.SupportSQLiteDatabase
 
-@Database(entities = [AACTile::class], version = 3, exportSchema = false)
+@Database(entities = [AACTile::class], version = 4, exportSchema = false)
 abstract class AACDatabase : RoomDatabase() {
     abstract fun aacTileDao(): AACTileDao
 
     companion object {
         @Volatile
         private var INSTANCE: AACDatabase? = null
+
+        val MIGRATION_3_4 = object : Migration(3, 4) {
+            override fun migrate(db: SupportSQLiteDatabase) {
+                db.execSQL("ALTER TABLE aac_tiles ADD COLUMN languageCode TEXT NOT NULL DEFAULT 'he'")
+            }
+        }
 
         fun getDatabase(context: Context): AACDatabase {
             return INSTANCE ?: synchronized(this) {
@@ -20,6 +28,7 @@ abstract class AACDatabase : RoomDatabase() {
                     AACDatabase::class.java,
                     "aac_database"
                 )
+                .addMigrations(MIGRATION_3_4)
                 .fallbackToDestructiveMigration()
                 .build()
                 INSTANCE = instance
