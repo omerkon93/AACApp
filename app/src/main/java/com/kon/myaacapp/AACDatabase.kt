@@ -10,7 +10,7 @@ import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
 
-@Database(entities = [AACTile::class], version = 4, exportSchema = false)
+@Database(entities = [AACTile::class, TileClickEvent::class], version = 5, exportSchema = false)
 abstract class AACDatabase : RoomDatabase() {
     abstract fun aacTileDao(): AACTileDao
 

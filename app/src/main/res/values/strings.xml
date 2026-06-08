@@ -2,6 +2,7 @@
     <string name="app_name">MyAACApp</string>
     <string name="admin_tab_home">עורך לוח</string>
     <string name="admin_tab_settings">הגדרות אריחים</string>
+    <string name="admin_tab_statistics">נתונים וסטטיסטיקה</string>
     <string name="admin_tab_system">הגדרות מערכת</string>
     <string name="back">חזרה</string>
     <string name="delete_tile_title">מחיקת אריח?</string>
@@ -13,6 +14,7 @@
     <string name="new_tile">חדש</string>
     <string name="bottom_nav_home">בית</string>
     <string name="bottom_nav_tiles">אריחים</string>
+    <string name="bottom_nav_statistics">סטטיסטיקה</string>
     <string name="bottom_nav_system">מערכת</string>
     <string name="general_settings">הגדרות כלליות</string>
     <string name="speak_on_press">הקרא בלחיצה על אריח</string>
@@ -102,4 +104,31 @@
     <string name="resetting">מבצע איפוס…</string>
     <string name="reset_success">האיפוס בוצע בהצלחה</string>
     <string name="reset_failed">האיפוס נכשל</string>
+    <string name="database_management">ניהול מסד נתונים</string>
+    <string name="factory_reset_button">שחזור לנתוני יצרן (מחיקת כל המידע)</string>
+    <string name="reset_warning_msg">האם אתה בטוח? פעולה זו תמחק את כל האריחים וההקלטות שהוספת, ותשחזר את לוח התקשורת למצב ההתחלתי.</string>
+    <string name="filter_daily">יומי</string>
+    <string name="filter_weekly">שבועי</string>
+    <string name="filter_monthly">חודשי</string>
+    <string name="filter_yearly">שנתי</string>
+    <string name="filter_all_time">הכל</string>
+    <string name="total_words_count">סה\"כ מילים</string>
+    <string name="avg_time_per_session">זמן ממוצע</string>
+    <string name="active_sessions">סשנים פעילים</string>
+    <string name="top_words_title">מילים מובילות</string>
+    <string name="category_usage_title">שימוש לפי קטגוריות</string>
+    <string name="weekly_usage_title">מגמות שבועיות</string>
+    <string name="daily_usage_title">מגמות יומיות</string>
+    <string name="monthly_usage_title">מגמות חודשיות</string>
+    <string name="yearly_usage_title">מגמות שנתיות</string>
+    <string name="all_time_usage_title">מגמות שימוש (הכל)</string>
+    <string name="ai_insight_title">תובנות AI</string>
+    <string name="total_words_info">סך כל הפעמים שהמשתמש לחץ על מילים להשמעה.</string>
+    <string name="avg_time_info">זמן משוער שהאפליקציה הייתה פתוחה ופעילה.</string>
+    <string name="active_sessions_info">מספר הפעמים שהאפליקציה נפתחה לשימוש השבוע.</string>
+    <string name="other_category">אחר</string>
+    <string name="insight_food">זיהינו עניין רב בקטגוריית אוכל. אולי כדאי להוסיף מאכלים חדשים ללוח כדי לעודד תקשורת!</string>
+    <string name="insight_requests">המשתמש משתמש המון בבקשות (אני רוצה). זו הזדמנות מצוינת ללמד אותו לפרט מה הוא רוצה.</string>
+    <string name="insight_general">מגמת השימוש נראית יציבה. כדאי להמשיך להוסיף מילים רלוונטיות לתחומי העניין של המשתמש.</string>
+    <string name="mock_ai_insight">עלייה של 15% בשימוש במילות רגש השבוע. כל הכבוד!</string>
 </resources>

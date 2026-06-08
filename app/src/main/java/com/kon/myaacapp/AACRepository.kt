@@ -46,6 +46,15 @@ class AACRepository(private val aacTileDao: AACTileDao) {
 
     suspend fun incrementClickCount(id: String) {
         aacTileDao.incrementClickCount(id)
+        aacTileDao.insertClickEvent(TileClickEvent(tileId = id))
+    }
+
+    fun getClickEventsBetween(startTime: Long, endTime: Long): Flow<List<TileClickEvent>> {
+        return aacTileDao.getClickEventsBetween(startTime, endTime)
+    }
+
+    fun getAllClickEvents(): Flow<List<TileClickEvent>> {
+        return aacTileDao.getAllClickEvents()
     }
 
     suspend fun isEmpty(): Boolean {

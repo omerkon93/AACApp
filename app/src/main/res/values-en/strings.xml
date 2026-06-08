@@ -2,6 +2,7 @@
     <string name="app_name">MyAACApp</string>
     <string name="admin_tab_home">Board Editor</string>
     <string name="admin_tab_settings">Tile Settings</string>
+    <string name="admin_tab_statistics">Data &amp; Statistics</string>
     <string name="admin_tab_system">System Settings</string>
     <string name="back">Back</string>
     <string name="delete_tile_title">Delete Tile?</string>
@@ -13,6 +14,7 @@
     <string name="new_tile">New</string>
     <string name="bottom_nav_home">Home</string>
     <string name="bottom_nav_tiles">Tiles</string>
+    <string name="bottom_nav_statistics">Statistics</string>
     <string name="bottom_nav_system">System</string>
     <string name="general_settings">General Settings</string>
     <string name="speak_on_press">Speak on tile press</string>
@@ -102,4 +104,31 @@
     <string name="resetting">Resetting…</string>
     <string name="reset_success">Reset successful</string>
     <string name="reset_failed">Reset failed</string>
+    <string name="database_management">Database Management</string>
+    <string name="factory_reset_button">Factory Reset (Delete All Data)</string>
+    <string name="reset_warning_msg">Are you sure? This will delete all tiles and recordings you have added, and restore the communication board to its initial state.</string>
+    <string name="filter_daily">Daily</string>
+    <string name="filter_weekly">Weekly</string>
+    <string name="filter_monthly">Monthly</string>
+    <string name="filter_yearly">Yearly</string>
+    <string name="filter_all_time">All Time</string>
+    <string name="total_words_count">Total Words</string>
+    <string name="avg_time_per_session">Avg Time</string>
+    <string name="active_sessions">Active Sessions</string>
+    <string name="top_words_title">Top Words</string>
+    <string name="category_usage_title">Category Usage</string>
+    <string name="weekly_usage_title">Weekly Trends</string>
+    <string name="daily_usage_title">Daily Trends</string>
+    <string name="monthly_usage_title">Monthly Trends</string>
+    <string name="yearly_usage_title">Yearly Trends</string>
+    <string name="all_time_usage_title">Usage Trends (All Time)</string>
+    <string name="ai_insight_title">AI Insights</string>
+    <string name="total_words_info">Total times words were clicked to be spoken.</string>
+    <string name="avg_time_info">Estimated time the app was open and active.</string>
+    <string name="active_sessions_info">Number of times the app was opened for use this week.</string>
+    <string name="other_category">Other</string>
+    <string name="insight_food">We noticed high interest in the Food category. Consider adding new foods to the board to encourage communication!</string>
+    <string name="insight_requests">The user is making many requests (I want). This is a great opportunity to teach them to specify what they want.</string>
+    <string name="insight_general">Usage trends look stable. It\'s recommended to continue adding words relevant to the user\'s interests.</string>
+    <string name="mock_ai_insight">15% increase in emotion words this week. Keep it up!</string>
 </resources>

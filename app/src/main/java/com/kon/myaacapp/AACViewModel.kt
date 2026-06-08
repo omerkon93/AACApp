@@ -6,6 +6,11 @@ import androidx.lifecycle.viewModelScope
 import kotlinx.coroutines.ExperimentalCoroutinesApi
 import kotlinx.coroutines.flow.*
 import kotlinx.coroutines.launch
+import java.util.Calendar
+
+enum class AnalyticsTimeFilter {
+    DAILY, WEEKLY, MONTHLY, YEARLY, ALL_TIME
+}
 
 @OptIn(ExperimentalCoroutinesApi::class)
 class AACViewModel(application: Application) : AndroidViewModel(application) {
@@ -124,6 +129,7 @@ class AACViewModel(application: Application) : AndroidViewModel(application) {
             
             if (shouldAdd) {
                 addTileToSentence(tile)
+                repository.incrementClickCount(tile.id)
             }
             
             val shouldSpeak = if (tile.isQuickFire) {
@@ -266,6 +272,59 @@ class AACViewModel(application: Application) : AndroidViewModel(application) {
     fun clearImportExportStatus() {
         _importExportStatus.value = null
     }
+
+    // --- Advanced Analytics Logic ---
+
+    private val _selectedTimeFilter = MutableStateFlow(AnalyticsTimeFilter.ALL_TIME)
+    val selectedTimeFilter: StateFlow<AnalyticsTimeFilter> = _selectedTimeFilter.asStateFlow()
+
+    fun setTimeFilter(filter: AnalyticsTimeFilter) {
+        _selectedTimeFilter.value = filter
+    }
+
+    @OptIn(ExperimentalCoroutinesApi::class)
+    val filteredClickEvents: Flow<List<TileClickEvent>> = _selectedTimeFilter.flatMapLatest { filter ->
+        val now = System.currentTimeMillis()
+        val startTime = when (filter) {
+            AnalyticsTimeFilter.DAILY -> getStartOfDay()
+            AnalyticsTimeFilter.WEEKLY -> getStartOfWeek()
+            AnalyticsTimeFilter.MONTHLY -> getStartOfMonth()
+            AnalyticsTimeFilter.YEARLY -> getStartOfYear()
+            AnalyticsTimeFilter.ALL_TIME -> 0L
+        }
+        repository.getClickEventsBetween(startTime, now)
+    }.stateIn(viewModelScope, SharingStarted.Lazily, emptyList())
+
+    private fun getStartOfDay(): Long = Calendar.getInstance().apply {
+        set(Calendar.HOUR_OF_DAY, 0)
+        set(Calendar.MINUTE, 0)
+        set(Calendar.SECOND, 0)
+        set(Calendar.MILLISECOND, 0)
+    }.timeInMillis
+
+    private fun getStartOfWeek(): Long = Calendar.getInstance().apply {
+        set(Calendar.DAY_OF_WEEK, firstDayOfWeek)
+        set(Calendar.HOUR_OF_DAY, 0)
+        set(Calendar.MINUTE, 0)
+        set(Calendar.SECOND, 0)
+        set(Calendar.MILLISECOND, 0)
+    }.timeInMillis
+
+    private fun getStartOfMonth(): Long = Calendar.getInstance().apply {
+        set(Calendar.DAY_OF_MONTH, 1)
+        set(Calendar.HOUR_OF_DAY, 0)
+        set(Calendar.MINUTE, 0)
+        set(Calendar.SECOND, 0)
+        set(Calendar.MILLISECOND, 0)
+    }.timeInMillis
+
+    private fun getStartOfYear(): Long = Calendar.getInstance().apply {
+        set(Calendar.DAY_OF_YEAR, 1)
+        set(Calendar.HOUR_OF_DAY, 0)
+        set(Calendar.MINUTE, 0)
+        set(Calendar.SECOND, 0)
+        set(Calendar.MILLISECOND, 0)
+    }.timeInMillis
 
     override fun onCleared() {
         super.onCleared()

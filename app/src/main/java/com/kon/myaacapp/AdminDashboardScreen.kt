@@ -31,7 +31,7 @@ import coil.compose.AsyncImage
 import kotlinx.coroutines.launch
 
 enum class AdminTab {
-    HOME, SETTINGS, SYSTEM
+    HOME, SETTINGS, STATISTICS, SYSTEM
 }
 
 @OptIn(ExperimentalMaterial3Api::class)
@@ -59,6 +59,7 @@ fun AdminDashboardScreen(
                             when (selectedTab) {
                                 AdminTab.HOME -> stringResource(R.string.admin_tab_home)
                                 AdminTab.SETTINGS -> stringResource(R.string.admin_tab_settings)
+                                AdminTab.STATISTICS -> stringResource(R.string.admin_tab_statistics)
                                 AdminTab.SYSTEM -> stringResource(R.string.admin_tab_system)
                             },
                             fontWeight = FontWeight.Bold
@@ -107,6 +108,9 @@ fun AdminDashboardScreen(
                                 tileToDelete = tile
                             }
                         )
+                    }
+                    AdminTab.STATISTICS -> {
+                        AdminStatisticsScreen(viewModel = viewModel)
                     }
                     AdminTab.SYSTEM -> {
                         AdminSystemSettings(viewModel = viewModel)
@@ -300,6 +304,12 @@ fun AdminBottomNavigation(
             onClick = { onTabSelected(AdminTab.SETTINGS) },
             icon = { Icon(Icons.Default.Settings, contentDescription = null) },
             label = { Text(stringResource(R.string.bottom_nav_tiles)) }
+        )
+        NavigationBarItem(
+            selected = selectedTab == AdminTab.STATISTICS,
+            onClick = { onTabSelected(AdminTab.STATISTICS) },
+            icon = { Icon(Icons.Default.Analytics, contentDescription = null) },
+            label = { Text(stringResource(R.string.bottom_nav_statistics)) }
         )
         NavigationBarItem(
             selected = selectedTab == AdminTab.SYSTEM,
