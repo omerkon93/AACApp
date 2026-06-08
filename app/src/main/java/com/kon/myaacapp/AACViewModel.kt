@@ -31,8 +31,30 @@ class AACViewModel(application: Application) : AndroidViewModel(application) {
     private val _currentParentId = MutableStateFlow<String?>(null)
     val currentParentId: StateFlow<String?> = _currentParentId.asStateFlow()
     
+    private val navigationStack = mutableListOf<String?>()
+
     fun setCategory(parentId: String?) {
-        _currentParentId.value = parentId
+        if (_currentParentId.value != parentId) {
+            navigationStack.add(_currentParentId.value)
+            _currentParentId.value = parentId
+        }
+    }
+
+    fun navigateBack() {
+        if (navigationStack.isNotEmpty()) {
+            _currentParentId.value = navigationStack.removeAt(navigationStack.size - 1)
+        } else {
+            _currentParentId.value = null
+        }
+    }
+
+    fun resetToHome() {
+        navigationStack.clear()
+        _currentParentId.value = null
+    }
+
+    fun navigateUp() {
+        navigateBack()
     }
 
     val speakOnTilePress: StateFlow<Boolean> = settingsRepository.speakOnTilePressFlow
@@ -41,6 +63,8 @@ class AACViewModel(application: Application) : AndroidViewModel(application) {
     val languageCode: StateFlow<String> = settingsRepository.languageCodeFlow
         .onEach { lang -> ttsHelper.setLanguage(lang) }
         .stateIn(viewModelScope, SharingStarted.Lazily, "he")
+
+    val userGender: StateFlow<Gender> = tileService.userGender
 
     fun getTilesByParentId(parentId: String?): Flow<List<AACTile>> {
         return repository.getTilesByParentId(parentId, languageCode.value)
@@ -70,6 +94,10 @@ class AACViewModel(application: Application) : AndroidViewModel(application) {
 
     suspend fun updateLanguageCode(lang: String) {
         settingsRepository.updateLanguageCode(lang)
+    }
+
+    fun updateUserGender(gender: Gender) {
+        tileService.setUserGender(gender, viewModelScope)
     }
 
     private val _selectedSentence = MutableStateFlow<List<AACTile>>(emptyList())

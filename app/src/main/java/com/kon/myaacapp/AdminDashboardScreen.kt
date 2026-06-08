@@ -388,6 +388,28 @@ fun AdminSystemSettings(viewModel: AACViewModel) {
                         onCheckedChange = { viewModel.updateSpeakOnTilePress(it) }
                     )
                 }
+
+                Spacer(modifier = Modifier.height(16.dp))
+
+                // Grammatical Gender Selector
+                val userGender by viewModel.userGender.collectAsState()
+                Text(stringResource(R.string.grammatical_gender), style = MaterialTheme.typography.bodyMedium)
+                Spacer(modifier = Modifier.height(8.dp))
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    horizontalArrangement = Arrangement.spacedBy(8.dp)
+                ) {
+                    FilterChip(
+                        selected = userGender == Gender.MALE,
+                        onClick = { viewModel.updateUserGender(Gender.MALE) },
+                        label = { Text(stringResource(R.string.male)) }
+                    )
+                    FilterChip(
+                        selected = userGender == Gender.FEMALE,
+                        onClick = { viewModel.updateUserGender(Gender.FEMALE) },
+                        label = { Text(stringResource(R.string.female)) }
+                    )
+                }
                 
                 Spacer(modifier = Modifier.height(16.dp))
                 

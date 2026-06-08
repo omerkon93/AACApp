@@ -8,18 +8,15 @@ import androidx.activity.enableEdgeToEdge
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.padding
 import androidx.compose.material3.Scaffold
-import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalLayoutDirection
 import androidx.compose.ui.unit.LayoutDirection
 import androidx.lifecycle.viewmodel.compose.viewModel
-import androidx.navigation.NavType
 import androidx.navigation.compose.NavHost
 import androidx.navigation.compose.composable
 import androidx.navigation.compose.rememberNavController
-import androidx.navigation.navArgument
 import com.kon.myaacapp.ui.theme.MyAACAppTheme
 import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.runBlocking
@@ -53,27 +50,11 @@ class MainActivity : ComponentActivity() {
                             startDestination = "grid",
                             modifier = Modifier.padding(innerPadding)
                         ) {
-                            composable(
-                                route = "grid?parentId={parentId}",
-                                arguments = listOf(
-                                    navArgument("parentId") {
-                                        type = NavType.StringType
-                                        nullable = true
-                                        defaultValue = null
-                                    }
-                                )
-                            ) { backStackEntry ->
-                                val parentId = backStackEntry.arguments?.getString("parentId")
-                                
-                                // Update ViewModel's category based on the current route
-                                LaunchedEffect(parentId) {
-                                    viewModel.setCategory(parentId)
-                                }
-
+                            composable("grid") {
                                 MainCommunicationScreen(
                                     viewModel = viewModel,
                                     onNavigateToCategory = { id ->
-                                        navController.navigate("grid?parentId=$id")
+                                        viewModel.setCategory(id)
                                     },
                                     onBackClick = {
                                         navController.popBackStack()

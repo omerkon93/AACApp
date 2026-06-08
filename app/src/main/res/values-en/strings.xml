@@ -22,6 +22,9 @@
     <string name="language">Language</string>
     <string name="hebrew">Hebrew</string>
     <string name="english">English</string>
+    <string name="grammatical_gender">Grammatical Gender</string>
+    <string name="male">Male</string>
+    <string name="female">Female</string>
     <string name="main_screen">Main Screen</string>
     <string name="category">Category</string>
     <string name="toggle_gender">Toggle Gender</string>
@@ -60,6 +63,12 @@
     <string name="pick_from_gallery">Pick from Gallery</string>
     <string name="change_emoji">Change Emoji</string>
     <string name="part_of_speech_label">Part of Speech (Tile Color)</string>
+    <string name="pos_none">None</string>
+    <string name="pos_noun">Noun</string>
+    <string name="pos_verb">Verb</string>
+    <string name="pos_adjective">Adjective</string>
+    <string name="pos_pronoun">Pronoun</string>
+    <string name="pos_social">Social</string>
     <string name="section_audio">Part 3: Audio</string>
     <string name="custom_voice_recording">Custom Voice Recording</string>
     <string name="stop_recording">Stop (%1$ss)</string>

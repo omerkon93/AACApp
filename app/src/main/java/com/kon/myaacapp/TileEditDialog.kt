@@ -15,6 +15,8 @@ import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
+import androidx.compose.foundation.layout.ExperimentalLayoutApi
+import androidx.compose.foundation.layout.FlowRow
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxHeight
 import androidx.compose.foundation.layout.fillMaxSize
@@ -28,7 +30,6 @@ import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.ArrowDropDown
-import androidx.compose.material.icons.filled.Check
 import androidx.compose.material.icons.filled.Close
 import androidx.compose.material.icons.filled.Delete
 import androidx.compose.material.icons.filled.Info
@@ -496,26 +497,51 @@ fun TileEditDialog(
 
                                     // Part of Speech / Color
                                     Text(stringResource(R.string.part_of_speech_label), style = MaterialTheme.typography.labelLarge)
-                                    Row(
+                                    @OptIn(ExperimentalLayoutApi::class)
+                                    FlowRow(
                                         modifier = Modifier.fillMaxWidth(),
-                                        horizontalArrangement = Arrangement.spacedBy(12.dp),
+                                        horizontalArrangement = Arrangement.spacedBy(8.dp),
+                                        verticalArrangement = Arrangement.spacedBy(8.dp),
                                     ) {
                                         posOptions.forEach { pos ->
                                             val color = resolveFitzgeraldColor(pos)
-                                            Box(
+                                            val isSelected = partOfSpeech == pos
+                                            val labelRes = when (pos) {
+                                                "NONE" -> R.string.pos_none
+                                                "NOUN" -> R.string.pos_noun
+                                                "VERB" -> R.string.pos_verb
+                                                "ADJECTIVE" -> R.string.pos_adjective
+                                                "PRONOUN" -> R.string.pos_pronoun
+                                                "SOCIAL" -> R.string.pos_social
+                                                else -> R.string.pos_none
+                                            }
+
+                                            Surface(
                                                 modifier = Modifier
-                                                    .size(40.dp)
-                                                    .background(color, CircleShape)
-                                                    .border(
-                                                        width = if (partOfSpeech == pos) 2.dp else 1.dp,
-                                                        color = if (partOfSpeech == pos) MaterialTheme.colorScheme.onSurface else MaterialTheme.colorScheme.outlineVariant,
-                                                        shape = CircleShape,
-                                                    )
                                                     .clickable { partOfSpeech = pos },
-                                                contentAlignment = Alignment.Center,
+                                                shape = RoundedCornerShape(16.dp),
+                                                color = if (isSelected) color.copy(alpha = 0.3f) else Color.Transparent,
+                                                border = BorderStroke(
+                                                    width = if (isSelected) 2.dp else 1.dp,
+                                                    color = if (isSelected) color else MaterialTheme.colorScheme.outlineVariant
+                                                )
                                             ) {
-                                                if (partOfSpeech == pos) {
-                                                    Icon(Icons.Default.Check, contentDescription = null, modifier = Modifier.size(16.dp))
+                                                Row(
+                                                    modifier = Modifier.padding(horizontal = 12.dp, vertical = 6.dp),
+                                                    verticalAlignment = Alignment.CenterVertically,
+                                                    horizontalArrangement = Arrangement.spacedBy(8.dp)
+                                                ) {
+                                                    Box(
+                                                        modifier = Modifier
+                                                            .size(16.dp)
+                                                            .background(color, CircleShape)
+                                                            .border(1.dp, MaterialTheme.colorScheme.outline, CircleShape)
+                                                    )
+                                                    Text(
+                                                        text = stringResource(labelRes),
+                                                        style = MaterialTheme.typography.bodyMedium,
+                                                        color = if (isSelected) MaterialTheme.colorScheme.onSurface else MaterialTheme.colorScheme.onSurfaceVariant
+                                                    )
                                                 }
                                             }
                                         }

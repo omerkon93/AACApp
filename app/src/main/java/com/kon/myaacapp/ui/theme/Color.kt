@@ -50,10 +50,10 @@ val PrimaryBlue = Color(0xFF3182CE)
 fun resolveFitzgeraldColor(partOfSpeech: String?): Color {
     return when (partOfSpeech?.uppercase()) {
         "PRONOUN", "PEOPLE" -> Color(0xFFFFF59D) // Yellow
-        "VERB", "ACTIONS" -> Color(0xFFC8E6C9)   // Green
-        "ADJECTIVE" -> Color(0xFFBBDEFB)         // Blue
-        "NOUN" -> Color(0xFFFFE0B2)              // Orange
-        "SOCIAL" -> Color(0xFFF8BBD0)            // Pink
+        "VERB", "ACTIONS" -> Color(0xFFA5D6A7)   // Green
+        "ADJECTIVE" -> Color(0xFF90CAF9)         // Blue
+        "NOUN" -> Color(0xFFFFCC80)              // Orange
+        "SOCIAL" -> Color(0xFFF48FB1)            // Pink
         else -> Color.White
     }
 }

@@ -22,6 +22,9 @@
     <string name="language">שפה</string>
     <string name="hebrew">עברית</string>
     <string name="english">אנגלית</string>
+    <string name="grammatical_gender">מגדר דקדוקי</string>
+    <string name="male">זכר</string>
+    <string name="female">נקבה</string>
     <string name="main_screen">מסך ראשי</string>
     <string name="category">קטגוריה</string>
     <string name="toggle_gender">החלף מגדר</string>
@@ -60,6 +63,12 @@
     <string name="pick_from_gallery">בחר מגלריה</string>
     <string name="change_emoji">שנה אימוג\'י</string>
     <string name="part_of_speech_label">חלק דיבר (צבע אריח)</string>
+    <string name="pos_none">ללא</string>
+    <string name="pos_noun">שם עצם</string>
+    <string name="pos_verb">פועל</string>
+    <string name="pos_adjective">תואר</string>
+    <string name="pos_pronoun">כינוי גוף</string>
+    <string name="pos_social">חברתי</string>
     <string name="section_audio">חלק 3: שמע</string>
     <string name="custom_voice_recording">הקלטת קול מותאמת</string>
     <string name="stop_recording">עצור (%1$sש\')</string>

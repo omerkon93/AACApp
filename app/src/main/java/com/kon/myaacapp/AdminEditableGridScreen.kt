@@ -85,17 +85,13 @@ fun AdminEditableGridScreen(
 
             if (currentParentId != null) {
                 Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                    TextButton(onClick = { viewModel.setCategory(null) }) {
+                    TextButton(onClick = { viewModel.resetToHome() }) {
                         Icon(Icons.Default.Home, contentDescription = null)
                         Spacer(Modifier.width(4.dp))
                         Text(stringResource(R.string.home))
                     }
                     
-                    TextButton(onClick = {
-                        // Find the grandparent ID
-                        val currentTile = viewModel.allTiles.value.find { it.id == currentParentId }
-                        viewModel.setCategory(currentTile?.parentId)
-                    }) {
+                    TextButton(onClick = { viewModel.navigateBack() }) {
                         Icon(Icons.Default.ArrowUpward, contentDescription = null)
                         Spacer(Modifier.width(4.dp))
                         Text(stringResource(R.string.up))
