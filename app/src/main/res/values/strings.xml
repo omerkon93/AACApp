@@ -101,6 +101,10 @@
     <string name="reset_to_default">איפוס לברירת מחדל</string>
     <string name="reset_confirm_title">איפוס למצב ברירת מחדל?</string>
     <string name="reset_confirm_msg">פעולה זו תמחק את כל האריחים הנוכחיים ותחזיר את האפליקציה למצב ההתחלתי. האם אתה בטוח?</string>
+    <string name="reset_stats_button">איפוס נתוני סטטיסטיקה</string>
+    <string name="reset_stats_title">איפוס סטטיסטיקה</string>
+    <string name="reset_stats_warning_msg">האם אתה בטוח? פעולה זו תמחק את כל היסטוריית השימוש והגרפים. האריחים וההקלטות שלך לא יימחקו.</string>
+    <string name="stats_reset_success">נתוני הסטטיסטיקה אופסו בהצלחה</string>
     <string name="resetting">מבצע איפוס…</string>
     <string name="reset_success">האיפוס בוצע בהצלחה</string>
     <string name="reset_failed">האיפוס נכשל</string>

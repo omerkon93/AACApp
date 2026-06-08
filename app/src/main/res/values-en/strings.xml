@@ -101,6 +101,10 @@
     <string name="reset_to_default">Reset to Default</string>
     <string name="reset_confirm_title">Reset to Default?</string>
     <string name="reset_confirm_msg">This will delete all current tiles and restore the app to its initial state. Are you sure?</string>
+    <string name="reset_stats_button">Reset Statistics Data</string>
+    <string name="reset_stats_title">Reset Statistics</string>
+    <string name="reset_stats_warning_msg">Are you sure? This will delete all usage history and graphs. Your tiles and recordings will NOT be deleted.</string>
+    <string name="stats_reset_success">Statistics data reset successfully</string>
     <string name="resetting">Resetting…</string>
     <string name="reset_success">Reset successful</string>
     <string name="reset_failed">Reset failed</string>

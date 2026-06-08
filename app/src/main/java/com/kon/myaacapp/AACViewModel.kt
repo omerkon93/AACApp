@@ -282,6 +282,13 @@ class AACViewModel(application: Application) : AndroidViewModel(application) {
         _selectedTimeFilter.value = filter
     }
 
+    fun resetStatistics(context: android.content.Context) {
+        viewModelScope.launch {
+            repository.clearAllStatistics()
+            _importExportStatus.value = context.getString(R.string.stats_reset_success)
+        }
+    }
+
     @OptIn(ExperimentalCoroutinesApi::class)
     val filteredClickEvents: Flow<List<TileClickEvent>> = _selectedTimeFilter.flatMapLatest { filter ->
         val now = System.currentTimeMillis()

@@ -57,6 +57,11 @@ class AACRepository(private val aacTileDao: AACTileDao) {
         return aacTileDao.getAllClickEvents()
     }
 
+    suspend fun clearAllStatistics() {
+        aacTileDao.deleteAllClickEvents()
+        aacTileDao.resetAllLegacyClickCounts()
+    }
+
     suspend fun isEmpty(): Boolean {
         return aacTileDao.getCount() == 0
     }

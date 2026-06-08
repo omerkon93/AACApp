@@ -38,6 +38,7 @@ fun AdminListView(
     val importExportStatus by viewModel.importExportStatus.collectAsState()
     var searchQuery by remember { mutableStateOf("") }
     var showResetConfirm by remember { mutableStateOf(false) }
+    var showResetStatsConfirm by remember { mutableStateOf(false) }
     val context = LocalContext.current
     
     val filteredTiles = remember(searchQuery, tiles) {
@@ -76,6 +77,30 @@ fun AdminListView(
             },
             dismissButton = {
                 TextButton(onClick = { showResetConfirm = false }) {
+                    Text(stringResource(R.string.cancel))
+                }
+            }
+        )
+    }
+
+    if (showResetStatsConfirm) {
+        AlertDialog(
+            onDismissRequest = { showResetStatsConfirm = false },
+            title = { Text(stringResource(R.string.reset_stats_title)) },
+            text = { Text(stringResource(R.string.reset_stats_warning_msg)) },
+            confirmButton = {
+                Button(
+                    onClick = {
+                        showResetStatsConfirm = false
+                        viewModel.resetStatistics(context)
+                    },
+                    colors = ButtonDefaults.buttonColors(containerColor = MaterialTheme.colorScheme.error)
+                ) {
+                    Text(stringResource(R.string.ok))
+                }
+            },
+            dismissButton = {
+                TextButton(onClick = { showResetStatsConfirm = false }) {
                     Text(stringResource(R.string.cancel))
                 }
             }
@@ -140,6 +165,22 @@ fun AdminListView(
                             Icon(Icons.Default.Refresh, contentDescription = null)
                             Spacer(Modifier.width(8.dp))
                             Text(stringResource(R.string.factory_reset_button))
+                        }
+
+                        Spacer(modifier = Modifier.height(8.dp))
+
+                        Button(
+                            onClick = { showResetStatsConfirm = true },
+                            modifier = Modifier.fillMaxWidth(),
+                            colors = ButtonDefaults.buttonColors(
+                                containerColor = MaterialTheme.colorScheme.errorContainer,
+                                contentColor = MaterialTheme.colorScheme.onErrorContainer
+                            ),
+                            shape = RoundedCornerShape(12.dp)
+                        ) {
+                            Icon(Icons.Default.Refresh, contentDescription = null)
+                            Spacer(Modifier.width(8.dp))
+                            Text(stringResource(R.string.reset_stats_button))
                         }
                     }
                 }
