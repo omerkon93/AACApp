@@ -26,38 +26,53 @@ class BackupService(private val context: Context, private val repository: AACRep
         try {
             val allTiles = repository.getEverythingFlow().first()
             
-            // Group tiles by parentId
-            // parentId == null -> export_00_core.json
-            // parentId != null -> export_[parentId].json
-            val groupedTiles = allTiles.groupBy { it.parentId }
+            // Group tiles by languageCode
+            val tilesByLanguage = allTiles.groupBy { it.languageCode }
 
             contentResolver.openOutputStream(uri)?.use { outputStream ->
                 ZipOutputStream(outputStream).use { zos ->
-                    // 1. Write grouped JSON files
-                    groupedTiles.forEach { (parentId, tiles) ->
-                        val fileName = if (parentId == null) {
-                            "export_00_core.json"
-                        } else {
-                            "export_${parentId.replace("[^a-zA-Z0-9]".toRegex(), "_")}.json"
-                        }
-                        
-                        val jsonString = json.encodeToString(tiles)
-                        val jsonEntry = ZipEntry(fileName)
-                        zos.putNextEntry(jsonEntry)
-                        zos.write(jsonString.toByteArray())
-                        zos.closeEntry()
-                    }
+                    val processedZipPaths = HashSet<String>()
 
-                    // 2. Write media files
-                    allTiles.forEach { tile ->
-                        tile.audioUri?.let { path ->
-                            if (isInternalPath(path)) {
-                                addFileToZip(zos, File(path), "audio/${File(path).name}")
+                    tilesByLanguage.forEach { (langCode, langTiles) ->
+                        // 1. Group tiles by parentId for JSON files
+                        val groupedByParent = langTiles.groupBy { it.parentId }
+                        
+                        groupedByParent.forEach { (parentId, tiles) ->
+                            val fileName = if (parentId == null) {
+                                "export_00_core.json"
+                            } else {
+                                "export_${parentId.replace("[^a-zA-Z0-9]".toRegex(), "_")}.json"
+                            }
+                            
+                            val zipPath = "$langCode/tiles/$fileName"
+                            if (processedZipPaths.add(zipPath)) {
+                                val jsonString = json.encodeToString(tiles)
+                                val jsonEntry = ZipEntry(zipPath)
+                                zos.putNextEntry(jsonEntry)
+                                zos.write(jsonString.toByteArray())
+                                zos.closeEntry()
                             }
                         }
-                        tile.imageUri?.let { path ->
-                            if (isInternalPath(path)) {
-                                addFileToZip(zos, File(path), "images/${File(path).name}")
+
+                        // 2. Write media files for this language
+                        langTiles.forEach { tile ->
+                            tile.audioUri?.let { path ->
+                                if (isInternalPath(path)) {
+                                    val fileName = File(path).name
+                                    val zipPath = "$langCode/audio/$fileName"
+                                    if (processedZipPaths.add(zipPath)) {
+                                        addFileToZip(zos, File(path), zipPath)
+                                    }
+                                }
+                            }
+                            tile.imageUri?.let { path ->
+                                if (isInternalPath(path)) {
+                                    val fileName = File(path).name
+                                    val zipPath = "$langCode/images/$fileName"
+                                    if (processedZipPaths.add(zipPath)) {
+                                        addFileToZip(zos, File(path), zipPath)
+                                    }
+                                }
                             }
                         }
                     }
@@ -114,16 +129,8 @@ class BackupService(private val context: Context, private val repository: AACRep
 
     suspend fun importTilesFromJsonAssets(directory: String): Boolean = withContext(Dispatchers.IO) {
         try {
-            val assetManager = context.assets
-            val files = assetManager.list(directory) ?: return@withContext false
             val allTiles = mutableListOf<AACTile>()
-
-            files.filter { it.endsWith(".json") }.forEach { fileName ->
-                val inputStream = assetManager.open("$directory/$fileName")
-                val jsonString = inputStream.bufferedReader().use { it.readText() }
-                val tiles = json.decodeFromString<List<AACTile>>(jsonString)
-                allTiles.addAll(tiles)
-            }
+            scanAssetsRecursively(directory, allTiles)
 
             if (allTiles.isNotEmpty()) {
                 repository.deleteAllTiles()
@@ -135,6 +142,29 @@ class BackupService(private val context: Context, private val repository: AACRep
         } catch (e: Exception) {
             e.printStackTrace()
             false
+        }
+    }
+
+    private fun scanAssetsRecursively(path: String, outList: MutableList<AACTile>) {
+        val assetManager = context.assets
+        val list = assetManager.list(path) ?: return
+
+        for (item in list) {
+            val fullPath = if (path.isEmpty()) item else "$path/$item"
+            if (item.endsWith(".json")) {
+                try {
+                    val jsonString = assetManager.open(fullPath).bufferedReader().use { it.readText() }
+                    val tiles = json.decodeFromString<List<AACTile>>(jsonString)
+                    outList.addAll(tiles)
+                } catch (e: Exception) {
+                    e.printStackTrace()
+                }
+            } else {
+                // If it doesn't have an extension, assume it's a directory and recurse
+                if (!item.contains(".")) {
+                    scanAssetsRecursively(fullPath, outList)
+                }
+            }
         }
     }
 
@@ -157,10 +187,10 @@ class BackupService(private val context: Context, private val repository: AACRep
                             e.printStackTrace()
                         }
                     }
-                    normalizedName.startsWith("audio/") -> {
+                    normalizedName.contains("/audio/") -> {
                         extractFile(zis, File(context.filesDir, "audio_tiles/$fileName"))
                     }
-                    normalizedName.startsWith("images/") -> {
+                    normalizedName.contains("/images/") -> {
                         extractFile(zis, File(context.filesDir, "image_tiles/$fileName"))
                     }
                 }
