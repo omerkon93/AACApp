@@ -40,7 +40,6 @@ import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
-import androidx.compose.material3.contentColorFor
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.runtime.collectAsState
@@ -52,6 +51,7 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.luminance
 import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.layout.ContentScale
@@ -368,7 +368,7 @@ fun ActionButton(
     containerColor: Color,
     modifier: Modifier = Modifier,
     enabled: Boolean = true,
-    contentColor: Color = contentColorFor(containerColor)
+    contentColor: Color = if (containerColor.luminance() > 0.5f) Color.Black else Color.White
 ) {
     Button(
         onClick = onClick,
@@ -485,7 +485,7 @@ fun TileUI(
     modifier: Modifier = Modifier,
     labelFontSize: androidx.compose.ui.unit.TextUnit = 18.sp,
     showSpeakerIcon: Boolean = false,
-    contentColor: Color = contentColorFor(backgroundColor)
+    contentColor: Color = if (backgroundColor.luminance() > 0.4f) Color.Black else Color.White
 ) {
     OutlinedCard(
         modifier = modifier
@@ -574,7 +574,7 @@ fun TileUI(
     }
 }
 
-@Preview(showBackground = true, device = "spec:width=1280dp,height=800dp,orientation=landscape")
+@Preview(showBackground = true, device = "spec:width=1280dp,height=800dp,orientation=landscape", apiLevel = 35)
 @Composable
 fun MainCommunicationScreenPreview() {
     val sampleTiles = listOf(

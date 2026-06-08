@@ -239,8 +239,7 @@ fun TilePickerDialog(
                             modifier = Modifier
                                 .aspectRatio(1f)
                                 .clickable { onTileSelected(tile) },
-                            colors = CardDefaults.cardColors(containerColor = Color.White),
-                            border = BorderStroke(1.dp, Color.Black.copy(alpha = 0.1f))
+                            border = BorderStroke(1.dp, MaterialTheme.colorScheme.outlineVariant)
                         ) {
                             Box(modifier = Modifier.fillMaxSize()) {
                                 if (tile.imageUri != null) {

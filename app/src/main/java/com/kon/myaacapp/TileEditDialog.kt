@@ -953,7 +953,7 @@ fun EditSection(
     }
 }
 
-@Preview(showBackground = true, widthDp = 400, heightDp = 800)
+@Preview(showBackground = true, widthDp = 400, heightDp = 800, apiLevel = 35)
 @Composable
 fun TileEditDialogPreview() {
     MyAACAppTheme {
