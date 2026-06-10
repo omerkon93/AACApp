@@ -126,6 +126,12 @@
     <string name="monthly_usage_title">Monthly Trends</string>
     <string name="yearly_usage_title">Yearly Trends</string>
     <string name="all_time_usage_title">Usage Trends (All Time)</string>
+    <string name="filter_all">All</string>
+    <string name="filter_missing_audio">🔇 No Audio</string>
+    <string name="filter_missing_tts">💬 No TTS</string>
+    <string name="filter_missing_image">🖼️ No Image</string>
+    <string name="filter_unused">📉 Unused</string>
+    <string name="filter_hidden">👻 Hidden</string>
     <string name="ai_insight_title">AI Insights</string>
     <string name="total_words_info">Total times words were clicked to be spoken.</string>
     <string name="avg_time_info">Estimated time the app was open and active.</string>

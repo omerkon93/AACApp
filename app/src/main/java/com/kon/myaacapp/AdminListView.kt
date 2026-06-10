@@ -1,8 +1,6 @@
 package com.kon.myaacapp
 
-import androidx.compose.foundation.BorderStroke
-import androidx.compose.foundation.background
-import androidx.compose.foundation.clickable
+import androidx.compose.foundation.*
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
@@ -34,23 +32,13 @@ fun AdminListView(
     onEditTile: (AACTile) -> Unit,
     onDeleteTile: (AACTile) -> Unit
 ) {
-    val tiles by viewModel.allTiles.collectAsState()
+    val tiles by viewModel.filteredTilesForAdmin.collectAsState()
     val importExportStatus by viewModel.importExportStatus.collectAsState()
-    var searchQuery by remember { mutableStateOf("") }
+    val searchQuery by viewModel.adminSearchQuery.collectAsState()
+    val selectedFilter by viewModel.adminAuditFilter.collectAsState()
     var showResetConfirm by remember { mutableStateOf(false) }
     var showResetStatsConfirm by remember { mutableStateOf(false) }
     val context = LocalContext.current
-    
-    val filteredTiles = remember(searchQuery, tiles) {
-        if (searchQuery.isBlank()) {
-            tiles
-        } else {
-            tiles.filter {
-                it.label.contains(searchQuery, ignoreCase = true) ||
-                it.ttsText.contains(searchQuery, ignoreCase = true)
-            }
-        }
-    }
 
     LaunchedEffect(importExportStatus) {
         importExportStatus?.let {
@@ -115,15 +103,15 @@ fun AdminListView(
     ) {
         OutlinedTextField(
             value = searchQuery,
-            onValueChange = { searchQuery = it },
+            onValueChange = { viewModel.setAdminSearchQuery(it) },
             modifier = Modifier
                 .fillMaxWidth()
-                .padding(bottom = 12.dp),
+                .padding(bottom = 8.dp),
             placeholder = { Text(stringResource(R.string.search_tiles_placeholder)) },
             leadingIcon = { Icon(Icons.Default.Search, contentDescription = null) },
             trailingIcon = if (searchQuery.isNotEmpty()) {
                 {
-                    IconButton(onClick = { searchQuery = "" }) {
+                    IconButton(onClick = { viewModel.setAdminSearchQuery("") }) {
                         Icon(Icons.Default.Clear, contentDescription = stringResource(R.string.clear_action))
                     }
                 }
@@ -131,6 +119,36 @@ fun AdminListView(
             shape = RoundedCornerShape(12.dp),
             singleLine = true
         )
+
+        // Audit Filter Chips
+        Row(
+            modifier = Modifier
+                .fillMaxWidth()
+                .padding(bottom = 12.dp)
+                .horizontalScroll(rememberScrollState()),
+            horizontalArrangement = Arrangement.spacedBy(8.dp)
+        ) {
+            AdminAuditFilter.entries.forEach { filter ->
+                val label = when (filter) {
+                    AdminAuditFilter.ALL -> stringResource(R.string.filter_all)
+                    AdminAuditFilter.MISSING_AUDIO -> stringResource(R.string.filter_missing_audio)
+                    AdminAuditFilter.MISSING_TTS -> stringResource(R.string.filter_missing_tts)
+                    AdminAuditFilter.MISSING_IMAGE -> stringResource(R.string.filter_missing_image)
+                    AdminAuditFilter.UNUSED -> stringResource(R.string.filter_unused)
+                    AdminAuditFilter.HIDDEN -> stringResource(R.string.filter_hidden)
+                }
+
+                FilterChip(
+                    selected = selectedFilter == filter,
+                    onClick = { viewModel.setAdminAuditFilter(filter) },
+                    label = { Text(label, fontSize = 12.sp) },
+                    colors = FilterChipDefaults.filterChipColors(
+                        selectedContainerColor = MaterialTheme.colorScheme.primaryContainer,
+                        selectedLabelColor = MaterialTheme.colorScheme.onPrimaryContainer
+                    )
+                )
+            }
+        }
 
         LazyColumn(
             modifier = Modifier.fillMaxSize(),
@@ -187,7 +205,7 @@ fun AdminListView(
                 }
             }
 
-            items(filteredTiles, key = { it.id }) { tile ->
+            items(tiles, key = { it.id }) { tile ->
                 AdminTileListCard(
                     tile = tile,
                     onEdit = { onEditTile(tile) },

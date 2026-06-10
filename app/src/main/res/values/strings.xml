@@ -126,6 +126,12 @@
     <string name="monthly_usage_title">מגמות חודשיות</string>
     <string name="yearly_usage_title">מגמות שנתיות</string>
     <string name="all_time_usage_title">מגמות שימוש (הכל)</string>
+    <string name="filter_all">הכל</string>
+    <string name="filter_missing_audio">🔇 ללא שמע</string>
+    <string name="filter_missing_tts">💬 ללא TTS</string>
+    <string name="filter_missing_image">🖼️ ללא תמונה</string>
+    <string name="filter_unused">📉 לא בשימוש</string>
+    <string name="filter_hidden">👻 מוסתרים</string>
     <string name="ai_insight_title">תובנות AI</string>
     <string name="total_words_info">סך כל הפעמים שהמשתמש לחץ על מילים להשמעה.</string>
     <string name="avg_time_info">זמן משוער שהאפליקציה הייתה פתוחה ופעילה.</string>

@@ -12,6 +12,10 @@ enum class AnalyticsTimeFilter {
     DAILY, WEEKLY, MONTHLY, YEARLY, ALL_TIME
 }
 
+enum class AdminAuditFilter {
+    ALL, MISSING_AUDIO, MISSING_TTS, MISSING_IMAGE, UNUSED, HIDDEN
+}
+
 @OptIn(ExperimentalCoroutinesApi::class)
 class AACViewModel(application: Application) : AndroidViewModel(application) {
     private val repository: AACRepository
@@ -272,6 +276,42 @@ class AACViewModel(application: Application) : AndroidViewModel(application) {
     fun clearImportExportStatus() {
         _importExportStatus.value = null
     }
+
+    // --- Admin Audit Logic ---
+
+    private val _adminSearchQuery = MutableStateFlow("")
+    val adminSearchQuery = _adminSearchQuery.asStateFlow()
+
+    private val _adminAuditFilter = MutableStateFlow(AdminAuditFilter.ALL)
+    val adminAuditFilter = _adminAuditFilter.asStateFlow()
+
+    fun setAdminSearchQuery(query: String) {
+        _adminSearchQuery.value = query
+    }
+
+    fun setAdminAuditFilter(filter: AdminAuditFilter) {
+        _adminAuditFilter.value = filter
+    }
+
+    val filteredTilesForAdmin: StateFlow<List<AACTile>> = combine(
+        allTiles, _adminSearchQuery, _adminAuditFilter
+    ) { tiles, query, filter ->
+        tiles.filter { tile ->
+            val matchesQuery = if (query.isBlank()) true else {
+                tile.label.contains(query, ignoreCase = true) ||
+                        tile.ttsText.contains(query, ignoreCase = true)
+            }
+            val matchesFilter = when (filter) {
+                AdminAuditFilter.ALL -> true
+                AdminAuditFilter.MISSING_AUDIO -> tile.audioUri.isNullOrBlank()
+                AdminAuditFilter.MISSING_TTS -> tile.ttsText.isBlank()
+                AdminAuditFilter.MISSING_IMAGE -> tile.imageUri.isNullOrBlank()
+                AdminAuditFilter.UNUSED -> tile.clickCount == 0
+                AdminAuditFilter.HIDDEN -> tile.isHidden
+            }
+            matchesQuery && matchesFilter
+        }
+    }.stateIn(viewModelScope, SharingStarted.Lazily, emptyList())
 
     // --- Advanced Analytics Logic ---
 
