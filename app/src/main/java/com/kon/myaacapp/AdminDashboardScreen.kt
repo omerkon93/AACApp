@@ -48,20 +48,22 @@ fun AdminDashboardScreen(
     var showTilePicker by remember { mutableStateOf(false) }
     
     val langCode by viewModel.languageCode.collectAsState()
+    val currentParentId by viewModel.currentParentId.collectAsState()
     val layoutDir = if (langCode == "he") LayoutDirection.Rtl else LayoutDirection.Ltr
 
     CompositionLocalProvider(LocalLayoutDirection provides layoutDir) {
         Scaffold(
             topBar = {
-                TopAppBar(
+                CenterAlignedTopAppBar(
                     title = { 
                         Text(
-                            when (selectedTab) {
-                                AdminTab.HOME -> stringResource(R.string.admin_tab_home)
+                            text = when (selectedTab) {
+                                AdminTab.HOME -> if (currentParentId == null) stringResource(R.string.edit_main_screen) else stringResource(R.string.edit_category)
                                 AdminTab.SETTINGS -> stringResource(R.string.admin_tab_settings)
                                 AdminTab.STATISTICS -> stringResource(R.string.admin_tab_statistics)
                                 AdminTab.SYSTEM -> stringResource(R.string.admin_tab_system)
                             },
+                            style = MaterialTheme.typography.titleMedium,
                             fontWeight = FontWeight.Bold
                         ) 
                     },
@@ -69,7 +71,18 @@ fun AdminDashboardScreen(
                         IconButton(onClick = onNavigateBack) {
                             Icon(Icons.AutoMirrored.Filled.ArrowBack, contentDescription = stringResource(R.string.back))
                         }
-                    }
+                    },
+                    actions = {
+                        if (selectedTab == AdminTab.HOME && currentParentId != null) {
+                            IconButton(onClick = { viewModel.resetToHome() }) {
+                                Icon(Icons.Default.Home, contentDescription = stringResource(R.string.home))
+                            }
+                            IconButton(onClick = { viewModel.navigateBack() }) {
+                                Icon(Icons.Default.ArrowUpward, contentDescription = stringResource(R.string.up))
+                            }
+                        }
+                    },
+                    windowInsets = WindowInsets(0.dp)
                 )
             },
             bottomBar = {
@@ -292,7 +305,10 @@ fun AdminBottomNavigation(
     selectedTab: AdminTab,
     onTabSelected: (AdminTab) -> Unit
 ) {
-    NavigationBar {
+    NavigationBar(
+        modifier = Modifier.height(64.dp),
+        windowInsets = WindowInsets(0.dp)
+    ) {
         NavigationBarItem(
             selected = selectedTab == AdminTab.HOME,
             onClick = { onTabSelected(AdminTab.HOME) },

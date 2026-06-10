@@ -111,13 +111,14 @@ fun AdminListView(
         modifier = Modifier
             .fillMaxSize()
             .padding(horizontal = 16.dp)
+            .padding(top = 8.dp)
     ) {
         OutlinedTextField(
             value = searchQuery,
             onValueChange = { searchQuery = it },
             modifier = Modifier
                 .fillMaxWidth()
-                .padding(vertical = 16.dp),
+                .padding(bottom = 12.dp),
             placeholder = { Text(stringResource(R.string.search_tiles_placeholder)) },
             leadingIcon = { Icon(Icons.Default.Search, contentDescription = null) },
             trailingIcon = if (searchQuery.isNotEmpty()) {

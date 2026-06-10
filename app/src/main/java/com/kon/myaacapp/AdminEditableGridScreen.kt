@@ -8,29 +8,23 @@ import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.PaddingValues
-import androidx.compose.foundation.layout.Row
-import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.aspectRatio
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
-import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.lazy.grid.GridCells
 import androidx.compose.foundation.lazy.grid.LazyVerticalGrid
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Add
-import androidx.compose.material.icons.filled.ArrowUpward
 import androidx.compose.material.icons.filled.Folder
-import androidx.compose.material.icons.filled.Home
 import androidx.compose.material3.CardDefaults
 import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedCard
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
-import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
@@ -38,9 +32,9 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
-import androidx.compose.ui.graphics.luminance
 import androidx.compose.ui.graphics.PathEffect
 import androidx.compose.ui.graphics.drawscope.Stroke
+import androidx.compose.ui.graphics.luminance
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.platform.LocalConfiguration
 import androidx.compose.ui.res.stringResource
@@ -59,7 +53,6 @@ fun AdminEditableGridScreen(
     onCreateTile: (Int) -> Unit
 ) {
     val tiles by viewModel.currentTiles.collectAsState()
-    val currentParentId by viewModel.currentParentId.collectAsState()
     val configuration = LocalConfiguration.current
     val orientation = configuration.orientation
     
@@ -69,37 +62,9 @@ fun AdminEditableGridScreen(
     Column(
         modifier = Modifier
             .fillMaxSize()
-            .padding(16.dp)
+            .padding(horizontal = 16.dp)
+            .padding(top = 8.dp)
     ) {
-        Row(
-            modifier = Modifier
-                .fillMaxWidth()
-                .padding(bottom = 16.dp),
-            horizontalArrangement = Arrangement.SpaceBetween,
-            verticalAlignment = Alignment.CenterVertically
-        ) {
-            Text(
-                text = if (currentParentId == null) stringResource(R.string.edit_main_screen) else stringResource(R.string.edit_category),
-                style = MaterialTheme.typography.titleLarge
-            )
-
-            if (currentParentId != null) {
-                Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                    TextButton(onClick = { viewModel.resetToHome() }) {
-                        Icon(Icons.Default.Home, contentDescription = null)
-                        Spacer(Modifier.width(4.dp))
-                        Text(stringResource(R.string.home))
-                    }
-                    
-                    TextButton(onClick = { viewModel.navigateBack() }) {
-                        Icon(Icons.Default.ArrowUpward, contentDescription = null)
-                        Spacer(Modifier.width(4.dp))
-                        Text(stringResource(R.string.up))
-                    }
-                }
-            }
-        }
-
         LazyVerticalGrid(
             columns = GridCells.Fixed(columnCount),
             horizontalArrangement = Arrangement.spacedBy(12.dp),
