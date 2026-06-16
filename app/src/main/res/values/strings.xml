@@ -149,4 +149,9 @@
     <string name="insight_requests">המשתמש משתמש המון בבקשות (אני רוצה). זו הזדמנות מצוינת ללמד אותו לפרט מה הוא רוצה.</string>
     <string name="insight_general">מגמת השימוש נראית יציבה. כדאי להמשיך להוסיף מילים רלוונטיות לתחומי העניין של המשתמש.</string>
     <string name="mock_ai_insight">עלייה של 15% בשימוש במילות רגש השבוע. כל הכבוד!</string>
+    <string name="tile_action_title">מה ברצונך לעשות?</string>
+    <string name="action_edit_tile">עריכת אריח</string>
+    <string name="action_remove_from_screen">הסרה מהמסך</string>
+    <string name="action_open_category">פתח קטגוריה</string>
+    <string name="hide_tile_label">הסתר אריח (לא יופיע בלוח)</string>
 </resources>

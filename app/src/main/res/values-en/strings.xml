@@ -149,4 +149,9 @@
     <string name="insight_requests">The user is making many requests (I want). This is a great opportunity to teach them to specify what they want.</string>
     <string name="insight_general">Usage trends look stable. It\'s recommended to continue adding words relevant to the user\'s interests.</string>
     <string name="mock_ai_insight">15% increase in emotion words this week. Keep it up!</string>
+    <string name="tile_action_title">What would you like to do?</string>
+    <string name="action_edit_tile">Edit Tile</string>
+    <string name="action_remove_from_screen">Remove from Screen</string>
+    <string name="action_open_category">Open Category</string>
+    <string name="hide_tile_label">Hide Tile (will not appear on board)</string>
 </resources>

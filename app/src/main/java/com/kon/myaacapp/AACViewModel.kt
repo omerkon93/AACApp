@@ -227,6 +227,7 @@ class AACViewModel(application: Application) : AndroidViewModel(application) {
         grammaticalGender: String? = null,
         audioUri: String? = null,
         cellIndex: Int? = null,
+        isHidden: Boolean = false,
     ) {
         viewModelScope.launch {
             val newTile = AACTile(
@@ -246,6 +247,7 @@ class AACViewModel(application: Application) : AndroidViewModel(application) {
                 grammaticalGender = grammaticalGender,
                 audioUri = audioUri,
                 cellIndex = cellIndex,
+                isHidden = isHidden,
                 languageCode = languageCode.value
             )
             repository.insertTile(newTile)
@@ -255,6 +257,12 @@ class AACViewModel(application: Application) : AndroidViewModel(application) {
     fun updateTile(tile: AACTile) {
         viewModelScope.launch {
             repository.updateTile(tile)
+        }
+    }
+
+    fun hideTile(tile: AACTile) {
+        viewModelScope.launch {
+            repository.updateTile(tile.copy(isHidden = true))
         }
     }
 

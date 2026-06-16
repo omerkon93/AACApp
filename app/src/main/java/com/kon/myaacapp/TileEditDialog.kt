@@ -124,6 +124,7 @@ fun TileEditDialog(
             existingTile?.cellIndex?.toString() ?: initialCellIndex?.toString() ?: ""
         )
     }
+    var isHidden by remember { mutableStateOf(existingTile?.isHidden ?: false) }
 
     // Dropdown and Overwrite Logic
     val maxCapacity = 15 // 0-14
@@ -762,6 +763,11 @@ fun TileEditDialog(
                                             Text(stringResource(R.string.quick_response), style = MaterialTheme.typography.bodyMedium)
                                         }
                                     }
+
+                                    Row(verticalAlignment = Alignment.CenterVertically) {
+                                        Checkbox(checked = isHidden, onCheckedChange = { isHidden = it })
+                                        Text(stringResource(R.string.hide_tile_label), style = MaterialTheme.typography.bodyMedium)
+                                    }
                                 }
                             }
                         }
@@ -874,6 +880,7 @@ fun TileEditDialog(
                                                 grammaticalGender = grammaticalGender,
                                                 audioUri = audioUri,
                                                 cellIndex = cellIndex.toIntOrNull(),
+                                                isHidden = isHidden,
                                             )
                                         } else {
                                             viewModel.updateTile(
@@ -893,6 +900,7 @@ fun TileEditDialog(
                                                     grammaticalGender = grammaticalGender,
                                                     audioUri = audioUri,
                                                     cellIndex = cellIndex.toIntOrNull(),
+                                                    isHidden = isHidden,
                                                 ),
                                             )
                                         }

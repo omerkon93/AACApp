@@ -80,13 +80,7 @@ fun AdminEditableGridScreen(
                     AdminTileItem(
                         tile = tile,
                         aspectRatio = aspectRatio,
-                        onClick = {
-                            if (tile.isCategory) {
-                                viewModel.setCategory(tile.id)
-                            } else {
-                                onEditTile(tile)
-                            }
-                        },
+                        onClick = { onEditTile(tile) },
                         onLongClick = { onEditTile(tile) }
                     )
                 } else {

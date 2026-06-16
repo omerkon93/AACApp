@@ -20,10 +20,10 @@ interface AACTileDao {
     @Query("SELECT * FROM aac_tiles WHERE id = :id")
     suspend fun getTileById(id: String): AACTile?
 
-    @Query("SELECT * FROM aac_tiles WHERE parentId = :parentId AND languageCode = :langCode ORDER BY cellIndex ASC, sortOrder ASC")
+    @Query("SELECT * FROM aac_tiles WHERE parentId = :parentId AND languageCode = :langCode AND isHidden = 0 ORDER BY cellIndex ASC, sortOrder ASC")
     fun getTilesByParentId(parentId: String?, langCode: String): Flow<List<AACTile>>
 
-    @Query("SELECT * FROM aac_tiles WHERE parentId IS NULL AND languageCode = :langCode ORDER BY cellIndex ASC, sortOrder ASC")
+    @Query("SELECT * FROM aac_tiles WHERE parentId IS NULL AND languageCode = :langCode AND isHidden = 0 ORDER BY cellIndex ASC, sortOrder ASC")
     fun getRootTiles(langCode: String): Flow<List<AACTile>>
 
     @Query("UPDATE aac_tiles SET clickCount = clickCount + 1 WHERE id = :id")

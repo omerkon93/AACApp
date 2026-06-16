@@ -1,6 +1,7 @@
 package com.kon.myaacapp
 
 import androidx.compose.foundation.BorderStroke
+import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.grid.GridCells
@@ -47,6 +48,7 @@ fun AdminDashboardScreen(
     var tileToDelete by remember { mutableStateOf<AACTile?>(null) }
     var initialCellIndex by remember { mutableStateOf<Int?>(null) }
     var showTilePicker by remember { mutableStateOf(false) }
+    var tileForAction by remember { mutableStateOf<AACTile?>(null) }
     
     val langCode by viewModel.languageCode.collectAsState()
     val currentParentId by viewModel.currentParentId.collectAsState()
@@ -99,9 +101,7 @@ fun AdminDashboardScreen(
                         AdminEditableGridScreen(
                             viewModel = viewModel,
                             onEditTile = { tile ->
-                                editingTile = tile
-                                initialCellIndex = tile?.cellIndex
-                                showTileDialog = true
+                                tileForAction = tile
                             },
                             onCreateTile = { cellIndex ->
                                 editingTile = null
@@ -144,11 +144,12 @@ fun AdminDashboardScreen(
                     // Create New
                     showTileDialog = true
                 } else {
-                    // Move existing tile to this cell
+                    // Move existing tile to this cell and ensure it's not hidden
                     val currentParentId = viewModel.currentParentId.value
                     viewModel.updateTile(tile.copy(
                         parentId = currentParentId,
-                        cellIndex = initialCellIndex
+                        cellIndex = initialCellIndex,
+                        isHidden = false
                     ))
                     initialCellIndex = null
                 }
@@ -193,6 +194,118 @@ fun AdminDashboardScreen(
             }
         )
     }
+
+    if (tileForAction != null) {
+        TileActionDialog(
+            tile = tileForAction!!,
+            onDismiss = { tileForAction = null },
+            onEdit = {
+                editingTile = tileForAction
+                initialCellIndex = tileForAction?.cellIndex
+                tileForAction = null
+                showTileDialog = true
+            },
+            onRemove = {
+                viewModel.hideTile(tileForAction!!)
+                tileForAction = null
+            },
+            onOpen = if (tileForAction?.isCategory == true) {
+                {
+                    viewModel.setCategory(tileForAction?.id)
+                    tileForAction = null
+                }
+            } else null
+        )
+    }
+}
+
+@Composable
+fun TileActionDialog(
+    tile: AACTile,
+    onDismiss: () -> Unit,
+    onEdit: () -> Unit,
+    onRemove: () -> Unit,
+    onOpen: (() -> Unit)? = null
+) {
+    AlertDialog(
+        onDismissRequest = onDismiss,
+        title = { Text(stringResource(R.string.tile_action_title), fontWeight = FontWeight.Bold) },
+        text = {
+            Column(
+                modifier = Modifier.fillMaxWidth(),
+                verticalArrangement = Arrangement.spacedBy(12.dp)
+            ) {
+                // Preview of the tile
+                Box(
+                    modifier = Modifier
+                        .size(80.dp)
+                        .align(Alignment.CenterHorizontally)
+                        .clip(RoundedCornerShape(12.dp))
+                        .background(MaterialTheme.colorScheme.surfaceVariant),
+                    contentAlignment = Alignment.Center
+                ) {
+                    if (tile.imageUri != null) {
+                        AsyncImage(
+                            model = tile.imageUri,
+                            contentDescription = null,
+                            modifier = Modifier.fillMaxSize(),
+                            contentScale = ContentScale.Crop
+                        )
+                    } else {
+                        Text(tile.emoji ?: "✨", fontSize = 40.sp)
+                    }
+                }
+                
+                Text(
+                    text = tile.label,
+                    style = MaterialTheme.typography.titleMedium,
+                    modifier = Modifier.align(Alignment.CenterHorizontally),
+                    textAlign = androidx.compose.ui.text.style.TextAlign.Center
+                )
+                
+                Spacer(modifier = Modifier.height(8.dp))
+
+                if (onOpen != null) {
+                    Button(
+                        onClick = onOpen,
+                        modifier = Modifier.fillMaxWidth(),
+                        shape = RoundedCornerShape(12.dp)
+                    ) {
+                        Icon(Icons.Default.FolderOpen, contentDescription = null)
+                        Spacer(Modifier.width(8.dp))
+                        Text(stringResource(R.string.action_open_category))
+                    }
+                }
+
+                OutlinedButton(
+                    onClick = onEdit,
+                    modifier = Modifier.fillMaxWidth(),
+                    shape = RoundedCornerShape(12.dp)
+                ) {
+                    Icon(Icons.Default.Edit, contentDescription = null)
+                    Spacer(Modifier.width(8.dp))
+                    Text(stringResource(R.string.action_edit_tile))
+                }
+
+                Button(
+                    onClick = onRemove,
+                    modifier = Modifier.fillMaxWidth(),
+                    colors = ButtonDefaults.buttonColors(containerColor = MaterialTheme.colorScheme.errorContainer, contentColor = MaterialTheme.colorScheme.onErrorContainer),
+                    shape = RoundedCornerShape(12.dp)
+                ) {
+                    Icon(Icons.Default.VisibilityOff, contentDescription = null)
+                    Spacer(Modifier.width(8.dp))
+                    Text(stringResource(R.string.action_remove_from_screen))
+                }
+            }
+        },
+        confirmButton = {},
+        dismissButton = {
+            TextButton(onClick = onDismiss) {
+                Text(stringResource(R.string.cancel))
+            }
+        }
+    )
 }
 
 @Composable
