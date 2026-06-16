@@ -69,4 +69,8 @@ class AACRepository(private val aacTileDao: AACTileDao) {
     suspend fun deleteAllTiles() {
         aacTileDao.deleteAllTiles()
     }
+
+    suspend fun getAllTilesSync(): List<AACTile> {
+        return aacTileDao.getAllTilesSync()
+    }
 }

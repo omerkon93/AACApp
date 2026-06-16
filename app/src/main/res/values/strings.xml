@@ -46,7 +46,10 @@
     <string name="search_tiles_placeholder">חיפוש לפי שם אריח או טקסט הקראה…</string>
     <string name="test_audio">שמע</string>
     <string name="edit">עריכה</string>
+    <string name="play_action">השמע</string>
     <string name="delete_action">מחיקה</string>
+    <string name="quick_record_action">הקלטה מהירה</string>
+    <string name="stop_record_action">עצור הקלטה</string>
     <string name="clear_action">נקה</string>
     <string name="cell_occupied_title">תא תפוס</string>
     <string name="cell_occupied_msg">תא זה תפוס כרגע על ידי \'%1$s\'. האם אתה בטוח שברצונך לבחור בו? שמירה זו תדרוס את האריח הקיים.</string>
@@ -110,6 +113,11 @@
     <string name="reset_failed">האיפוס נכשל</string>
     <string name="database_management">ניהול מסד נתונים</string>
     <string name="factory_reset_button">שחזור לנתוני יצרן (מחיקת כל המידע)</string>
+    <string name="remove_all_audio_button">מחיקת כל ההקלטות</string>
+    <string name="remove_all_audio_title">מחיקת כל ההקלטות?</string>
+    <string name="remove_all_audio_confirm_msg">האם אתה בטוח שברצונך למחוק את כל ההקלטות המותאמות אישית מכל האריחים?</string>
+    <string name="audio_removed_success">כל ההקלטות נמחקו בהצלחה</string>
+    <string name="add_new_tile_button">הוספת אריח חדש</string>
     <string name="reset_warning_msg">האם אתה בטוח? פעולה זו תמחק את כל האריחים וההקלטות שהוספת, ותשחזר את לוח התקשורת למצב ההתחלתי.</string>
     <string name="filter_daily">יומי</string>
     <string name="filter_weekly">שבועי</string>

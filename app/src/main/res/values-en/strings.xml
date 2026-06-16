@@ -46,7 +46,10 @@
     <string name="search_tiles_placeholder">Search by tile name or TTS text…</string>
     <string name="test_audio">Test Audio</string>
     <string name="edit">Edit</string>
+    <string name="play_action">Play</string>
     <string name="delete_action">Delete</string>
+    <string name="quick_record_action">Quick Record</string>
+    <string name="stop_record_action">Stop Recording</string>
     <string name="clear_action">Clear</string>
     <string name="cell_occupied_title">Cell Occupied</string>
     <string name="cell_occupied_msg">This cell is currently occupied by \'%1$s\'. Are you sure you want to select it? Saving will overwrite the existing tile.</string>
@@ -110,6 +113,11 @@
     <string name="reset_failed">Reset failed</string>
     <string name="database_management">Database Management</string>
     <string name="factory_reset_button">Factory Reset (Delete All Data)</string>
+    <string name="remove_all_audio_button">Remove All Recordings</string>
+    <string name="remove_all_audio_title">Remove All Recordings?</string>
+    <string name="remove_all_audio_confirm_msg">Are you sure you want to delete all custom recordings from all tiles?</string>
+    <string name="audio_removed_success">All recordings deleted successfully</string>
+    <string name="add_new_tile_button">Add New Tile</string>
     <string name="reset_warning_msg">Are you sure? This will delete all tiles and recordings you have added, and restore the communication board to its initial state.</string>
     <string name="filter_daily">Daily</string>
     <string name="filter_weekly">Weekly</string>

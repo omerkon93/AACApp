@@ -115,7 +115,7 @@ fun AdminDashboardScreen(
                             viewModel = viewModel,
                             onEditTile = { tile ->
                                 editingTile = tile
-                                initialCellIndex = tile.cellIndex
+                                initialCellIndex = tile?.cellIndex
                                 showTileDialog = true
                             },
                             onDeleteTile = { tile ->

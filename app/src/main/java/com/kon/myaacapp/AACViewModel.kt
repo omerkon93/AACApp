@@ -7,6 +7,7 @@ import kotlinx.coroutines.ExperimentalCoroutinesApi
 import kotlinx.coroutines.flow.*
 import kotlinx.coroutines.launch
 import java.util.Calendar
+import java.io.File
 
 enum class AnalyticsTimeFilter {
     DAILY, WEEKLY, MONTHLY, YEARLY, ALL_TIME
@@ -107,6 +108,27 @@ class AACViewModel(application: Application) : AndroidViewModel(application) {
 
     fun updateUserGender(gender: Gender) {
         tileService.setUserGender(gender, viewModelScope)
+    }
+
+    private val _recordingTileId = MutableStateFlow<String?>(null)
+    val recordingTileId: StateFlow<String?> = _recordingTileId.asStateFlow()
+
+    fun startQuickRecording(tileId: String) {
+        _recordingTileId.value = tileId
+        audioService.startRecording(tileId)
+    }
+
+    fun stopQuickRecording(tileId: String) {
+        viewModelScope.launch {
+            audioService.stopRecording()
+            _recordingTileId.value = null
+            // The path is standardized in AudioRecordingService: "audio_$tileId.wav"
+            val outputDir = File(getApplication<Application>().filesDir, "audio_tiles")
+            val outputFile = File(outputDir, "audio_$tileId.wav")
+            if (outputFile.exists()) {
+                updateTileAudioUri(tileId, outputFile.absolutePath)
+            }
+        }
     }
 
     private val _selectedSentence = MutableStateFlow<List<AACTile>>(emptyList())
@@ -326,6 +348,18 @@ class AACViewModel(application: Application) : AndroidViewModel(application) {
         viewModelScope.launch {
             repository.clearAllStatistics()
             _importExportStatus.value = context.getString(R.string.stats_reset_success)
+        }
+    }
+
+    fun removeAllAudio(context: android.content.Context) {
+        viewModelScope.launch(kotlinx.coroutines.Dispatchers.IO) {
+            val tiles = repository.getAllTilesSync()
+            tiles.forEach { tile ->
+                if (tile.audioUri != null) {
+                    updateTile(tile.copy(audioUri = null))
+                }
+            }
+            _importExportStatus.value = context.getString(R.string.audio_removed_success)
         }
     }
 
