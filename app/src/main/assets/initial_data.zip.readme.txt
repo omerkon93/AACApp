@@ -1,0 +1,3 @@
+This zip file contains the initial data for the MyAAC app.
+It is organized by language code (en, he) and contains tiles and audio/image assets.
+The database is automatically populated from this zip file on first install or when the database is empty.

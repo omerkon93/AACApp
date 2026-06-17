@@ -36,18 +36,30 @@ abstract class AACDatabase : RoomDatabase() {
                     override fun onCreate(db: SupportSQLiteDatabase) {
                         super.onCreate(db)
                         // Prepopulate the database when it is first created
-                        CoroutineScope(Dispatchers.IO).launch {
-                            val database = getDatabase(context)
-                            val repository = AACRepository(database.aacTileDao())
-                            val backupService = BackupService(context.applicationContext, repository)
-                            backupService.importFromAssets("initial_data.zip")
-                        }
+                        triggerInitialLoad(context)
+                    }
+
+                    override fun onOpen(db: SupportSQLiteDatabase) {
+                        super.onOpen(db)
+                        // Fallback: check if empty and load if needed
+                        triggerInitialLoad(context)
                     }
                 })
                 .fallbackToDestructiveMigration()
                 .build()
                 INSTANCE = instance
                 instance
+            }
+        }
+
+        private fun triggerInitialLoad(context: Context) {
+            CoroutineScope(Dispatchers.IO).launch {
+                val database = getDatabase(context)
+                val repository = AACRepository(database.aacTileDao())
+                if (repository.isEmpty()) {
+                    val backupService = BackupService(context.applicationContext, repository)
+                    backupService.importFromAssets("initial_data.zip")
+                }
             }
         }
     }

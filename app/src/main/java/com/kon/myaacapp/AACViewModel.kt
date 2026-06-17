@@ -126,7 +126,7 @@ class AACViewModel(application: Application) : AndroidViewModel(application) {
             audioService.stopRecording()
             _recordingTileId.value = null
             // The path is standardized in AudioRecordingService: "audio_$tileId.wav"
-            val outputDir = File(getApplication<Application>().filesDir, "audio_tiles")
+            val outputDir = File(getApplication<Application>().filesDir, "audio_tiles/${languageCode.value}")
             val outputFile = File(outputDir, "audio_$tileId.wav")
             if (outputFile.exists()) {
                 updateTileAudioUri(tileId, outputFile.absolutePath)
