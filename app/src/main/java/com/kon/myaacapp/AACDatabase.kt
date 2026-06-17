@@ -10,7 +10,7 @@ import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
 
-@Database(entities = [AACTile::class, TileClickEvent::class], version = 6, exportSchema = false)
+@Database(entities = [AACTile::class, TileClickEvent::class, TilePlacement::class], version = 7, exportSchema = false)
 abstract class AACDatabase : RoomDatabase() {
     abstract fun aacTileDao(): AACTileDao
 
@@ -59,6 +59,9 @@ abstract class AACDatabase : RoomDatabase() {
                 if (repository.isEmpty()) {
                     val backupService = BackupService(context.applicationContext, repository)
                     backupService.importFromAssets("initial_data.zip")
+                } else {
+                    // Try to migrate placements if they are missing
+                    repository.migrateLegacyPlacements()
                 }
             }
         }

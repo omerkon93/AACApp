@@ -24,10 +24,10 @@ class BackupService(private val context: Context, private val repository: AACRep
 
     suspend fun exportDatabase(contentResolver: ContentResolver, uri: Uri): Boolean = withContext(Dispatchers.IO) {
         try {
-            val allTiles = repository.getEverythingFlow().first()
+            val allTilesWithPlacements = repository.getAllTilesWithPlacements()
             
             // Group tiles by languageCode
-            val tilesByLanguage = allTiles.groupBy { it.languageCode }
+            val tilesByLanguage = allTilesWithPlacements.groupBy { it.languageCode }
 
             contentResolver.openOutputStream(uri)?.use { outputStream ->
                 ZipOutputStream(outputStream).use { zos ->

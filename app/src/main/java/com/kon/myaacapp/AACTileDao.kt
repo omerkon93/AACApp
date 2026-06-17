@@ -20,11 +20,49 @@ interface AACTileDao {
     @Query("SELECT * FROM aac_tiles WHERE id = :id AND languageCode = :langCode")
     suspend fun getTileById(id: String, langCode: String): AACTile?
 
+    @Transaction
+    @Query("""
+        SELECT aac_tiles.*, 
+               tile_placements.cellIndex AS placed_cellIndex, 
+               tile_placements.sortOrder AS placed_sortOrder, 
+               tile_placements.parentId AS placed_parentId 
+        FROM aac_tiles 
+        JOIN tile_placements ON aac_tiles.id = tile_placements.tileId AND aac_tiles.languageCode = tile_placements.languageCode
+        WHERE tile_placements.parentId = :parentId AND aac_tiles.languageCode = :langCode AND aac_tiles.isHidden = 0 
+        ORDER BY tile_placements.cellIndex ASC, tile_placements.sortOrder ASC
+    """)
+    fun getTilesByParentIdWithPlacement(parentId: String, langCode: String): Flow<List<AACTileWithPlacement>>
+
     @Query("SELECT * FROM aac_tiles WHERE parentId = :parentId AND languageCode = :langCode AND isHidden = 0 ORDER BY cellIndex ASC, sortOrder ASC")
-    fun getTilesByParentId(parentId: String?, langCode: String): Flow<List<AACTile>>
+    fun getTilesByParentIdLegacy(parentId: String?, langCode: String): Flow<List<AACTile>>
 
     @Query("SELECT * FROM aac_tiles WHERE parentId IS NULL AND languageCode = :langCode AND isHidden = 0 ORDER BY cellIndex ASC, sortOrder ASC")
-    fun getRootTiles(langCode: String): Flow<List<AACTile>>
+    fun getRootTilesLegacy(langCode: String): Flow<List<AACTile>>
+
+    // --- TilePlacement Operations ---
+
+    @Insert(onConflict = OnConflictStrategy.REPLACE)
+    suspend fun insertPlacement(placement: TilePlacement)
+
+    @Query("DELETE FROM tile_placements WHERE tileId = :tileId AND parentId = :parentId AND languageCode = :langCode")
+    suspend fun deletePlacement(tileId: String, parentId: String, langCode: String)
+
+    @Query("DELETE FROM tile_placements WHERE tileId = :tileId AND languageCode = :langCode")
+    suspend fun deleteAllPlacementsForTile(tileId: String, langCode: String)
+
+    @Query("SELECT * FROM tile_placements")
+    suspend fun getAllPlacements(): List<TilePlacement>
+
+    @Transaction
+    @Query("""
+        SELECT aac_tiles.*, 
+               tile_placements.cellIndex AS placed_cellIndex, 
+               tile_placements.sortOrder AS placed_sortOrder, 
+               tile_placements.parentId AS placed_parentId
+        FROM aac_tiles 
+        JOIN tile_placements ON aac_tiles.id = tile_placements.tileId AND aac_tiles.languageCode = tile_placements.languageCode
+    """)
+    suspend fun getAllTilesWithPlacements(): List<AACTileWithPlacement>
 
     @Query("UPDATE aac_tiles SET clickCount = clickCount + 1 WHERE id = :id AND languageCode = :langCode")
     suspend fun incrementClickCount(id: String, langCode: String)

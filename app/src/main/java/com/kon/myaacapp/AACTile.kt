@@ -41,3 +41,18 @@ data class AACTile(
     val clickCount: Int = 0,           // Analytics for therapists/parents
     val languageCode: String = "he",   // "he", "en", etc.
 )
+
+data class AACTileWithPlacement(
+    @androidx.room.Embedded val tile: AACTile,
+    @androidx.room.ColumnInfo(name = "placed_cellIndex") val placedCellIndex: Int?,
+    @androidx.room.ColumnInfo(name = "placed_sortOrder") val placedSortOrder: Int,
+    @androidx.room.ColumnInfo(name = "placed_parentId") val placedParentId: String?
+)
+
+fun AACTileWithPlacement.toAACTile(): AACTile {
+    return tile.copy(
+        cellIndex = placedCellIndex,
+        sortOrder = placedSortOrder,
+        parentId = if (placedParentId == "ROOT_COLLECTION") null else placedParentId
+    )
+}

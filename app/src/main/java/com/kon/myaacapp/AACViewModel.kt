@@ -263,6 +263,18 @@ class AACViewModel(application: Application) : AndroidViewModel(application) {
         }
     }
 
+    fun attachTileToCategory(tileId: String, parentId: String?, cellIndex: Int?) {
+        viewModelScope.launch {
+            repository.attachTileToCategory(tileId, parentId, languageCode.value, cellIndex)
+        }
+    }
+
+    fun removeTileFromCategory(tileId: String, parentId: String?) {
+        viewModelScope.launch {
+            repository.removeTileFromCategory(tileId, parentId, languageCode.value)
+        }
+    }
+
     fun hideTile(tile: AACTile) {
         viewModelScope.launch {
             repository.updateTile(tile.copy(isHidden = true))

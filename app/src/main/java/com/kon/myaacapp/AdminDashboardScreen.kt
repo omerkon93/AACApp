@@ -144,13 +144,9 @@ fun AdminDashboardScreen(
                     // Create New
                     showTileDialog = true
                 } else {
-                    // Move existing tile to this cell and ensure it's not hidden
+                    // ATTACH existing tile to this cell instead of moving it
                     val currentParentId = viewModel.currentParentId.value
-                    viewModel.updateTile(tile.copy(
-                        parentId = currentParentId,
-                        cellIndex = initialCellIndex,
-                        isHidden = false
-                    ))
+                    viewModel.attachTileToCategory(tile.id, currentParentId, initialCellIndex)
                     initialCellIndex = null
                 }
             }
@@ -206,7 +202,8 @@ fun AdminDashboardScreen(
                 showTileDialog = true
             },
             onRemove = {
-                viewModel.hideTile(tileForAction!!)
+                val currentParentId = viewModel.currentParentId.value
+                viewModel.removeTileFromCategory(tileForAction!!.id, currentParentId)
                 tileForAction = null
             },
             onOpen = if (tileForAction?.isCategory == true) {
