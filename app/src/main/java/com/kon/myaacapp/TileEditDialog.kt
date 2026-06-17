@@ -142,6 +142,8 @@ fun TileEditDialog(
     var isRecording by remember { mutableStateOf(value = false) }
     var recordingDuration by remember { mutableLongStateOf(0L) }
 
+    val languageCode by viewModel.languageCode.collectAsState()
+
     LaunchedEffect(isRecording) {
         if (isRecording) {
             val startTime = System.currentTimeMillis()
@@ -227,7 +229,7 @@ fun TileEditDialog(
     ) { isGranted ->
         if (isGranted) {
             val tempId = UUID.randomUUID().toString()
-            audioUri = viewModel.audioService.startRecording(tempId)
+            audioUri = viewModel.audioService.startRecording(tempId, languageCode)
             if (audioUri != null) isRecording = true
         }
     }
@@ -574,7 +576,7 @@ fun TileEditDialog(
 
                                                     if (hasPermission) {
                                                         val tempId = UUID.randomUUID().toString()
-                                                        audioUri = viewModel.audioService.startRecording(tempId)
+                                                        audioUri = viewModel.audioService.startRecording(tempId, languageCode)
                                                         if (audioUri != null) isRecording = true
                                                     } else {
                                                         permissionLauncher.launch(Manifest.permission.RECORD_AUDIO)

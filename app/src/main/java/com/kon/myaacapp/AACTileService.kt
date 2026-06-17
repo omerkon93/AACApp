@@ -8,7 +8,6 @@ import kotlinx.coroutines.launch
 enum class Gender { MALE, FEMALE }
 
 class AACTileService(
-    private val repository: AACRepository,
     private val settingsRepository: SettingsRepository,
     scope: kotlinx.coroutines.CoroutineScope
 ) {
@@ -41,10 +40,7 @@ class AACTileService(
      * Handles the complex navigation and state transitions when a tile is pressed.
      * @return Pair of (ShouldAddToStringStrip, NavigateToCategoryId?)
      */
-    suspend fun handleTilePress(tile: AACTile): Pair<Boolean, String?> {
-        // Analytics
-        repository.incrementClickCount(tile.id, tile.languageCode)
-
+    fun handleTilePress(tile: AACTile): Pair<Boolean, String?> {
         return when {
             tile.isQuickFire -> {
                 // Speak immediately, don't add to sentence, no navigation

@@ -118,7 +118,7 @@ fun AdminStatisticsScreenContent(
         TimeFilterSelector(selectedFilter = selectedFilter, onFilterSelected = onFilterSelected)
 
         // Overview Bento Grid
-        OverviewBentoGrid(totalClicks = totalClicks)
+        OverviewBentoGrid(totalClicks = totalClicks, clickEvents = clickEvents)
 
         // Top Words Chart
         TopWordsChart(topWords = topWords)
@@ -177,8 +177,28 @@ fun TimeFilterSelector(
 }
 
 @Composable
-fun OverviewBentoGrid(totalClicks: Int) {
+fun OverviewBentoGrid(totalClicks: Int, clickEvents: List<TileClickEvent>) {
     var infoDialogContent by remember { mutableStateOf<Pair<String, String>?>(null) }
+
+    val avgSessionTime = remember(clickEvents) {
+        if (clickEvents.isEmpty()) "0m" else {
+            val sessions = clickEvents.groupBy { 
+                val cal = Calendar.getInstance()
+                cal.timeInMillis = it.timestamp
+                cal.get(Calendar.DAY_OF_YEAR)
+            }
+            // Very rough estimation: 2 minutes per active day
+            "${sessions.size * 2}m"
+        }
+    }
+
+    val activeSessions = remember(clickEvents) {
+        clickEvents.groupBy {
+            val cal = Calendar.getInstance()
+            cal.timeInMillis = it.timestamp
+            cal.get(Calendar.DAY_OF_YEAR)
+        }.size.toString()
+    }
 
     if (infoDialogContent != null) {
         AlertDialog(
@@ -212,7 +232,7 @@ fun OverviewBentoGrid(totalClicks: Int) {
         ) {
             MetricCard(
                 label = stringResource(R.string.avg_time_per_session),
-                value = "12m",
+                value = avgSessionTime,
                 color = MaterialTheme.colorScheme.secondaryContainer,
                 onInfoClick = {
                     infoDialogContent = "זמן ממוצע" to "זמן משוער שהאפליקציה הייתה פתוחה ופעילה."
@@ -220,7 +240,7 @@ fun OverviewBentoGrid(totalClicks: Int) {
             )
             MetricCard(
                 label = stringResource(R.string.active_sessions),
-                value = "4",
+                value = activeSessions,
                 color = MaterialTheme.colorScheme.tertiaryContainer,
                 onInfoClick = {
                     infoDialogContent = "סשנים פעילים" to "מספר הפעמים שהאפליקציה נפתחה לשימוש השבוע."

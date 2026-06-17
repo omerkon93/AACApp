@@ -86,8 +86,6 @@ fun MainCommunicationScreen(
     val userGender by viewModel.userGender.collectAsState()
     val langCode by viewModel.languageCode.collectAsState()
 
-    val speakOnTilePress by viewModel.speakOnTilePress.collectAsState()
-
     BackHandler(enabled = currentParentId != null) {
         viewModel.navigateBack()
     }
@@ -103,9 +101,6 @@ fun MainCommunicationScreen(
         onBackspace = { viewModel.backspaceSentence() },
         onTileClick = { tile -> 
             viewModel.selectTile(tile, onNavigateToCategory)
-            if (speakOnTilePress) {
-                viewModel.playPreviewAudio(tile.ttsText, tile.audioUri)
-            }
         },
         onBackClick = {
             if (currentParentId != null) {

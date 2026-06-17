@@ -31,8 +31,8 @@ class AudioRecordingService(private val context: Context) {
     }
 
     @SuppressLint("MissingPermission")
-    fun startRecording(tileId: String): String? {
-        val outputDir = File(context.filesDir, "audio_tiles")
+    fun startRecording(tileId: String, languageCode: String): String? {
+        val outputDir = File(context.filesDir, "audio_tiles/$languageCode")
         if (!outputDir.exists()) {
             outputDir.mkdirs()
         }

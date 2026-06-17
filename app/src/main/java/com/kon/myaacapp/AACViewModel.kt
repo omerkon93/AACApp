@@ -33,7 +33,7 @@ class AACViewModel(application: Application) : AndroidViewModel(application) {
         settingsRepository = SettingsRepository(application)
         ttsHelper = TextToSpeechHelper(application)
         
-        tileService = AACTileService(repository, settingsRepository, viewModelScope)
+        tileService = AACTileService(settingsRepository, viewModelScope)
         audioService = AudioRecordingService(application)
         backupService = BackupService(application, repository)
     }
@@ -118,7 +118,7 @@ class AACViewModel(application: Application) : AndroidViewModel(application) {
 
     fun startQuickRecording(tileId: String) {
         _recordingTileId.value = tileId
-        audioService.startRecording(tileId)
+        audioService.startRecording(tileId, languageCode.value)
     }
 
     fun stopQuickRecording(tileId: String) {
