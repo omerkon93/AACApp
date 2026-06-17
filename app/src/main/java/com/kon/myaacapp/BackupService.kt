@@ -119,7 +119,8 @@ class BackupService(private val context: Context, private val repository: AACRep
                     importDatabaseFromStream(inputStream)
                 }
             } else {
-                importTilesFromJsonAssets("seed")
+                // FIX: Replaced the hardcoded "seed" with the provided parameter
+                importTilesFromJsonAssets(fileName)
             }
         } catch (e: Exception) {
             e.printStackTrace()
@@ -133,7 +134,14 @@ class BackupService(private val context: Context, private val repository: AACRep
             scanAssetsRecursively(directory, allTiles)
 
             if (allTiles.isNotEmpty()) {
-                repository.deleteAllTiles()
+                // Find out which languages we are importing
+                val languagesToReplace = allTiles.map { it.languageCode }.distinct()
+
+                // Only delete those specific languages
+                languagesToReplace.forEach { langCode ->
+                    repository.deleteTilesByLanguage(langCode)
+                }
+
                 repository.insertTiles(allTiles)
                 true
             } else {
@@ -149,18 +157,33 @@ class BackupService(private val context: Context, private val repository: AACRep
         val assetManager = context.assets
         val list = assetManager.list(path) ?: return
 
+        // FIX: Look at the last folder in the current path to infer the language
+        // e.g., if path is "assets/initial_data/en", inferredLangCode becomes "en"
+        val pathParts = path.split('/')
+        val inferredLangCode = if (pathParts.size >= 2) {
+            pathParts.last()
+        } else {
+            null
+        }
+
         for (item in list) {
             val fullPath = if (path.isEmpty()) item else "$path/$item"
             if (item.endsWith(".json")) {
                 try {
                     val jsonString = assetManager.open(fullPath).bufferedReader().use { it.readText() }
                     val tiles = json.decodeFromString<List<AACTile>>(jsonString)
-                    outList.addAll(tiles)
+
+                    // If the language code isn't null, apply it to all tiles in this folder
+                    val updatedTiles = if (inferredLangCode != null) {
+                        tiles.map { it.copy(languageCode = inferredLangCode) }
+                    } else {
+                        tiles
+                    }
+                    outList.addAll(updatedTiles)
                 } catch (e: Exception) {
                     e.printStackTrace()
                 }
             } else {
-                // If it doesn't have an extension, assume it's a directory and recurse
                 if (!item.contains(".")) {
                     scanAssetsRecursively(fullPath, outList)
                 }
@@ -177,21 +200,33 @@ class BackupService(private val context: Context, private val repository: AACRep
                 val normalizedName = entry.name.replace('\\', '/')
                 val fileName = File(normalizedName).name
                 
+                // Infer language code from the first part of the path (e.g., "en/tiles/..." -> "en")
+                val pathParts = normalizedName.split('/')
+                val inferredLangCode = if (pathParts.size > 1) pathParts[0] else null
+
                 when {
                     normalizedName.endsWith(".json") -> {
                         val jsonStr = zis.bufferedReader().readText()
                         try {
                             val tiles = json.decodeFromString<List<AACTile>>(jsonStr)
-                            allImportedTiles.addAll(tiles)
+                            // Override languageCode if inferred from path
+                            val updatedTiles = if (inferredLangCode != null) {
+                                tiles.map { it.copy(languageCode = inferredLangCode) }
+                            } else {
+                                tiles
+                            }
+                            allImportedTiles.addAll(updatedTiles)
                         } catch (e: Exception) {
                             e.printStackTrace()
                         }
                     }
                     normalizedName.contains("/audio/") -> {
-                        extractFile(zis, File(context.filesDir, "audio_tiles/$fileName"))
+                        val subDir = if (inferredLangCode != null) "audio_tiles/$inferredLangCode" else "audio_tiles"
+                        extractFile(zis, File(context.filesDir, "$subDir/$fileName"))
                     }
                     normalizedName.contains("/images/") -> {
-                        extractFile(zis, File(context.filesDir, "image_tiles/$fileName"))
+                        val subDir = if (inferredLangCode != null) "image_tiles/$inferredLangCode" else "image_tiles"
+                        extractFile(zis, File(context.filesDir, "$subDir/$fileName"))
                     }
                 }
                 zis.closeEntry()
@@ -203,20 +238,31 @@ class BackupService(private val context: Context, private val repository: AACRep
             // Remap URIs to current device paths
             val remappedTiles = allImportedTiles.map { tile ->
                 var updatedTile = tile
+                val langCode = tile.languageCode
+                
                 tile.audioUri?.let { oldPath ->
                     val fileName = File(oldPath).name
-                    val newPath = File(context.filesDir, "audio_tiles/$fileName").absolutePath
+                    val subDir = if (langCode.isNotEmpty()) "audio_tiles/$langCode" else "audio_tiles"
+                    val newPath = File(context.filesDir, "$subDir/$fileName").absolutePath
                     updatedTile = updatedTile.copy(audioUri = newPath)
                 }
                 tile.imageUri?.let { oldPath ->
                     val fileName = File(oldPath).name
-                    val newPath = File(context.filesDir, "image_tiles/$fileName").absolutePath
+                    val subDir = if (langCode.isNotEmpty()) "image_tiles/$langCode" else "image_tiles"
+                    val newPath = File(context.filesDir, "$subDir/$fileName").absolutePath
                     updatedTile = updatedTile.copy(imageUri = newPath)
                 }
                 updatedTile
             }
 
-            repository.deleteAllTiles()
+            // Find out which languages are in this zip file
+            val languagesToReplace = remappedTiles.map { it.languageCode }.distinct()
+
+            // Only delete those specific languages
+            languagesToReplace.forEach { langCode ->
+                repository.deleteTilesByLanguage(langCode)
+            }
+
             repository.insertTiles(remappedTiles)
             return true
         }

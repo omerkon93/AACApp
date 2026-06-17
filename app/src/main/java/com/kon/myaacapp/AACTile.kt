@@ -1,13 +1,12 @@
 package com.kon.myaacapp
 
 import androidx.room.Entity
-import androidx.room.PrimaryKey
 import kotlinx.serialization.Serializable
 
-@Entity(tableName = "aac_tiles")
+@Entity(tableName = "aac_tiles", primaryKeys = ["id", "languageCode"])
 @Serializable
 data class AACTile(
-    @PrimaryKey val id: String,
+    val id: String,
 
     // 1. Base Text & Speech
     val label: String,            // Display text

@@ -43,7 +43,7 @@ class AACTileService(
      */
     suspend fun handleTilePress(tile: AACTile): Pair<Boolean, String?> {
         // Analytics
-        repository.incrementClickCount(tile.id)
+        repository.incrementClickCount(tile.id, tile.languageCode)
 
         return when {
             tile.isQuickFire -> {

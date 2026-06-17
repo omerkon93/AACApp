@@ -24,8 +24,8 @@ class AACRepository(private val aacTileDao: AACTileDao) {
         return aacTileDao.getAllCategories(langCode)
     }
 
-    suspend fun getTileById(id: String): AACTile? {
-        return aacTileDao.getTileById(id)
+    suspend fun getTileById(id: String, langCode: String): AACTile? {
+        return aacTileDao.getTileById(id, langCode)
     }
 
     suspend fun insertTile(tile: AACTile) {
@@ -44,8 +44,8 @@ class AACRepository(private val aacTileDao: AACTileDao) {
         aacTileDao.deleteTile(tile)
     }
 
-    suspend fun incrementClickCount(id: String) {
-        aacTileDao.incrementClickCount(id)
+    suspend fun incrementClickCount(id: String, langCode: String) {
+        aacTileDao.incrementClickCount(id, langCode)
         aacTileDao.insertClickEvent(TileClickEvent(tileId = id))
     }
 
@@ -68,6 +68,10 @@ class AACRepository(private val aacTileDao: AACTileDao) {
 
     suspend fun deleteAllTiles() {
         aacTileDao.deleteAllTiles()
+    }
+
+    suspend fun deleteTilesByLanguage(languageCode: String) {
+        aacTileDao.deleteTilesByLanguage(languageCode)
     }
 
     suspend fun getAllTilesSync(): List<AACTile> {

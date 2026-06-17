@@ -17,8 +17,8 @@ interface AACTileDao {
     @Delete
     suspend fun deleteTile(tile: AACTile)
 
-    @Query("SELECT * FROM aac_tiles WHERE id = :id")
-    suspend fun getTileById(id: String): AACTile?
+    @Query("SELECT * FROM aac_tiles WHERE id = :id AND languageCode = :langCode")
+    suspend fun getTileById(id: String, langCode: String): AACTile?
 
     @Query("SELECT * FROM aac_tiles WHERE parentId = :parentId AND languageCode = :langCode AND isHidden = 0 ORDER BY cellIndex ASC, sortOrder ASC")
     fun getTilesByParentId(parentId: String?, langCode: String): Flow<List<AACTile>>
@@ -26,8 +26,8 @@ interface AACTileDao {
     @Query("SELECT * FROM aac_tiles WHERE parentId IS NULL AND languageCode = :langCode AND isHidden = 0 ORDER BY cellIndex ASC, sortOrder ASC")
     fun getRootTiles(langCode: String): Flow<List<AACTile>>
 
-    @Query("UPDATE aac_tiles SET clickCount = clickCount + 1 WHERE id = :id")
-    suspend fun incrementClickCount(id: String)
+    @Query("UPDATE aac_tiles SET clickCount = clickCount + 1 WHERE id = :id AND languageCode = :langCode")
+    suspend fun incrementClickCount(id: String, langCode: String)
 
     @Query("SELECT * FROM aac_tiles")
     fun getAllTilesSync(): List<AACTile>
@@ -46,6 +46,9 @@ interface AACTileDao {
 
     @Query("DELETE FROM aac_tiles")
     suspend fun deleteAllTiles()
+
+    @Query("DELETE FROM aac_tiles WHERE languageCode = :languageCode")
+    suspend fun deleteTilesByLanguage(languageCode: String)
 
     // --- TileClickEvent Operations ---
 

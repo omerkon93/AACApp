@@ -71,6 +71,8 @@ class AACViewModel(application: Application) : AndroidViewModel(application) {
         .stateIn(viewModelScope, SharingStarted.Lazily, true)
 
     val languageCode: StateFlow<String> = settingsRepository.languageCodeFlow
+        // ADD THIS MAP LINE TO FIX THE HEBREW BUG:
+        .map { lang -> if (lang == "iw") "he" else lang }
         .onEach { lang -> ttsHelper.setLanguage(lang) }
         .stateIn(viewModelScope, SharingStarted.Lazily, "he")
 
@@ -104,6 +106,7 @@ class AACViewModel(application: Application) : AndroidViewModel(application) {
 
     suspend fun updateLanguageCode(lang: String) {
         settingsRepository.updateLanguageCode(lang)
+        resetToHome()
     }
 
     fun updateUserGender(gender: Gender) {
@@ -155,7 +158,7 @@ class AACViewModel(application: Application) : AndroidViewModel(application) {
             
             if (shouldAdd) {
                 addTileToSentence(tile)
-                repository.incrementClickCount(tile.id)
+                repository.incrementClickCount(tile.id, tile.languageCode)
             }
             
             val shouldSpeak = if (tile.isQuickFire) {
@@ -275,7 +278,7 @@ class AACViewModel(application: Application) : AndroidViewModel(application) {
 
     fun updateTileAudioUri(tileId: String, audioUri: String?) {
         viewModelScope.launch {
-            repository.getTileById(tileId)?.let { tile ->
+            repository.getTileById(tileId, languageCode.value)?.let { tile ->
                 repository.updateTile(tile.copy(audioUri = audioUri))
             }
         }
