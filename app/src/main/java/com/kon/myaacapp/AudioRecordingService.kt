@@ -15,6 +15,7 @@ import java.io.OutputStream
 import java.nio.ByteBuffer
 import java.nio.ByteOrder
 import kotlin.coroutines.resume
+import kotlin.time.Duration.Companion.milliseconds
 
 class AudioRecordingService(private val context: Context) {
 
@@ -32,7 +33,8 @@ class AudioRecordingService(private val context: Context) {
 
     @SuppressLint("MissingPermission")
     fun startRecording(tileId: String, languageCode: String): String? {
-        val outputDir = File(context.filesDir, "audio_tiles/$languageCode")
+        val normalizedLang = LocaleHelper.normalize(languageCode)
+        val outputDir = File(context.filesDir, "audio_tiles/$normalizedLang")
         if (!outputDir.exists()) {
             outputDir.mkdirs()
         }
@@ -249,7 +251,7 @@ class AudioRecordingService(private val context: Context) {
                 val text = tileService.getTTSText(tile)
                 ttsHelper.speakSuspend(text)
             }
-            delay(150)
+            delay(150.milliseconds)
         }
     }
 

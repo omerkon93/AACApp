@@ -4,12 +4,9 @@ import android.content.ContentResolver
 import android.content.Context
 import android.net.Uri
 import kotlinx.coroutines.Dispatchers
-import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.withContext
-import kotlinx.serialization.encodeToString
 import kotlinx.serialization.json.Json
 import java.io.File
-import java.io.InputStreamReader
 import java.util.zip.ZipEntry
 import java.util.zip.ZipInputStream
 import java.util.zip.ZipOutputStream
@@ -44,7 +41,8 @@ class BackupService(private val context: Context, private val repository: AACRep
                                 "export_${parentId.replace("[^a-zA-Z0-9]".toRegex(), "_")}.json"
                             }
                             
-                            val zipPath = "$langCode/tiles/$fileName"
+                            val normalizedLang = LocaleHelper.normalize(langCode)
+                            val zipPath = "$normalizedLang/tiles/$fileName"
                             if (processedZipPaths.add(zipPath)) {
                                 val jsonString = json.encodeToString(tiles)
                                 val jsonEntry = ZipEntry(zipPath)
@@ -56,10 +54,11 @@ class BackupService(private val context: Context, private val repository: AACRep
 
                         // 2. Write media files for this language
                         langTiles.forEach { tile ->
+                            val normalizedLang = LocaleHelper.normalize(langCode)
                             tile.audioUri?.let { path ->
                                 if (isInternalPath(path)) {
                                     val fileName = File(path).name
-                                    val zipPath = "$langCode/audio/$fileName"
+                                    val zipPath = "$normalizedLang/audio/$fileName"
                                     if (processedZipPaths.add(zipPath)) {
                                         addFileToZip(zos, File(path), zipPath)
                                     }
@@ -68,7 +67,7 @@ class BackupService(private val context: Context, private val repository: AACRep
                             tile.imageUri?.let { path ->
                                 if (isInternalPath(path)) {
                                     val fileName = File(path).name
-                                    val zipPath = "$langCode/images/$fileName"
+                                    val zipPath = "$normalizedLang/images/$fileName"
                                     if (processedZipPaths.add(zipPath)) {
                                         addFileToZip(zos, File(path), zipPath)
                                     }
@@ -161,7 +160,7 @@ class BackupService(private val context: Context, private val repository: AACRep
         // e.g., if path is "assets/initial_data/en", inferredLangCode becomes "en"
         val pathParts = path.split('/')
         val inferredLangCode = if (pathParts.size >= 2) {
-            pathParts.last()
+            LocaleHelper.normalize(pathParts.last())
         } else {
             null
         }
@@ -202,7 +201,7 @@ class BackupService(private val context: Context, private val repository: AACRep
                 
                 // Infer language code from the first part of the path (e.g., "en/tiles/..." -> "en")
                 val pathParts = normalizedName.split('/')
-                val inferredLangCode = if (pathParts.size > 1) pathParts[0] else null
+                val inferredLangCode = if (pathParts.size > 1) LocaleHelper.normalize(pathParts[0]) else null
 
                 when {
                     normalizedName.endsWith(".json") -> {
@@ -274,15 +273,4 @@ class BackupService(private val context: Context, private val repository: AACRep
         targetFile.outputStream().use { zis.copyTo(it) }
     }
 
-    suspend fun loadTilesFromAssets(fileName: String): List<AACTile>? = withContext(Dispatchers.IO) {
-        try {
-            val inputStream = context.assets.open(fileName)
-            val reader = InputStreamReader(inputStream)
-            val jsonString = reader.use { it.readText() }
-            json.decodeFromString<List<AACTile>>(jsonString)
-        } catch (e: Exception) {
-            e.printStackTrace()
-            null
-        }
-    }
 }

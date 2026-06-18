@@ -29,6 +29,7 @@ class MainActivity : ComponentActivity() {
             settingsRepository.languageCodeFlow.first()
         }
         super.attachBaseContext(LocaleHelper.wrap(newBase, languageCode))
+        com.google.android.play.core.splitcompat.SplitCompat.installActivity(this)
     }
 
     override fun onCreate(savedInstanceState: Bundle?) {

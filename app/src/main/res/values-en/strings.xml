@@ -1,6 +1,5 @@
 <resources>
     <string name="app_name">MyAACApp</string>
-    <string name="admin_tab_home">Board Editor</string>
     <string name="admin_tab_settings">Tile Settings</string>
     <string name="admin_tab_statistics">Data &amp; Statistics</string>
     <string name="admin_tab_system">System Settings</string>
@@ -24,12 +23,12 @@
     <string name="language">Language</string>
     <string name="hebrew">Hebrew</string>
     <string name="english">English</string>
+    <string name="downloading_lang">Downloading language (%1$d%%)…</string>
+    <string name="installing_lang">Installing language…</string>
+    <string name="lang_download_failed">Language download failed: %1$s</string>
     <string name="grammatical_gender">Grammatical Gender</string>
     <string name="male">Male</string>
     <string name="female">Female</string>
-    <string name="main_screen">Main Screen</string>
-    <string name="category">Category</string>
-    <string name="toggle_gender">Toggle Gender</string>
     <string name="admin_access">Admin Access</string>
     <string name="enter_admin_password">Enter Admin Password</string>
     <string name="password">Password</string>
@@ -45,7 +44,6 @@
     <string name="clear">Clear</string>
     <string name="search_tiles_placeholder">Search by tile name or TTS text…</string>
     <string name="test_audio">Test Audio</string>
-    <string name="edit">Edit</string>
     <string name="play_action">Play</string>
     <string name="delete_action">Delete</string>
     <string name="quick_record_action">Quick Record</string>
@@ -141,14 +139,10 @@
     <string name="filter_unused">📉 Unused</string>
     <string name="filter_hidden">👻 Hidden</string>
     <string name="ai_insight_title">AI Insights</string>
-    <string name="total_words_info">Total times words were clicked to be spoken.</string>
-    <string name="avg_time_info">Estimated time the app was open and active.</string>
-    <string name="active_sessions_info">Number of times the app was opened for use this week.</string>
     <string name="other_category">Other</string>
     <string name="insight_food">We noticed high interest in the Food category. Consider adding new foods to the board to encourage communication!</string>
     <string name="insight_requests">The user is making many requests (I want). This is a great opportunity to teach them to specify what they want.</string>
     <string name="insight_general">Usage trends look stable. It\'s recommended to continue adding words relevant to the user\'s interests.</string>
-    <string name="mock_ai_insight">15% increase in emotion words this week. Keep it up!</string>
     <string name="tile_action_title">What would you like to do?</string>
     <string name="action_edit_tile">Edit Tile</string>
     <string name="action_remove_from_screen">Remove from Screen</string>

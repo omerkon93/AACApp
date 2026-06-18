@@ -2,7 +2,6 @@ package com.kon.myaacapp
 
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.map
-import com.kon.myaacapp.ROOT_PARENT_ID
 
 class AACRepository(private val aacTileDao: AACTileDao) {
     
@@ -41,10 +40,6 @@ class AACRepository(private val aacTileDao: AACTileDao) {
 
     fun getAllTiles(langCode: String): Flow<List<AACTile>> {
         return aacTileDao.getAllTiles(langCode)
-    }
-
-    fun getEverythingFlow(): Flow<List<AACTile>> {
-        return aacTileDao.getEverythingFlow()
     }
 
     fun getAllCategories(langCode: String): Flow<List<AACTile>> {
@@ -117,10 +112,6 @@ class AACRepository(private val aacTileDao: AACTileDao) {
         return aacTileDao.getClickEventsBetween(startTime, endTime)
     }
 
-    fun getAllClickEvents(): Flow<List<TileClickEvent>> {
-        return aacTileDao.getAllClickEvents()
-    }
-
     suspend fun clearAllStatistics() {
         aacTileDao.deleteAllClickEvents()
         aacTileDao.resetAllLegacyClickCounts()
@@ -130,15 +121,11 @@ class AACRepository(private val aacTileDao: AACTileDao) {
         return aacTileDao.getCount() == 0
     }
 
-    suspend fun deleteAllTiles() {
-        aacTileDao.deleteAllTiles()
-    }
-
     suspend fun deleteTilesByLanguage(languageCode: String) {
         aacTileDao.deleteTilesByLanguage(languageCode)
     }
 
-    suspend fun getAllTilesSync(): List<AACTile> {
+    fun getAllTilesSync(): List<AACTile> {
         return aacTileDao.getAllTilesSync()
     }
 

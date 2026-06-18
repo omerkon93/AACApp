@@ -32,7 +32,7 @@ abstract class AACDatabase : RoomDatabase() {
                     "aac_database"
                 )
                 .addMigrations(MIGRATION_3_4)
-                .addCallback(object : RoomDatabase.Callback() {
+                .addCallback(object : Callback() {
                     override fun onCreate(db: SupportSQLiteDatabase) {
                         super.onCreate(db)
                         // Prepopulate the database when it is first created

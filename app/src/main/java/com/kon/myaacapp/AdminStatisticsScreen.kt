@@ -62,9 +62,7 @@ fun AdminStatisticsScreenContent(
     
     val topWords = remember(clickCounts, allTiles) {
         clickCounts.mapNotNull { (tileId, count) ->
-            allTiles.find { it.id == tileId && !it.isCategory }?.let { tile ->
-                tile.copy(clickCount = count)
-            }
+            allTiles.find { it.id == tileId && !it.isCategory }?.copy(clickCount = count)
         }.sortedByDescending { it.clickCount }.take(4)
     }
 

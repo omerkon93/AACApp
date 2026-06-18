@@ -22,6 +22,7 @@ class AACViewModel(application: Application) : AndroidViewModel(application) {
     private val repository: AACRepository
     private val settingsRepository: SettingsRepository
     private val ttsHelper: TextToSpeechHelper
+    private val languageDownloadHelper: LanguageDownloadHelper
     
     val tileService: AACTileService
     val audioService: AudioRecordingService
@@ -32,6 +33,7 @@ class AACViewModel(application: Application) : AndroidViewModel(application) {
         repository = AACRepository(database.aacTileDao())
         settingsRepository = SettingsRepository(application)
         ttsHelper = TextToSpeechHelper(application)
+        languageDownloadHelper = LanguageDownloadHelper(application)
         
         tileService = AACTileService(settingsRepository, viewModelScope)
         audioService = AudioRecordingService(application)
@@ -63,16 +65,11 @@ class AACViewModel(application: Application) : AndroidViewModel(application) {
         _currentParentId.value = null
     }
 
-    fun navigateUp() {
-        navigateBack()
-    }
-
     val speakOnTilePress: StateFlow<Boolean> = settingsRepository.speakOnTilePressFlow
         .stateIn(viewModelScope, SharingStarted.Lazily, true)
 
     val languageCode: StateFlow<String> = settingsRepository.languageCodeFlow
-        // ADD THIS MAP LINE TO FIX THE HEBREW BUG:
-        .map { lang -> if (lang == "iw") "he" else lang }
+        .map { lang -> LocaleHelper.normalize(lang) }
         .onEach { lang -> ttsHelper.setLanguage(lang) }
         .stateIn(viewModelScope, SharingStarted.Lazily, "he")
 
@@ -104,9 +101,26 @@ class AACViewModel(application: Application) : AndroidViewModel(application) {
         }
     }
 
+    val languageDownloadStatus = languageDownloadHelper.downloadStatus
+
     suspend fun updateLanguageCode(lang: String) {
         settingsRepository.updateLanguageCode(lang)
         resetToHome()
+    }
+
+    fun downloadAndSetLanguage(lang: String, onComplete: (Boolean) -> Unit) {
+        viewModelScope.launch {
+            languageDownloadHelper.downloadLanguage(lang) { success ->
+                if (success) {
+                    viewModelScope.launch {
+                        updateLanguageCode(lang)
+                        onComplete(true)
+                    }
+                } else {
+                    onComplete(false)
+                }
+            }
+        }
     }
 
     fun updateUserGender(gender: Gender) {
@@ -275,12 +289,6 @@ class AACViewModel(application: Application) : AndroidViewModel(application) {
         }
     }
 
-    fun hideTile(tile: AACTile) {
-        viewModelScope.launch {
-            repository.updateTile(tile.copy(isHidden = true))
-        }
-    }
-
     fun deleteTile(tile: AACTile) {
         viewModelScope.launch {
             tile.audioUri?.let { audioService.deleteRecording(it) }
@@ -432,6 +440,7 @@ class AACViewModel(application: Application) : AndroidViewModel(application) {
 
     override fun onCleared() {
         super.onCleared()
+        languageDownloadHelper.unregister()
         ttsHelper.shutdown()
     }
 }
