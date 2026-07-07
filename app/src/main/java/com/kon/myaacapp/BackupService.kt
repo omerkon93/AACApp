@@ -3,75 +3,47 @@ package com.kon.myaacapp
 import android.content.ContentResolver
 import android.content.Context
 import android.net.Uri
+import android.util.Log
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
-import kotlinx.serialization.json.Json
 import java.io.File
+import java.io.InputStream
 import java.util.zip.ZipEntry
 import java.util.zip.ZipInputStream
 import java.util.zip.ZipOutputStream
 
-class BackupService(private val context: Context, private val repository: AACRepository) {
+class BackupService(
+    private val context: Context,
+    private val repository: AACRepository
+) {
 
-    private val json = Json {
-        ignoreUnknownKeys = true
-        prettyPrint = true
-        encodeDefaults = true
-    }
-
+    /**
+     * Exports the app's internal storage directories to a ZIP file.
+     * Includes profiles, tiles (JSONs), and audio/image assets.
+     */
     suspend fun exportDatabase(contentResolver: ContentResolver, uri: Uri): Boolean = withContext(Dispatchers.IO) {
         try {
-            val allTilesWithPlacements = repository.getAllTilesWithPlacements()
-            
-            // Group tiles by languageCode
-            val tilesByLanguage = allTilesWithPlacements.groupBy { it.languageCode }
-
             contentResolver.openOutputStream(uri)?.use { outputStream ->
                 ZipOutputStream(outputStream).use { zos ->
-                    val processedZipPaths = HashSet<String>()
+                    val baseDir = context.filesDir
 
-                    tilesByLanguage.forEach { (langCode, langTiles) ->
-                        // 1. Group tiles by parentId for JSON files
-                        val groupedByParent = langTiles.groupBy { it.parentId }
-                        
-                        groupedByParent.forEach { (parentId, tiles) ->
-                            val fileName = if (parentId == null) {
-                                "export_00_core.json"
-                            } else {
-                                "export_${parentId.replace("[^a-zA-Z0-9]".toRegex(), "_")}.json"
-                            }
-                            
-                            val normalizedLang = LocaleHelper.normalize(langCode)
-                            val zipPath = "$normalizedLang/tiles/$fileName"
-                            if (processedZipPaths.add(zipPath)) {
-                                val jsonString = json.encodeToString(tiles)
-                                val jsonEntry = ZipEntry(zipPath)
-                                zos.putNextEntry(jsonEntry)
-                                zos.write(jsonString.toByteArray())
+                    baseDir.walkTopDown().filter { it.isFile }.forEach { file ->
+                        // Normalize separators to forward slashes for cross-platform zip compatibility
+                        val relativePath = file.relativeTo(baseDir).path.replace("\\", "/")
+
+                        // Bulletproof path filtering
+                        if (relativePath.startsWith("profiles/") ||
+                            relativePath.startsWith("tiles/") ||
+                            relativePath.startsWith("audio_tiles/") ||
+                            relativePath.startsWith("images/")) {
+
+                            try {
+                                val entry = ZipEntry(relativePath)
+                                zos.putNextEntry(entry)
+                                file.inputStream().use { it.copyTo(zos) }
                                 zos.closeEntry()
-                            }
-                        }
-
-                        // 2. Write media files for this language
-                        langTiles.forEach { tile ->
-                            val normalizedLang = LocaleHelper.normalize(langCode)
-                            tile.audioUri?.let { path ->
-                                if (isInternalPath(path)) {
-                                    val fileName = File(path).name
-                                    val zipPath = "$normalizedLang/audio/$fileName"
-                                    if (processedZipPaths.add(zipPath)) {
-                                        addFileToZip(zos, File(path), zipPath)
-                                    }
-                                }
-                            }
-                            tile.imageUri?.let { path ->
-                                if (isInternalPath(path)) {
-                                    val fileName = File(path).name
-                                    val zipPath = "$normalizedLang/images/$fileName"
-                                    if (processedZipPaths.add(zipPath)) {
-                                        addFileToZip(zos, File(path), zipPath)
-                                    }
-                                }
+                            } catch (e: Exception) {
+                                Log.e("BackupService", "Failed to add $relativePath to zip", e)
                             }
                         }
                     }
@@ -79,34 +51,22 @@ class BackupService(private val context: Context, private val repository: AACRep
             }
             true
         } catch (e: Exception) {
-            e.printStackTrace()
+            Log.e("BackupService", "Export failed", e)
             false
         }
     }
 
-    private fun isInternalPath(path: String): Boolean {
-        return path.startsWith(context.filesDir.absolutePath)
-    }
-
-    private fun addFileToZip(zos: ZipOutputStream, file: File, zipPath: String) {
-        if (!file.exists()) return
-        try {
-            val entry = ZipEntry(zipPath)
-            zos.putNextEntry(entry)
-            file.inputStream().use { it.copyTo(zos) }
-            zos.closeEntry()
-        } catch (e: Exception) {
-            e.printStackTrace()
-        }
-    }
-
+    /**
+     * Restores the app's internal storage from a ZIP file.
+     * Clears existing directories first, then extracts the ZIP directly.
+     */
     suspend fun importDatabase(contentResolver: ContentResolver, uri: Uri): Boolean = withContext(Dispatchers.IO) {
         try {
             contentResolver.openInputStream(uri)?.use { inputStream ->
                 importDatabaseFromStream(inputStream)
             } ?: false
         } catch (e: Exception) {
-            e.printStackTrace()
+            Log.e("BackupService", "Import failed", e)
             false
         }
     }
@@ -118,159 +78,58 @@ class BackupService(private val context: Context, private val repository: AACRep
                     importDatabaseFromStream(inputStream)
                 }
             } else {
-                // FIX: Replaced the hardcoded "seed" with the provided parameter
-                importTilesFromJsonAssets(fileName)
-            }
-        } catch (e: Exception) {
-            e.printStackTrace()
-            false
-        }
-    }
-
-    suspend fun importTilesFromJsonAssets(directory: String): Boolean = withContext(Dispatchers.IO) {
-        try {
-            val allTiles = mutableListOf<AACTile>()
-            scanAssetsRecursively(directory, allTiles)
-
-            if (allTiles.isNotEmpty()) {
-                // Find out which languages we are importing
-                val languagesToReplace = allTiles.map { it.languageCode }.distinct()
-
-                // Only delete those specific languages
-                languagesToReplace.forEach { langCode ->
-                    repository.deleteTilesByLanguage(langCode)
-                }
-
-                repository.insertTiles(allTiles)
-                true
-            } else {
+                // Legacy path for unzipped JSON assets
                 false
             }
         } catch (e: Exception) {
-            e.printStackTrace()
+            Log.e("BackupService", "Import from assets failed", e)
             false
         }
     }
 
-    private fun scanAssetsRecursively(path: String, outList: MutableList<AACTile>) {
-        val assetManager = context.assets
-        val list = assetManager.list(path) ?: return
+    private suspend fun importDatabaseFromStream(inputStream: InputStream): Boolean = withContext(Dispatchers.IO) {
+        try {
+            // 1. Clear existing data
+            val directoriesToClear = listOf("profiles", "tiles", "audio_tiles", "images")
+            directoriesToClear.forEach { dirName ->
+                val dir = File(context.filesDir, dirName)
+                if (dir.exists()) {
+                    dir.deleteRecursively()
+                }
+            }
 
-        // FIX: Look at the last folder in the current path to infer the language
-        // e.g., if path is "assets/initial_data/en", inferredLangCode becomes "en"
-        val pathParts = path.split('/')
-        val inferredLangCode = if (pathParts.size >= 2) {
-            LocaleHelper.normalize(pathParts.last())
-        } else {
-            null
-        }
+            // 2. Clear SQLite tables (pure JSON-first approach)
+            repository.clearAllStatistics() // This also clears click events and Room counts
+            repository.deleteAllTilesFromRoom() // Ensure Room is clean after restore
 
-        for (item in list) {
-            val fullPath = if (path.isEmpty()) item else "$path/$item"
-            if (item.endsWith(".json")) {
-                try {
-                    val jsonString = assetManager.open(fullPath).bufferedReader().use { it.readText() }
-                    val tiles = json.decodeFromString<List<AACTile>>(jsonString)
+            // 3. Extract ZIP directly to filesDir
+            ZipInputStream(inputStream).use { zis ->
+                var entry = zis.nextEntry
+                while (entry != null) {
+                    val targetFile = File(context.filesDir, entry.name)
 
-                    // If the language code isn't null, apply it to all tiles in this folder
-                    val updatedTiles = if (inferredLangCode != null) {
-                        tiles.map { it.copy(languageCode = inferredLangCode) }
+                    // Security Check: Zip Path Traversal Protection
+                    val canonicalPath = targetFile.canonicalPath
+                    if (!canonicalPath.startsWith(context.filesDir.canonicalPath)) {
+                        throw SecurityException("Zip entry ${entry.name} is outside of the target directory")
+                    }
+
+                    if (entry.isDirectory) {
+                        targetFile.mkdirs()
                     } else {
-                        tiles
+                        targetFile.parentFile?.mkdirs()
+                        targetFile.outputStream().use { zis.copyTo(it) }
                     }
-                    outList.addAll(updatedTiles)
-                } catch (e: Exception) {
-                    e.printStackTrace()
-                }
-            } else {
-                if (!item.contains(".")) {
-                    scanAssetsRecursively(fullPath, outList)
+                    zis.closeEntry()
+                    entry = zis.nextEntry
                 }
             }
+
+            // 4. Reload app state will be handled by the caller (ViewModel)
+            true
+        } catch (e: Exception) {
+            Log.e("BackupService", "Import from stream failed", e)
+            false
         }
     }
-
-    private suspend fun importDatabaseFromStream(inputStream: java.io.InputStream): Boolean {
-        val allImportedTiles = mutableListOf<AACTile>()
-        
-        ZipInputStream(inputStream).use { zis ->
-            var entry = zis.nextEntry
-            while (entry != null) {
-                val normalizedName = entry.name.replace('\\', '/')
-                val fileName = File(normalizedName).name
-                
-                // Infer language code from the first part of the path (e.g., "en/tiles/..." -> "en")
-                val pathParts = normalizedName.split('/')
-                val inferredLangCode = if (pathParts.size > 1) LocaleHelper.normalize(pathParts[0]) else null
-
-                when {
-                    normalizedName.endsWith(".json") -> {
-                        val jsonStr = zis.bufferedReader().readText()
-                        try {
-                            val tiles = json.decodeFromString<List<AACTile>>(jsonStr)
-                            // Override languageCode if inferred from path
-                            val updatedTiles = if (inferredLangCode != null) {
-                                tiles.map { it.copy(languageCode = inferredLangCode) }
-                            } else {
-                                tiles
-                            }
-                            allImportedTiles.addAll(updatedTiles)
-                        } catch (e: Exception) {
-                            e.printStackTrace()
-                        }
-                    }
-                    normalizedName.contains("/audio/") -> {
-                        val subDir = if (inferredLangCode != null) "audio_tiles/$inferredLangCode" else "audio_tiles"
-                        extractFile(zis, File(context.filesDir, "$subDir/$fileName"))
-                    }
-                    normalizedName.contains("/images/") -> {
-                        val subDir = if (inferredLangCode != null) "image_tiles/$inferredLangCode" else "image_tiles"
-                        extractFile(zis, File(context.filesDir, "$subDir/$fileName"))
-                    }
-                }
-                zis.closeEntry()
-                entry = zis.nextEntry
-            }
-        }
-
-        if (allImportedTiles.isNotEmpty()) {
-            // Remap URIs to current device paths
-            val remappedTiles = allImportedTiles.map { tile ->
-                var updatedTile = tile
-                val langCode = tile.languageCode
-                
-                tile.audioUri?.let { oldPath ->
-                    val fileName = File(oldPath).name
-                    val subDir = if (langCode.isNotEmpty()) "audio_tiles/$langCode" else "audio_tiles"
-                    val newPath = File(context.filesDir, "$subDir/$fileName").absolutePath
-                    updatedTile = updatedTile.copy(audioUri = newPath)
-                }
-                tile.imageUri?.let { oldPath ->
-                    val fileName = File(oldPath).name
-                    val subDir = if (langCode.isNotEmpty()) "image_tiles/$langCode" else "image_tiles"
-                    val newPath = File(context.filesDir, "$subDir/$fileName").absolutePath
-                    updatedTile = updatedTile.copy(imageUri = newPath)
-                }
-                updatedTile
-            }
-
-            // Find out which languages are in this zip file
-            val languagesToReplace = remappedTiles.map { it.languageCode }.distinct()
-
-            // Only delete those specific languages
-            languagesToReplace.forEach { langCode ->
-                repository.deleteTilesByLanguage(langCode)
-            }
-
-            repository.insertTiles(remappedTiles)
-            return true
-        }
-        return false
-    }
-
-    private fun extractFile(zis: ZipInputStream, targetFile: File) {
-        targetFile.parentFile?.mkdirs()
-        targetFile.outputStream().use { zis.copyTo(it) }
-    }
-
 }

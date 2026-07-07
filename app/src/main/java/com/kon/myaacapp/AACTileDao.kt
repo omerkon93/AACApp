@@ -85,6 +85,9 @@ interface AACTileDao {
     @Query("DELETE FROM aac_tiles")
     suspend fun deleteAllTiles()
 
+    @Query("DELETE FROM tile_placements")
+    suspend fun deleteAllPlacements()
+
     @Query("DELETE FROM aac_tiles WHERE languageCode = :languageCode")
     suspend fun deleteTilesByLanguage(languageCode: String)
 

@@ -55,7 +55,9 @@ abstract class AACDatabase : RoomDatabase() {
         private fun triggerInitialLoad(context: Context) {
             CoroutineScope(Dispatchers.IO).launch {
                 val database = getDatabase(context)
-                val repository = AACRepository(database.aacTileDao())
+                val settingsRepository = SettingsRepository(context)
+                val profileRepository = ProfileRepository(context, settingsRepository, this)
+                val repository = AACRepository(database.aacTileDao(), context, profileRepository)
                 if (repository.isEmpty()) {
                     val backupService = BackupService(context.applicationContext, repository)
                     backupService.importFromAssets("initial_data.zip")

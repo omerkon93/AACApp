@@ -1,11 +1,15 @@
 package com.kon.myaacapp
 
 import android.content.res.Configuration
-import androidx.compose.foundation.Canvas
+import androidx.compose.animation.core.animateFloatAsState
+import androidx.compose.foundation.Image
+import androidx.compose.foundation.background
+import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
-import androidx.compose.foundation.combinedClickable
+import androidx.compose.foundation.gestures.detectDragGesturesAfterLongPress
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.BoxWithConstraints
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.aspectRatio
@@ -18,33 +22,38 @@ import androidx.compose.foundation.lazy.grid.LazyVerticalGrid
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Add
-import androidx.compose.material.icons.filled.Folder
+import androidx.compose.material.icons.filled.Edit
+import androidx.compose.material3.Card
 import androidx.compose.material3.CardDefaults
 import androidx.compose.material3.Icon
+import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
-import androidx.compose.material3.OutlinedCard
-import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
+import androidx.compose.runtime.*
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
-import androidx.compose.ui.graphics.PathEffect
-import androidx.compose.ui.graphics.drawscope.Stroke
-import androidx.compose.ui.graphics.luminance
+import androidx.compose.ui.graphics.graphicsLayer
+import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.platform.LocalConfiguration
-import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.text.style.TextOverflow
+import androidx.compose.ui.unit.TextUnit
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.core.graphics.toColorInt
-import coil.compose.AsyncImage
-import com.kon.myaacapp.ui.theme.resolveFitzgeraldColor
+import coil.compose.rememberAsyncImagePainter
+import androidx.compose.ui.draw.clip
+import com.kon.myaacapp.AACTile
+import com.kon.myaacapp.AACViewModel
+import com.kon.myaacapp.CombinedTile
+import com.kon.myaacapp.toLegacyAACTile
+import java.io.File
 
 @Composable
 fun AdminEditableGridScreen(
@@ -53,41 +62,94 @@ fun AdminEditableGridScreen(
     onCreateTile: (Int) -> Unit
 ) {
     val tiles by viewModel.currentTiles.collectAsState()
-    val configuration = LocalConfiguration.current
-    val orientation = configuration.orientation
-    
-    val columnCount = if (orientation == Configuration.ORIENTATION_LANDSCAPE) 5 else 3
-    val maxCapacity = 12
+    val orientation = LocalConfiguration.current.orientation
+    val columns = if (orientation == Configuration.ORIENTATION_LANDSCAPE) 6 else 3
+    val minRows = 4
+    val maxIndex = tiles.maxOfOrNull { it.layoutState.cellIndex } ?: -1
+    val rows = maxOf(minRows, (maxIndex / columns) + 1)
+    val maxCells = columns * rows
 
-    Column(
-        modifier = Modifier
-            .fillMaxSize()
-            .padding(horizontal = 16.dp)
-            .padding(top = 8.dp)
-    ) {
+    // State to track our drag gesture
+    var draggedIndex by remember { mutableStateOf<Int?>(null) }
+    var hoveredIndex by remember { mutableStateOf<Int?>(null) }
+
+    BoxWithConstraints(modifier = Modifier.fillMaxSize()) {
+        // Calculate rough cell dimensions for mapping touch coordinates to grid slots
+        val cellWidthPx = constraints.maxWidth.toFloat() / columns
+        val cellHeightPx = constraints.maxHeight.toFloat() / rows
+
         LazyVerticalGrid(
-            columns = GridCells.Fixed(columnCount),
-            horizontalArrangement = Arrangement.spacedBy(12.dp),
-            verticalArrangement = Arrangement.spacedBy(12.dp),
-            modifier = Modifier.fillMaxSize(),
-            contentPadding = PaddingValues(bottom = 100.dp)
+            columns = GridCells.Fixed(columns),
+            modifier = Modifier
+                .fillMaxSize()
+                .pointerInput(Unit) {
+                    detectDragGesturesAfterLongPress(
+                        onDragStart = { offset ->
+                            val col = (offset.x / cellWidthPx).toInt().coerceIn(0, columns - 1)
+                            val row = (offset.y / cellHeightPx).toInt().coerceIn(0, rows - 1)
+                            draggedIndex = row * columns + col
+                        },
+                        onDrag = { change, _ ->
+                            change.consume()
+                            val col = (change.position.x / cellWidthPx).toInt().coerceIn(0, columns - 1)
+                            val row = (change.position.y / cellHeightPx).toInt().coerceIn(0, rows - 1)
+                            hoveredIndex = row * columns + col
+                        },
+                        onDragEnd = {
+                            if (draggedIndex != null && hoveredIndex != null && draggedIndex != hoveredIndex) {
+                                viewModel.swapTilePositions(draggedIndex!!, hoveredIndex!!)
+                            }
+                            draggedIndex = null
+                            hoveredIndex = null
+                        },
+                        onDragCancel = {
+                            draggedIndex = null
+                            hoveredIndex = null
+                        }
+                    )
+                },
+            contentPadding = PaddingValues(8.dp),
+            horizontalArrangement = Arrangement.spacedBy(8.dp),
+            verticalArrangement = Arrangement.spacedBy(8.dp)
         ) {
-            items(maxCapacity) { index ->
-                val tile = tiles.find { it.cellIndex == index }
+            val tileMap = tiles.associateBy { it.layoutState.cellIndex }
+
+            items(maxCells) { index ->
+                val tile = tileMap[index]
                 val aspectRatio = if (orientation == Configuration.ORIENTATION_LANDSCAPE) 1.2f else 1.0f
-                
-                if (tile != null) {
-                    AdminTileItem(
-                        tile = tile,
-                        aspectRatio = aspectRatio,
-                        onClick = { onEditTile(tile) },
-                        onLongClick = { onEditTile(tile) }
-                    )
-                } else {
-                    EmptySlot(
-                        aspectRatio = aspectRatio,
-                        onClick = { onCreateTile(index) }
-                    )
+
+                // Visual feedback states
+                val isDragged = index == draggedIndex
+                val isHovered = index == hoveredIndex
+                val scale by animateFloatAsState(if (isDragged) 0.9f else 1f, label = "scale")
+                val alpha by animateFloatAsState(if (isDragged) 0.6f else 1f, label = "alpha")
+
+                Box(
+                    modifier = Modifier
+                        .graphicsLayer {
+                            scaleX = scale
+                            scaleY = scale
+                            this.alpha = alpha
+                        }
+                        .border(
+                            width = if (isHovered) 3.dp else 0.dp,
+                            color = if (isHovered) Color.Blue else Color.Transparent,
+                            shape = RoundedCornerShape(8.dp)
+                        )
+                ) {
+                    if (tile != null) {
+                        AdminTileItem(
+                            tile = tile,
+                            aspectRatio = aspectRatio,
+                            onClick = { /* Normal click handled elsewhere */ },
+                            onEdit = { onEditTile(tile.toLegacyAACTile()) }
+                        )
+                    } else {
+                        EmptySlot(
+                            aspectRatio = aspectRatio,
+                            onClick = { onCreateTile(index) }
+                        )
+                    }
                 }
             }
         }
@@ -96,77 +158,62 @@ fun AdminEditableGridScreen(
 
 @Composable
 fun AdminTileItem(
-    tile: AACTile,
+    tile: CombinedTile,
     aspectRatio: Float,
     onClick: () -> Unit,
-    onLongClick: () -> Unit
+    onEdit: () -> Unit
 ) {
-    // Basic Tile UI without the complex logic of MainCommunicationScreen
-    // Mirroring the visual style
-    val backgroundColor = try {
-        tile.backgroundColorHex?.let { Color(it.toColorInt()) }
-            ?: resolveFitzgeraldColor(tile.partOfSpeech)
-    } catch (_: Exception) {
-        resolveFitzgeraldColor(tile.partOfSpeech)
-    }
+    val backgroundColor = if (tile.definition.backgroundColorHex != null) {
+        try { Color(tile.definition.backgroundColorHex.toColorInt()) } catch (_: Exception) { Color.LightGray }
+    } else Color.LightGray
 
     AdminTileUI(
-        label = tile.label,
-        imageUri = tile.imageUri,
-        emoji = tile.emoji,
+        label = tile.definition.label,
+        emoji = tile.definition.emoji,
+        imageUri = tile.definition.imageUri,
         backgroundColor = backgroundColor,
         aspectRatio = aspectRatio,
-        isCategory = tile.isCategory,
+        isCategory = tile.definition.isCategory,
         onClick = onClick,
-        onLongClick = onLongClick
+        onEdit = onEdit,
+        isHidden = tile.layoutState.isHidden
     )
 }
 
 @Composable
 fun AdminTileUI(
     label: String,
-    imageUri: String?,
     emoji: String?,
+    imageUri: String?,
     backgroundColor: Color,
     aspectRatio: Float,
     isCategory: Boolean,
     onClick: () -> Unit,
-    onLongClick: () -> Unit,
+    onEdit: () -> Unit,
     modifier: Modifier = Modifier,
-    labelFontSize: androidx.compose.ui.unit.TextUnit = 18.sp,
-    contentColor: Color = if (backgroundColor.luminance() > 0.5f) Color.Black else Color.White
+    labelSize: TextUnit = 12.sp,
+    borderColor: Color = if (isCategory) Color.DarkGray else Color.Transparent,
+    isHidden: Boolean = false
 ) {
-    @OptIn(androidx.compose.foundation.ExperimentalFoundationApi::class)
-    OutlinedCard(
+    Card(
         modifier = modifier
+            .fillMaxWidth()
             .aspectRatio(aspectRatio)
-            .combinedClickable(
-                onClick = onClick,
-                onLongClick = onLongClick
+            .clickable(onClick = onClick)
+            .border(
+                width = if (isCategory) 2.dp else 0.dp,
+                color = borderColor,
+                shape = RoundedCornerShape(8.dp)
             ),
-        shape = RoundedCornerShape(16.dp),
-        colors = CardDefaults.outlinedCardColors(
-            containerColor = backgroundColor
-        ),
-        border = CardDefaults.outlinedCardBorder().copy(
-            brush = androidx.compose.ui.graphics.SolidColor(MaterialTheme.colorScheme.outlineVariant)
-        )
+        shape = RoundedCornerShape(8.dp),
+        colors = CardDefaults.cardColors(containerColor = if (isHidden) backgroundColor.copy(alpha = 0.5f) else backgroundColor),
+        elevation = CardDefaults.cardElevation(2.dp)
     ) {
         Box(modifier = Modifier.fillMaxSize()) {
-            if (isCategory) {
-                Icon(
-                    imageVector = Icons.Default.Folder,
-                    contentDescription = null,
-                    modifier = Modifier
-                        .align(Alignment.TopEnd)
-                        .padding(8.dp)
-                        .size(16.dp),
-                    tint = contentColor.copy(alpha = 0.6f)
-                )
-            }
-
             Column(
-                modifier = Modifier.fillMaxSize(),
+                modifier = Modifier
+                    .fillMaxSize()
+                    .padding(4.dp),
                 horizontalAlignment = Alignment.CenterHorizontally,
                 verticalArrangement = Arrangement.Center
             ) {
@@ -177,38 +224,54 @@ fun AdminTileUI(
                     contentAlignment = Alignment.Center
                 ) {
                     if (imageUri != null) {
-                        AsyncImage(
-                            model = imageUri,
-                            contentDescription = label,
+                        val file = File(imageUri)
+                        Image(
+                            painter = rememberAsyncImagePainter(if (file.exists()) file else imageUri),
+                            contentDescription = null,
                             modifier = Modifier.fillMaxSize(),
-                            contentScale = ContentScale.Crop
+                            contentScale = ContentScale.Fit
                         )
                     } else if (emoji != null) {
-                        Text(
-                            text = emoji,
-                            fontSize = 64.sp
-                        )
+                        Text(text = emoji, fontSize = 24.sp)
                     }
                 }
                 
-                Surface(
-                    modifier = Modifier.fillMaxWidth(),
-                    color = Color.Black.copy(alpha = 0.05f)
+                Text(
+                    text = label,
+                    fontSize = labelSize,
+                    fontWeight = FontWeight.Bold,
+                    textAlign = TextAlign.Center,
+                    maxLines = 1,
+                    overflow = TextOverflow.Ellipsis,
+                    modifier = Modifier.fillMaxWidth()
+                )
+            }
+
+            // Edit Indicator
+            IconButton(
+                onClick = onEdit,
+                modifier = Modifier
+                    .align(Alignment.TopEnd)
+                    .size(32.dp)
+                    .padding(4.dp)
+                    .background(Color.Black.copy(alpha = 0.3f), RoundedCornerShape(4.dp))
+            ) {
+                Icon(
+                    imageVector = Icons.Default.Edit,
+                    contentDescription = "Edit",
+                    tint = Color.White,
+                    modifier = Modifier.size(16.dp)
+                )
+            }
+
+            if (isHidden) {
+                Box(
+                    modifier = Modifier
+                        .fillMaxSize()
+                        .background(Color.Gray.copy(alpha = 0.3f)),
+                    contentAlignment = Alignment.Center
                 ) {
-                    Box(modifier = Modifier.fillMaxWidth()) {
-                        Text(
-                            text = label,
-                            fontSize = labelFontSize,
-                            fontWeight = FontWeight.Bold,
-                            color = contentColor,
-                            modifier = Modifier
-                                .padding(vertical = 4.dp, horizontal = 8.dp)
-                                .align(Alignment.Center),
-                            textAlign = androidx.compose.ui.text.style.TextAlign.Center,
-                            maxLines = 1,
-                            overflow = TextOverflow.Ellipsis
-                        )
-                    }
+                    Text("HIDDEN", color = Color.White, fontSize = 10.sp, fontWeight = FontWeight.Bold)
                 }
             }
         }
@@ -220,28 +283,20 @@ fun EmptySlot(
     aspectRatio: Float,
     onClick: () -> Unit
 ) {
-    val stroke = Stroke(width = 2f, pathEffect = PathEffect.dashPathEffect(floatArrayOf(10f, 10f), 0f))
-    val color = MaterialTheme.colorScheme.outline.copy(alpha = 0.5f)
-
     Box(
         modifier = Modifier
+            .fillMaxWidth()
             .aspectRatio(aspectRatio)
-            .clip(RoundedCornerShape(16.dp))
-            .clickable { onClick() }
+            .clip(RoundedCornerShape(8.dp))
+            .background(MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.5f))
+            .clickable(onClick = onClick)
+            .border(1.dp, MaterialTheme.colorScheme.outline.copy(alpha = 0.3f), RoundedCornerShape(8.dp)),
+        contentAlignment = Alignment.Center
     ) {
-        Canvas(modifier = Modifier.fillMaxSize()) {
-            drawRoundRect(
-                color = color,
-                style = stroke,
-                cornerRadius = androidx.compose.ui.geometry.CornerRadius(16.dp.toPx())
-            )
-        }
-        
         Icon(
             imageVector = Icons.Default.Add,
-            contentDescription = stringResource(R.string.add),
-            modifier = Modifier.align(Alignment.Center).size(32.dp),
-            tint = color
+            contentDescription = "Add Tile",
+            tint = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.5f)
         )
     }
 }

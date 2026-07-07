@@ -47,8 +47,8 @@ fun AdminStatisticsScreen(viewModel: AACViewModel) {
 
 @Composable
 fun AdminStatisticsScreenContent(
-    allTiles: List<AACTile>,
-    allCategories: List<AACTile>,
+    allTiles: List<CombinedTile>,
+    allCategories: List<CombinedTile>,
     clickEvents: List<TileClickEvent>,
     selectedFilter: AnalyticsTimeFilter,
     onFilterSelected: (AnalyticsTimeFilter) -> Unit
@@ -62,7 +62,9 @@ fun AdminStatisticsScreenContent(
     
     val topWords = remember(clickCounts, allTiles) {
         clickCounts.mapNotNull { (tileId, count) ->
-            allTiles.find { it.id == tileId && !it.isCategory }?.copy(clickCount = count)
+            allTiles.find { it.id == tileId && !it.isCategory }?.let { tile ->
+                tile.copy(layoutState = tile.layoutState.copy(clickCount = count))
+            }
         }.sortedByDescending { it.clickCount }.take(4)
     }
 
@@ -292,7 +294,7 @@ fun MetricCard(
 }
 
 @Composable
-fun TopWordsChart(topWords: List<AACTile>) {
+fun TopWordsChart(topWords: List<CombinedTile>) {
     Card(
         modifier = Modifier.fillMaxWidth(),
         colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surfaceContainer),
@@ -573,17 +575,17 @@ private fun processChartData(events: List<TileClickEvent>, filter: AnalyticsTime
 @Composable
 fun AdminStatisticsScreenPreview() {
     val mockTiles = listOf(
-        AACTile("1", "שלום", "שלום", clickCount = 10, isCategory = false),
-        AACTile("2", "אני רוצה", "אני רוצה", clickCount = 8, isCategory = false),
-        AACTile("3", "תפוח", "תפוח", clickCount = 5, isCategory = false, parentId = "cat1"),
-        AACTile("4", "שתייה", "שתייה", clickCount = 3, isCategory = false, parentId = "cat1"),
-        AACTile("5", "לשחק", "לשחק", clickCount = 2, isCategory = false, parentId = "cat2"),
-        AACTile("cat1", "אוכל", "אוכל", isCategory = true),
-        AACTile("cat2", "משחקים", "משחקים", isCategory = true)
+        AACTile("1", "שלום", "שלום", clickCount = 10, isCategory = false).toCombinedTile(),
+        AACTile("2", "אני רוצה", "אני רוצה", clickCount = 8, isCategory = false).toCombinedTile(),
+        AACTile("3", "תפוח", "תפוח", clickCount = 5, isCategory = false, parentId = "cat1").toCombinedTile(),
+        AACTile("4", "שתייה", "שתייה", clickCount = 3, isCategory = false, parentId = "cat1").toCombinedTile(),
+        AACTile("5", "לשחק", "לשחק", clickCount = 2, isCategory = false, parentId = "cat2").toCombinedTile(),
+        AACTile("cat1", "אוכל", "אוכל", isCategory = true).toCombinedTile(),
+        AACTile("cat2", "משחקים", "משחקים", isCategory = true).toCombinedTile()
     )
     val mockCategories = listOf(
-        AACTile("cat1", "אוכל", "אוכל", isCategory = true),
-        AACTile("cat2", "משחקים", "משחקים", isCategory = true)
+        AACTile("cat1", "אוכל", "אוכל", isCategory = true).toCombinedTile(),
+        AACTile("cat2", "משחקים", "משחקים", isCategory = true).toCombinedTile()
     )
     val mockEvents = listOf(
         TileClickEvent(tileId = "1"),

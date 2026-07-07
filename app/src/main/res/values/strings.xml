@@ -148,4 +148,13 @@
     <string name="action_remove_from_screen">הסרה מהמסך</string>
     <string name="action_open_category">פתח קטגוריה</string>
     <string name="hide_tile_label">הסתר אריח (לא יופיע בלוח)</string>
+    <string name="profile_manager">ניהול פרופילים</string>
+    <string name="default_profile_name">פרופיל ברירת מחדל</string>
+    <string name="active_profile">פרופיל פעיל</string>
+    <string name="switch_profile">החלף פרופיל</string>
+    <string name="create_new_profile">צור פרופיל חדש</string>
+    <string name="enter_profile_name">הזן שם פרופיל</string>
+    <string name="profile_name">שם פרופיל</string>
+    <string name="delete_profile">מחק פרופיל</string>
+    <string name="delete_profile_confirm">האם אתה בטוח שברצונך למחוק את הפרופיל \'%1$s\'? כל ההתאמות האישיות של הפרופיל יימחקו.</string>
 </resources>

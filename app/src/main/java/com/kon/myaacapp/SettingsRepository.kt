@@ -21,6 +21,25 @@ class SettingsRepository(private val context: Context) {
         val SPEAK_ON_TILE_PRESS = booleanPreferencesKey("speak_on_tile_press")
         val USER_GENDER = stringPreferencesKey("user_gender")
         val LANGUAGE_CODE = stringPreferencesKey("language_code")
+        val ACTIVE_PROFILE_ID = stringPreferencesKey("active_profile_id")
+    }
+
+    val activeProfileIdFlow: Flow<String?> = context.dataStore.data
+        .catch { exception ->
+            if (exception is IOException) {
+                emit(emptyPreferences())
+            } else {
+                throw exception
+            }
+        }
+        .map { preferences ->
+            preferences[PreferencesKeys.ACTIVE_PROFILE_ID]
+        }
+
+    suspend fun updateActiveProfileId(profileId: String) {
+        context.dataStore.edit { preferences ->
+            preferences[PreferencesKeys.ACTIVE_PROFILE_ID] = profileId
+        }
     }
 
     val speakOnTilePressFlow: Flow<Boolean> = context.dataStore.data

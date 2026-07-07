@@ -240,13 +240,13 @@ class AudioRecordingService(private val context: Context) {
     }
 
     suspend fun speakSentence(
-        sentence: List<AACTile>,
+        sentence: List<CombinedTile>,
         ttsHelper: TextToSpeechHelper,
         tileService: AACTileService
     ) {
         for (tile in sentence) {
             if (tile.audioUri != null) {
-                playRecordingSuspend(tile.audioUri)
+                playRecordingSuspend(tile.audioUri!!)
             } else {
                 val text = tileService.getTTSText(tile)
                 ttsHelper.speakSuspend(text)

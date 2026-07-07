@@ -69,6 +69,14 @@ class MainActivity : ComponentActivity() {
                             composable("admin") {
                                 AdminDashboardScreen(
                                     viewModel = viewModel,
+                                    onNavigateBack = { navController.popBackStack() },
+                                    onNavigateToProfiles = { navController.navigate("profiles") }
+                                )
+                            }
+
+                            composable("profiles") {
+                                ProfileManagerScreen(
+                                    viewModel = viewModel,
                                     onNavigateBack = { navController.popBackStack() }
                                 )
                             }

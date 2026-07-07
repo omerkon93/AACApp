@@ -1,5 +1,6 @@
 package com.kon.myaacapp
 
+import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.flow.SharingStarted
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.stateIn
@@ -9,55 +10,55 @@ enum class Gender { MALE, FEMALE }
 
 class AACTileService(
     private val settingsRepository: SettingsRepository,
-    scope: kotlinx.coroutines.CoroutineScope
+    scope: CoroutineScope
 ) {
-
     val userGender: StateFlow<Gender> = settingsRepository.userGenderFlow
-        .stateIn(
-            scope = scope,
-            started = SharingStarted.Eagerly,
-            initialValue = Gender.MALE
-        )
+        .stateIn(scope, SharingStarted.Eagerly, Gender.MALE)
 
-    fun setUserGender(gender: Gender, scope: kotlinx.coroutines.CoroutineScope) {
+    fun setUserGender(gender: Gender, scope: CoroutineScope) {
         scope.launch {
             settingsRepository.updateUserGender(gender)
         }
     }
 
-    /**
-     * Resolves the correct TTS text based on user's gender profile.
-     */
-    fun getTTSText(tile: AACTile): String {
+    fun getTTSText(tile: CombinedTile): String {
         return if (userGender.value == Gender.FEMALE) {
-            tile.ttsTextFeminine ?: tile.ttsText
+            tile.definition.ttsTextFeminine ?: tile.definition.ttsText
         } else {
-            tile.ttsText
+            tile.definition.ttsText
         }
     }
 
-    /**
-     * Handles the complex navigation and state transitions when a tile is pressed.
-     * @return Pair of (ShouldAddToStringStrip, NavigateToCategoryId?)
-     */
-    fun handleTilePress(tile: AACTile): Pair<Boolean, String?> {
-        return when {
-            tile.isQuickFire -> {
-                // Speak immediately, don't add to sentence, no navigation
-                Pair(false, null)
-            }
-            tile.isCategory -> {
-                // Only navigate, don't add to sentence
-                Pair(false, tile.id)
-            }
-            tile.linkedCategoryId != null -> {
-                // Hybrid: Add to sentence AND navigate to category
-                Pair(true, tile.linkedCategoryId)
-            }
-            else -> {
-                // Standard word: Add to sentence, no navigation
-                Pair(true, null)
-            }
+    fun handleTilePress(tile: CombinedTile): Pair<Boolean, String?> {
+        // Categories do NOT get added to the sentence strip
+        if (tile.isCategory) {
+            return Pair(false, tile.id)
+        }
+
+        // Quick-fires do NOT get added to the sentence strip
+        if (tile.layoutState.isQuickFire) {
+            return Pair(false, tile.linkedCategoryId)
+        }
+
+        // Regular tiles get added to the strip AND might navigate to a sub-category (like "Eat" -> "Food Items")
+        return Pair(true, tile.linkedCategoryId)
+    }
+
+    // Helper for UI labels (not TTS)
+    fun getLocalizedLabel(tile: CombinedTile): String {
+        return if (userGender.value == Gender.FEMALE) {
+            tile.definition.labelFeminine ?: tile.definition.label
+        } else {
+            tile.definition.label
+        }
+    }
+
+    // Legacy support
+    fun getLocalizedLabel(label: String, labelFeminine: String?, gender: String? = null): String {
+        return if (userGender.value == Gender.FEMALE) {
+            labelFeminine ?: label
+        } else {
+            label
         }
     }
 }

@@ -148,4 +148,13 @@
     <string name="action_remove_from_screen">Remove from Screen</string>
     <string name="action_open_category">Open Category</string>
     <string name="hide_tile_label">Hide Tile (will not appear on board)</string>
+    <string name="profile_manager">Profile Manager</string>
+    <string name="default_profile_name">Default Profile</string>
+    <string name="active_profile">Active Profile</string>
+    <string name="switch_profile">Switch Profile</string>
+    <string name="create_new_profile">Create New Profile</string>
+    <string name="enter_profile_name">Enter profile name</string>
+    <string name="profile_name">Profile Name</string>
+    <string name="delete_profile">Delete Profile</string>
+    <string name="delete_profile_confirm">Are you sure you want to delete profile \'%1$s\'? All profile customizations will be deleted.</string>
 </resources>

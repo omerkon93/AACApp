@@ -33,6 +33,7 @@ import androidx.compose.material.icons.filled.Download
 import androidx.compose.material.icons.filled.Edit
 import androidx.compose.material.icons.filled.FolderOpen
 import androidx.compose.material.icons.filled.Home
+import androidx.compose.material.icons.filled.Person
 import androidx.compose.material.icons.filled.Refresh
 import androidx.compose.material.icons.filled.Search
 import androidx.compose.material.icons.filled.Settings
@@ -94,6 +95,7 @@ enum class AdminTab {
 fun AdminDashboardScreen(
     viewModel: AACViewModel,
     onNavigateBack: () -> Unit,
+    onNavigateToProfiles: () -> Unit
 ) {
     var selectedTab by rememberSaveable { mutableStateOf(AdminTab.HOME) }
     var showTileDialog by remember { mutableStateOf(false) }
@@ -153,10 +155,10 @@ fun AdminDashboardScreen(
                     AdminTab.HOME -> {
                         AdminEditableGridScreen(
                             viewModel = viewModel,
-                            onEditTile = { tile ->
+                            onEditTile = { tile: AACTile? ->
                                 tileForAction = tile
                             },
-                            onCreateTile = { cellIndex ->
+                            onCreateTile = { cellIndex: Int ->
                                 editingTile = null
                                 initialCellIndex = cellIndex
                                 showTilePicker = true
@@ -166,12 +168,12 @@ fun AdminDashboardScreen(
                     AdminTab.SETTINGS -> {
                         AdminListView(
                             viewModel = viewModel,
-                            onEditTile = { tile ->
+                            onEditTile = { tile: AACTile? ->
                                 editingTile = tile
                                 initialCellIndex = tile?.cellIndex
                                 showTileDialog = true
                             },
-                            onDeleteTile = { tile ->
+                            onDeleteTile = { tile: AACTile ->
                                 tileToDelete = tile
                             }
                         )
@@ -180,7 +182,10 @@ fun AdminDashboardScreen(
                         AdminStatisticsScreen(viewModel = viewModel)
                     }
                     AdminTab.SYSTEM -> {
-                        AdminSystemSettings(viewModel = viewModel)
+                        AdminSystemSettings(
+                            viewModel = viewModel,
+                            onNavigateToProfiles = onNavigateToProfiles
+                        )
                     }
                 }
             }
@@ -362,7 +367,7 @@ fun TileActionDialog(
 fun TilePickerDialog(
     viewModel: AACViewModel,
     onDismiss: () -> Unit,
-    onTileSelected: (AACTile?) -> Unit
+    onTileSelected: (CombinedTile?) -> Unit
 ) {
     val allTiles by viewModel.allTiles.collectAsState()
     var searchQuery by remember { mutableStateOf("") }
@@ -415,7 +420,7 @@ fun TilePickerDialog(
                         }
                     }
 
-                    items(filteredTiles) { tile ->
+                    items(filteredTiles) { tile: CombinedTile ->
                         Card(
                             modifier = Modifier
                                 .aspectRatio(1f)
@@ -501,7 +506,10 @@ fun AdminBottomNavigation(
 }
 
 @Composable
-fun AdminSystemSettings(viewModel: AACViewModel) {
+fun AdminSystemSettings(
+    viewModel: AACViewModel,
+    onNavigateToProfiles: () -> Unit
+) {
     val speakOnTilePress by viewModel.speakOnTilePress.collectAsState()
     val langCode by viewModel.languageCode.collectAsState()
     val importExportStatus by viewModel.importExportStatus.collectAsState()
@@ -564,7 +572,22 @@ fun AdminSystemSettings(viewModel: AACViewModel) {
         ) {
             Column(modifier = Modifier.padding(16.dp)) {
                 Text(stringResource(R.string.general_settings), style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.Bold)
-                Spacer(modifier = Modifier.height(8.dp))
+                Spacer(modifier = Modifier.height(16.dp))
+
+                Button(
+                    onClick = onNavigateToProfiles,
+                    modifier = Modifier.fillMaxWidth(),
+                    shape = RoundedCornerShape(12.dp)
+                ) {
+                    Icon(Icons.Default.Person, contentDescription = null)
+                    Spacer(Modifier.width(8.dp))
+                    Text(stringResource(R.string.profile_manager))
+                }
+
+                Spacer(modifier = Modifier.height(16.dp))
+                HorizontalDivider(modifier = Modifier.padding(vertical = 8.dp), thickness = 0.5.dp, color = MaterialTheme.colorScheme.outlineVariant)
+                Spacer(modifier = Modifier.height(16.dp))
+
                 Row(
                     modifier = Modifier.fillMaxWidth(),
                     verticalAlignment = Alignment.CenterVertically,

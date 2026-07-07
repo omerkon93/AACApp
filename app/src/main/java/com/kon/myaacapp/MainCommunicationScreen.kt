@@ -2,7 +2,9 @@ package com.kon.myaacapp
 
 import android.content.res.Configuration
 import androidx.activity.compose.BackHandler
+import androidx.compose.foundation.Image
 import androidx.compose.foundation.background
+import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
@@ -21,27 +23,30 @@ import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.lazy.LazyRow
 import androidx.compose.foundation.lazy.grid.GridCells
 import androidx.compose.foundation.lazy.grid.LazyVerticalGrid
+import androidx.compose.foundation.lazy.grid.items
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
 import androidx.compose.material.icons.automirrored.filled.Backspace
 import androidx.compose.material.icons.automirrored.filled.VolumeUp
 import androidx.compose.material.icons.filled.Clear
-import androidx.compose.material.icons.filled.Folder
+import androidx.compose.material.icons.filled.PlayArrow
+import androidx.compose.material.icons.filled.Settings
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Button
 import androidx.compose.material3.ButtonDefaults
+import androidx.compose.material3.Card
 import androidx.compose.material3.CardDefaults
 import androidx.compose.material3.Icon
+import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
-import androidx.compose.material3.OutlinedCard
 import androidx.compose.material3.OutlinedTextField
-import androidx.compose.material3.Surface
+import androidx.compose.material3.Scaffold
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
-import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
@@ -51,27 +56,29 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
-import androidx.compose.ui.graphics.luminance
 import androidx.compose.ui.graphics.vector.ImageVector
-import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.platform.LocalConfiguration
+import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalDensity
-import androidx.compose.ui.platform.LocalLayoutDirection
 import androidx.compose.ui.platform.LocalWindowInfo
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.text.input.KeyboardType
+import androidx.compose.ui.text.input.PasswordVisualTransformation
+import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.tooling.preview.Preview
-import androidx.compose.ui.unit.LayoutDirection
+import androidx.compose.ui.unit.TextUnit
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
-import androidx.compose.ui.util.fastAny
 import androidx.core.graphics.toColorInt
-import coil.compose.AsyncImage
-import com.kon.myaacapp.ui.theme.MyAACAppTheme
-import com.kon.myaacapp.ui.theme.PrimaryBlue
-import com.kon.myaacapp.ui.theme.resolveFitzgeraldColor
+import coil.compose.rememberAsyncImagePainter
+import com.kon.myaacapp.AACViewModel
+import com.kon.myaacapp.CombinedTile
+import com.kon.myaacapp.Gender
+import com.kon.myaacapp.R
+import java.io.File
 
 @Composable
 fun MainCommunicationScreen(
@@ -115,114 +122,69 @@ fun MainCommunicationScreen(
 
 @Composable
 fun MainCommunicationScreenContent(
-    tiles: List<AACTile>,
-    sentence: List<AACTile>,
+    tiles: List<CombinedTile>,
+    sentence: List<CombinedTile>,
     currentParentId: String?,
     userGender: Gender,
     langCode: String,
     onSpeak: () -> Unit,
     onClear: () -> Unit,
     onBackspace: () -> Unit,
-    onTileClick: (AACTile) -> Unit,
+    onTileClick: (CombinedTile) -> Unit,
     onBackClick: () -> Unit,
     onNavigateToAdmin: () -> Unit
 ) {
     var showPinDialog by remember { mutableStateOf(value = false) }
     val configuration = LocalConfiguration.current
-    val density = LocalDensity.current
-    val windowInfo = LocalWindowInfo.current
-    val screenWidthDp = with(density) { windowInfo.containerSize.width.toDp().value.toInt() }
     val orientation = configuration.orientation
 
-    val columnCount = if (orientation == Configuration.ORIENTATION_LANDSCAPE) {
-        if (screenWidthDp >= 800) 6 else 5
-    } else {
-        if (screenWidthDp >= 600) 4 else 3
-    }
-
-    val layoutDir = if (langCode == "he") LayoutDirection.Rtl else LayoutDirection.Ltr
-
-    CompositionLocalProvider(LocalLayoutDirection provides layoutDir) {
-        Column(
+    Column(modifier = Modifier.fillMaxSize()) {
+        // Sentence Bar & Action Buttons
+        Row(
             modifier = Modifier
-                .fillMaxSize()
-                .background(MaterialTheme.colorScheme.background)
-                .padding(16.dp)
+                .fillMaxWidth()
+                .height(if (orientation == Configuration.ORIENTATION_LANDSCAPE) 100.dp else 120.dp)
+                .background(MaterialTheme.colorScheme.surfaceVariant)
+                .padding(8.dp),
+            verticalAlignment = Alignment.CenterVertically
         ) {
-            // Sentence Bar
             SentenceBar(
                 sentence = sentence,
-                modifier = Modifier
-                    .pointerInput(Unit) {
-                        awaitPointerEventScope {
-                            while (true) {
-                                val event = awaitPointerEvent()
-                                if (event.changes.fastAny { it.pressed }) {
-                                    val startTime = System.currentTimeMillis()
-                                    var isLongPress = false
-                                    
-                                    while (true) {
-                                        val nextEvent = withTimeoutOrNull(100) {
-                                            awaitPointerEvent()
-                                        }
-                                        
-                                        if (nextEvent == null) {
-                                            // Timeout reached, check duration
-                                            if ((System.currentTimeMillis() - startTime) >= 2000) {
-                                                isLongPress = true
-                                                break
-                                            }
-                                        } else {
-                                            // Check if pointer is still down
-                                            if (nextEvent.changes.fastAny { it.pressed.not() }) {
-                                                break
-                                            }
-                                        }
-                                    }
-                                    
-                                    if (isLongPress) {
-                                        showPinDialog = true
-                                    }
-                                }
-                            }
-                        }
-                    }
+                modifier = Modifier.weight(1f),
+                userGender = userGender
             )
+            
+            Spacer(modifier = Modifier.width(8.dp))
 
-            if (showPinDialog) {
-                AdminPinDialog(
-                    onDismiss = { showPinDialog = false },
-                    onAuthenticated = {
-                        showPinDialog = false
-                        onNavigateToAdmin()
-                    }
-                )
-            }
-
-            Spacer(modifier = Modifier.height(12.dp))
-
-            // Action Bar
             ActionBar(
-                onBackClick = onBackClick,
+                onSpeak = onSpeak,
                 onClear = onClear,
                 onBackspace = onBackspace,
-                onSpeak = onSpeak,
-                isRoot = currentParentId == null
+                onSettings = { showPinDialog = true },
+                onBack = onBackClick,
+                canGoBack = currentParentId != null
             )
+        }
 
-            Spacer(modifier = Modifier.height(16.dp))
-
-            // Tiles Grid
+        // Main Grid
+        Box(modifier = Modifier.weight(1f)) {
+            val columns = if (orientation == Configuration.ORIENTATION_LANDSCAPE) 6 else 3
+            val minRows = 4
+            val maxIndex = tiles.maxOfOrNull { it.layoutState.cellIndex } ?: -1
+            val totalRows = maxOf(minRows, (maxIndex / columns) + 1)
+            val totalCells = totalRows * columns
+            val tileMap = remember(tiles) { tiles.associateBy { it.layoutState.cellIndex } }
+            
             LazyVerticalGrid(
-                columns = GridCells.Fixed(columnCount),
-                horizontalArrangement = Arrangement.spacedBy(12.dp),
-                verticalArrangement = Arrangement.spacedBy(12.dp),
-                modifier = Modifier.weight(1f)
+                columns = GridCells.Fixed(columns),
+                modifier = Modifier.fillMaxSize(),
+                contentPadding = PaddingValues(8.dp),
+                horizontalArrangement = Arrangement.spacedBy(8.dp),
+                verticalArrangement = Arrangement.spacedBy(8.dp)
             ) {
-                val totalCells = if (columnCount >= 5) 30 else 12
                 items(totalCells) { index ->
-                    val tile = tiles.find { it.cellIndex == index }
-                    if (tile != null && !tile.isHidden) {
+                    val tile = tileMap[index]
+                    if (tile != null) {
                         AACTileItem(
                             tile = tile,
                             userGender = userGender,
@@ -230,72 +192,50 @@ fun MainCommunicationScreenContent(
                             onClick = { onTileClick(tile) }
                         )
                     } else {
-                        val aspectRatio = if (orientation == Configuration.ORIENTATION_LANDSCAPE) 1.2f else 1.0f
-                        Spacer(modifier = Modifier.aspectRatio(aspectRatio))
+                        // Empty slot to maintain grid structure
+                        Spacer(modifier = Modifier.fillMaxSize())
                     }
                 }
             }
         }
     }
+
+    if (showPinDialog) {
+        AdminPinDialog(
+            onDismiss = { showPinDialog = false },
+            onConfirm = {
+                showPinDialog = false
+                onNavigateToAdmin()
+            }
+        )
+    }
 }
 
 @Composable
 fun SentenceBar(
-    sentence: List<AACTile>,
-    modifier: Modifier = Modifier
+    sentence: List<CombinedTile>,
+    modifier: Modifier = Modifier,
+    userGender: Gender
 ) {
-    Surface(
-        modifier = modifier
-            .fillMaxWidth()
-            .height(100.dp),
-        shape = RoundedCornerShape(12.dp),
-        color = MaterialTheme.colorScheme.surface,
-        tonalElevation = 2.dp,
-        border = androidx.compose.foundation.BorderStroke(1.dp, MaterialTheme.colorScheme.outlineVariant)
+    Card(
+        modifier = modifier.fillMaxHeight(),
+        shape = RoundedCornerShape(8.dp),
+        colors = CardDefaults.cardColors(containerColor = Color.White),
+        elevation = CardDefaults.cardElevation(2.dp)
     ) {
         LazyRow(
-            modifier = Modifier
-                .padding(8.dp)
-                .fillMaxSize(),
-            horizontalArrangement = Arrangement.spacedBy(8.dp),
+            modifier = Modifier.fillMaxSize(),
+            contentPadding = PaddingValues(horizontal = 8.dp),
+            horizontalArrangement = Arrangement.spacedBy(4.dp),
             verticalAlignment = Alignment.CenterVertically
         ) {
             items(sentence) { tile ->
-                Column(
-                    modifier = Modifier
-                        .width(70.dp)
-                        .fillMaxHeight()
-                        .background(
-                            MaterialTheme.colorScheme.secondaryContainer,
-                            RoundedCornerShape(8.dp)
-                        )
-                        .padding(4.dp),
-                    horizontalAlignment = Alignment.CenterHorizontally,
-                    verticalArrangement = Arrangement.Center
-                ) {
-                    if (tile.imageUri != null) {
-                        AsyncImage(
-                            model = tile.imageUri,
-                            contentDescription = null,
-                            modifier = Modifier
-                                .size(32.dp)
-                                .clip(RoundedCornerShape(4.dp)),
-                            contentScale = ContentScale.Crop
-                        )
-                    } else if (tile.emoji != null) {
-                        Text(
-                            text = tile.emoji,
-                            fontSize = 24.sp
-                        )
-                    }
-                    
-                    Text(
-                        text = tile.label,
-                        style = MaterialTheme.typography.labelSmall,
-                        fontWeight = FontWeight.Bold,
-                        color = MaterialTheme.colorScheme.onSecondaryContainer,
-                        maxLines = 1,
-                        overflow = TextOverflow.Ellipsis
+                Box(modifier = Modifier.size(if (LocalConfiguration.current.orientation == Configuration.ORIENTATION_LANDSCAPE) 70.dp else 90.dp)) {
+                    AACTileItem(
+                        tile = tile,
+                        userGender = userGender,
+                        orientation = LocalConfiguration.current.orientation,
+                        onClick = { /* Could allow clicking to remove */ }
                     )
                 }
             }
@@ -305,53 +245,27 @@ fun SentenceBar(
 
 @Composable
 fun ActionBar(
-    onBackClick: () -> Unit,
+    onSpeak: () -> Unit,
     onClear: () -> Unit,
     onBackspace: () -> Unit,
-    onSpeak: () -> Unit,
-    isRoot: Boolean,
+    onSettings: () -> Unit,
+    onBack: () -> Unit,
+    canGoBack: Boolean,
     modifier: Modifier = Modifier
 ) {
+    val isLandscape = LocalConfiguration.current.orientation == Configuration.ORIENTATION_LANDSCAPE
+    val buttonSize = if (isLandscape) 48.dp else 56.dp
+
     Row(
-        modifier = modifier.fillMaxWidth(),
-        horizontalArrangement = Arrangement.spacedBy(12.dp),
+        modifier = modifier,
+        horizontalArrangement = Arrangement.spacedBy(4.dp),
         verticalAlignment = Alignment.CenterVertically
     ) {
-        // [ Back/Up ] [ Clear (X) ] [ Backspace ] [ Speak ]
-        
-        ActionButton(
-            onClick = onBackClick,
-            enabled = !isRoot,
-            icon = Icons.AutoMirrored.Filled.ArrowBack,
-            contentDescription = stringResource(R.string.back),
-            containerColor = MaterialTheme.colorScheme.tertiary,
-            modifier = Modifier.weight(1f)
-        )
-
-        ActionButton(
-            onClick = onClear,
-            icon = Icons.Default.Clear,
-            contentDescription = stringResource(R.string.clear),
-            containerColor = MaterialTheme.colorScheme.error,
-            modifier = Modifier.weight(1f)
-        )
-
-        ActionButton(
-            onClick = onBackspace,
-            icon = Icons.AutoMirrored.Filled.Backspace,
-            contentDescription = stringResource(R.string.backspace),
-            containerColor = MaterialTheme.colorScheme.errorContainer,
-            contentColor = MaterialTheme.colorScheme.onErrorContainer,
-            modifier = Modifier.weight(1f)
-        )
-
-        ActionButton(
-            onClick = onSpeak,
-            icon = Icons.AutoMirrored.Filled.VolumeUp,
-            contentDescription = stringResource(R.string.speak),
-            containerColor = PrimaryBlue,
-            modifier = Modifier.weight(2f)
-        )
+        ActionButton(onBack, Icons.AutoMirrored.Filled.ArrowBack, stringResource(R.string.back), Color(0xFF9E9E9E), Modifier.size(buttonSize), enabled = true)
+        ActionButton(onBackspace, Icons.AutoMirrored.Filled.Backspace, stringResource(R.string.backspace), Color(0xFFFF9800), Modifier.size(buttonSize))
+        ActionButton(onClear, Icons.Default.Clear, stringResource(R.string.clear), Color(0xFFF44336), Modifier.size(buttonSize))
+        ActionButton(onSpeak, Icons.Default.PlayArrow, stringResource(R.string.speak), Color(0xFF4CAF50), Modifier.size(buttonSize))
+        ActionButton(onSettings, Icons.Default.Settings, stringResource(R.string.admin_access), Color(0xFF607D8B), Modifier.size(buttonSize))
     }
 }
 
@@ -360,39 +274,26 @@ fun ActionButton(
     onClick: () -> Unit,
     icon: ImageVector,
     contentDescription: String,
-    containerColor: Color,
+    color: Color,
     modifier: Modifier = Modifier,
-    enabled: Boolean = true,
-    contentColor: Color = if (containerColor.luminance() > 0.5f) Color.Black else Color.White
+    enabled: Boolean = true
 ) {
     Button(
         onClick = onClick,
-        enabled = enabled,
-        shape = RoundedCornerShape(12.dp),
-        colors = ButtonDefaults.buttonColors(
-            containerColor = containerColor,
-            contentColor = contentColor,
-            disabledContainerColor = containerColor.copy(alpha = 0.3f),
-            disabledContentColor = contentColor.copy(alpha = 0.5f)
-        ),
-        modifier = modifier.height(64.dp),
-        contentPadding = PaddingValues(0.dp)
+        modifier = modifier,
+        shape = RoundedCornerShape(8.dp),
+        colors = ButtonDefaults.buttonColors(containerColor = color),
+        contentPadding = PaddingValues(0.dp),
+        enabled = enabled
     ) {
-        Icon(
-            icon,
-            contentDescription = contentDescription,
-            modifier = Modifier.size(32.dp)
-        )
+        Icon(icon, contentDescription = contentDescription, tint = Color.White)
     }
 }
 
 @Composable
-fun AdminPinDialog(
-    onDismiss: () -> Unit,
-    onAuthenticated: () -> Unit
-) {
-    var password by remember { mutableStateOf("") }
-    val correctPassword = "1234"
+fun AdminPinDialog(onDismiss: () -> Unit, onConfirm: () -> Unit) {
+    var pin by remember { mutableStateOf("") }
+    var error by remember { mutableStateOf(false) }
 
     AlertDialog(
         onDismissRequest = onDismiss,
@@ -402,29 +303,38 @@ fun AdminPinDialog(
                 Text(stringResource(R.string.enter_admin_password))
                 Spacer(modifier = Modifier.height(8.dp))
                 OutlinedTextField(
-                    value = password,
-                    onValueChange = { password = it },
-                    label = { Text(stringResource(R.string.password)) },
-                    modifier = Modifier.fillMaxWidth()
+                    value = pin,
+                    onValueChange = { 
+                        if (it.length <= 4 && it.all { char -> char.isDigit() }) {
+                            pin = it
+                            error = false
+                        }
+                    },
+                    visualTransformation = PasswordVisualTransformation(),
+                    keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number),
+                    modifier = Modifier.fillMaxWidth(),
+                    isError = error,
+                    singleLine = true,
+                    label = { Text(stringResource(R.string.password)) }
                 )
-                Spacer(modifier = Modifier.height(4.dp))
-                Text(
-                    text = stringResource(R.string.default_password_hint),
-                    style = MaterialTheme.typography.bodySmall,
-                    color = MaterialTheme.colorScheme.onSurfaceVariant
-                )
+                if (error) {
+                    Text(
+                        "PIN שגוי", // Or add to strings.xml
+                        color = MaterialTheme.colorScheme.error,
+                        style = MaterialTheme.typography.bodySmall
+                    )
+                }
             }
         },
         confirmButton = {
-            Button(
-                onClick = {
-                    if (password == correctPassword) {
-                        onAuthenticated()
-                    }
-                },
-                enabled = password.isNotBlank()
-            ) {
-                Text(stringResource(R.string.unlock))
+            TextButton(onClick = {
+                if (pin == "1234") {
+                    onConfirm()
+                } else {
+                    error = true
+                }
+            }) {
+                Text(stringResource(R.string.ok))
             }
         },
         dismissButton = {
@@ -436,34 +346,35 @@ fun AdminPinDialog(
 }
 
 @Composable
-fun AACTileItem(tile: AACTile, userGender: Gender, orientation: Int, onClick: () -> Unit) {
-    val backgroundColor = remember(tile.backgroundColorHex, tile.partOfSpeech) {
-        if (tile.backgroundColorHex != null) {
+fun AACTileItem(tile: CombinedTile, userGender: Gender, orientation: Int, onClick: () -> Unit) {
+    val backgroundColor = remember(tile.definition.backgroundColorHex, tile.definition.partOfSpeech) {
+        if (tile.definition.backgroundColorHex != null) {
             try {
-                Color(tile.backgroundColorHex.toColorInt())
+                Color(tile.definition.backgroundColorHex.toColorInt())
             } catch (_: Exception) {
-                resolveFitzgeraldColor(tile.partOfSpeech)
+                resolveFitzgeraldColor(tile.definition.partOfSpeech)
             }
         } else {
-            resolveFitzgeraldColor(tile.partOfSpeech)
+            resolveFitzgeraldColor(tile.definition.partOfSpeech)
         }
     }
 
     val displayLabel = if (userGender == Gender.FEMALE) {
-        tile.labelFeminine ?: tile.label
+        tile.definition.labelFeminine ?: tile.definition.label
     } else {
-        tile.label
+        tile.definition.label
     }
 
     val aspectRatio = if (orientation == Configuration.ORIENTATION_LANDSCAPE) 1.2f else 1.0f
 
     TileUI(
         label = displayLabel,
-        imageUri = tile.imageUri,
-        emoji = tile.emoji,
+        imageUri = tile.definition.imageUri,
+        emoji = tile.definition.emoji,
         backgroundColor = backgroundColor,
         aspectRatio = aspectRatio,
-        isCategory = tile.isCategory,
+        isCategory = tile.definition.isCategory,
+        isHidden = tile.layoutState.isHidden,
         onClick = onClick
     )
 }
@@ -476,39 +387,33 @@ fun TileUI(
     backgroundColor: Color,
     aspectRatio: Float,
     isCategory: Boolean,
+    isHidden: Boolean = false,
     onClick: () -> Unit,
     modifier: Modifier = Modifier,
-    labelFontSize: androidx.compose.ui.unit.TextUnit = 18.sp,
+    labelFontSize: TextUnit = 14.sp,
     showSpeakerIcon: Boolean = false,
-    contentColor: Color = if (backgroundColor.luminance() > 0.4f) Color.Black else Color.White
 ) {
-    OutlinedCard(
+    if (isHidden) return
+
+    Card(
         modifier = modifier
+            .fillMaxWidth()
             .aspectRatio(aspectRatio)
-            .clickable { onClick() },
-        shape = RoundedCornerShape(16.dp),
-        colors = CardDefaults.outlinedCardColors(
-            containerColor = backgroundColor
-        ),
-        border = CardDefaults.outlinedCardBorder().copy(
-            brush = androidx.compose.ui.graphics.SolidColor(MaterialTheme.colorScheme.outlineVariant)
-        )
+            .clickable(onClick = onClick)
+            .border(
+                width = if (isCategory) 2.dp else 0.dp,
+                color = if (isCategory) Color.DarkGray else Color.Transparent,
+                shape = RoundedCornerShape(8.dp)
+            ),
+        shape = RoundedCornerShape(8.dp),
+        colors = CardDefaults.cardColors(containerColor = backgroundColor),
+        elevation = CardDefaults.cardElevation(2.dp)
     ) {
         Box(modifier = Modifier.fillMaxSize()) {
-            if (isCategory) {
-                Icon(
-                    imageVector = Icons.Default.Folder,
-                    contentDescription = null,
-                    modifier = Modifier
-                        .align(Alignment.TopEnd)
-                        .padding(8.dp)
-                        .size(16.dp),
-                    tint = contentColor.copy(alpha = 0.6f)
-                )
-            }
-
             Column(
-                modifier = Modifier.fillMaxSize(),
+                modifier = Modifier
+                    .fillMaxSize()
+                    .padding(4.dp),
                 horizontalAlignment = Alignment.CenterHorizontally,
                 verticalArrangement = Arrangement.Center
             ) {
@@ -519,83 +424,57 @@ fun TileUI(
                     contentAlignment = Alignment.Center
                 ) {
                     if (imageUri != null) {
-                        AsyncImage(
-                            model = imageUri,
-                            contentDescription = label,
+                        val file = File(imageUri)
+                        Image(
+                            painter = rememberAsyncImagePainter(if (file.exists()) file else imageUri),
+                            contentDescription = null,
                             modifier = Modifier.fillMaxSize(),
-                            contentScale = ContentScale.Crop
+                            contentScale = ContentScale.Fit
                         )
                     } else if (emoji != null) {
                         Text(
                             text = emoji,
-                            fontSize = 64.sp
+                            fontSize = 32.sp,
+                            textAlign = TextAlign.Center
                         )
                     }
                 }
                 
-                Surface(
-                    modifier = Modifier.fillMaxWidth(),
-                    color = Color.Black.copy(alpha = 0.05f)
-                ) {
-                    Box(modifier = Modifier.fillMaxWidth()) {
-                        Text(
-                            text = label,
-                            fontSize = labelFontSize,
-                            fontWeight = FontWeight.Bold,
-                            color = contentColor,
-                            modifier = Modifier
-                                .padding(vertical = 4.dp, horizontal = 8.dp)
-                                .align(Alignment.Center),
-                            textAlign = androidx.compose.ui.text.style.TextAlign.Center,
-                            maxLines = 1,
-                            overflow = TextOverflow.Ellipsis
-                        )
-                        
-                        if (showSpeakerIcon) {
-                            Icon(
-                                imageVector = Icons.AutoMirrored.Filled.VolumeUp,
-                                contentDescription = null,
-                                tint = contentColor.copy(alpha = 0.5f),
-                                modifier = Modifier
-                                    .align(Alignment.CenterEnd)
-                                    .padding(end = 8.dp)
-                                    .size(16.dp)
-                            )
-                        }
-                    }
-                }
+                Text(
+                    text = label,
+                    fontSize = labelFontSize,
+                    fontWeight = FontWeight.Bold,
+                    textAlign = TextAlign.Center,
+                    maxLines = 1,
+                    overflow = TextOverflow.Ellipsis,
+                    modifier = Modifier.fillMaxWidth()
+                )
+            }
+
+            if (showSpeakerIcon) {
+                Icon(
+                    imageVector = Icons.AutoMirrored.Filled.VolumeUp,
+                    contentDescription = null,
+                    modifier = Modifier
+                        .align(Alignment.TopEnd)
+                        .padding(4.dp)
+                        .size(16.dp),
+                    tint = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.6f)
+                )
             }
         }
     }
 }
 
-@Preview(showBackground = true, device = "spec:width=1280dp,height=800dp,orientation=landscape", apiLevel = 35)
-@Composable
-fun MainCommunicationScreenPreview() {
-    val sampleTiles = listOf(
-        AACTile("1", "אני", "אני", emoji = "🙋‍♂️", isCategory = false, cellIndex = 0),
-        AACTile("2", "רוצה", "רוצה", emoji = "❤️", isCategory = false, cellIndex = 1),
-        AACTile("3", "אוכל", "אוכל", emoji = "🍕", isCategory = true, cellIndex = 2),
-        AACTile("4", "שתייה", "שתייה", emoji = "🥤", isCategory = true, cellIndex = 3)
-    )
-    val sampleSentence = listOf(
-        AACTile("1", "אני", "אני", emoji = "🙋‍♂️", isCategory = false, cellIndex = 0),
-        AACTile("2", "רוצה", "רוצה", emoji = "❤️", isCategory = false, cellIndex = 1)
-    )
-
-    MyAACAppTheme {
-        MainCommunicationScreenContent(
-            tiles = sampleTiles,
-            sentence = sampleSentence,
-            currentParentId = "some_id",
-            userGender = Gender.MALE,
-            langCode = "he",
-            onSpeak = {},
-            onClear = {},
-            onBackspace = {},
-            onTileClick = {},
-            onBackClick = {},
-            onNavigateToAdmin = {}
-        )
+fun resolveFitzgeraldColor(partOfSpeech: String?): Color {
+    return when (partOfSpeech?.uppercase()) {
+        "PRONOUN", "PEOPLE" -> Color(0xFFFFF176) // Yellow
+        "VERB" -> Color(0xFFAED581) // Green
+        "NOUN" -> Color(0xFFBBDEFB) // Orange/Tan -> Blue in some versions
+        "ADJECTIVE" -> Color(0xFFB39DDB) // Blue -> Purple
+        "ADVERB" -> Color(0xFFF48FB1) // Brown -> Pink
+        "PREPOSITION", "CONJUNCTION" -> Color(0xFFFFCC80) // Pink -> Orange
+        "SOCIAL" -> Color(0xFFE1BEE7) // Purple
+        else -> Color(0xFFF5F5F5) // Light Gray
     }
 }
