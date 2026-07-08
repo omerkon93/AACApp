@@ -157,4 +157,13 @@
     <string name="profile_name">שם פרופיל</string>
     <string name="delete_profile">מחק פרופיל</string>
     <string name="delete_profile_confirm">האם אתה בטוח שברצונך למחוק את הפרופיל \'%1$s\'? כל ההתאמות האישיות של הפרופיל יימחקו.</string>
+    <string name="tile_type_label">סוג אריח (Tile Type)</string>
+    <string name="tile_type_basic">רגיל (Basic Word)</string>
+    <string name="tile_type_folder">תיקייה (Folder)</string>
+    <string name="tile_type_connector">מחבר (Connector)</string>
+    <string name="tile_type_quick_fire">מהיר (Quick Fire)</string>
+    <string name="advanced_id_label">מזהה ייחודי (ID) - למתקדמים</string>
+    <string name="advanced_id_placeholder">לדוגמה: my_custom_id</string>
+    <string name="advanced_id_error_existing">לא ניתן לשנות מזהה (ID) של אריח קיים.</string>
+    <string name="advanced_id_hint">השאר ריק כדי שהמערכת תיצור ID אקראי באופן אוטומטי.</string>
 </resources>

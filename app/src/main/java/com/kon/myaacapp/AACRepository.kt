@@ -288,7 +288,13 @@ class AACRepository(
     }
 
     suspend fun insertTile(tile: AACTile) {
-        // 1. Create TileDefinition
+        val explicitType = when {
+            tile.isCategory -> TileType.FOLDER
+            tile.linkedCategoryId != null -> TileType.CONNECTOR
+            tile.isQuickFire -> TileType.QUICK_FIRE
+            else -> TileType.BASIC
+        }
+
         val definition = TileDefinition(
             id = tile.id,
             label = tile.label,
@@ -302,13 +308,18 @@ class AACRepository(
             partOfSpeech = tile.partOfSpeech,
             grammaticalGender = tile.grammaticalGender,
             isCategory = tile.isCategory,
+            type = explicitType,
             languageCode = tile.languageCode,
             defaultParentId = tile.parentId,
-            defaultCellIndex = tile.cellIndex
+            defaultCellIndex = tile.cellIndex,
+            defaultLinkedCategoryId = tile.linkedCategoryId
         )
 
-        // 2. Save Definition to disk
+        // 1. Save to JSON Disk
         saveDefinitionToDisk(definition)
+
+        // 2. Save to Legacy Room DB (CRITICAL FOR GRID DISPLAY)
+        aacTileDao.insertTile(tile)
 
         // 3. Update active profile's layout
         val layoutState = TileLayoutState(
@@ -322,7 +333,6 @@ class AACRepository(
         )
         lockInDefaultState(tile.id, tile.parentId, layoutState)
 
-        // 4. Reload definitions
         loadAllDefinitions()
     }
 
@@ -356,7 +366,13 @@ class AACRepository(
     }
 
     suspend fun updateTile(tile: AACTile) {
-        // 1. Update Definition on disk
+        val explicitType = when {
+            tile.isCategory -> TileType.FOLDER
+            tile.linkedCategoryId != null -> TileType.CONNECTOR
+            tile.isQuickFire -> TileType.QUICK_FIRE
+            else -> TileType.BASIC
+        }
+
         val definition = TileDefinition(
             id = tile.id,
             label = tile.label,
@@ -370,13 +386,20 @@ class AACRepository(
             partOfSpeech = tile.partOfSpeech,
             grammaticalGender = tile.grammaticalGender,
             isCategory = tile.isCategory,
+            type = explicitType,
             languageCode = tile.languageCode,
             defaultParentId = tile.parentId,
-            defaultCellIndex = tile.cellIndex
+            defaultCellIndex = tile.cellIndex,
+            defaultLinkedCategoryId = tile.linkedCategoryId
         )
+
+        // 1. Save to JSON Disk
         saveDefinitionToDisk(definition)
 
-        // 2. Update Layout in profile
+        // 2. Update Legacy Room DB (CRITICAL FOR GRID DISPLAY)
+        aacTileDao.updateTile(tile)
+
+        // 3. Update Layout in profile
         updateLayoutState(tile.id, tile.parentId) {
             it.copy(
                 parentId = tile.parentId,

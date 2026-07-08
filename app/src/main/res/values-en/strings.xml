@@ -157,4 +157,13 @@
     <string name="profile_name">Profile Name</string>
     <string name="delete_profile">Delete Profile</string>
     <string name="delete_profile_confirm">Are you sure you want to delete profile \'%1$s\'? All profile customizations will be deleted.</string>
+    <string name="tile_type_label">Tile Type</string>
+    <string name="tile_type_basic">Basic Word</string>
+    <string name="tile_type_folder">Folder</string>
+    <string name="tile_type_connector">Connector</string>
+    <string name="tile_type_quick_fire">Quick Fire</string>
+    <string name="advanced_id_label">Unique ID (Advanced)</string>
+    <string name="advanced_id_placeholder">Example: my_custom_id</string>
+    <string name="advanced_id_error_existing">Cannot change the ID of an existing tile.</string>
+    <string name="advanced_id_hint">Leave blank to auto-generate a random ID.</string>
 </resources>

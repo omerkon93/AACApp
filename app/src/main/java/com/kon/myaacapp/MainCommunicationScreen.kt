@@ -28,11 +28,14 @@ import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
+import androidx.compose.material.icons.automirrored.filled.ArrowForward
 import androidx.compose.material.icons.automirrored.filled.Backspace
 import androidx.compose.material.icons.filled.Delete
 import androidx.compose.material.icons.filled.Edit
 import androidx.compose.material.icons.filled.Settings
 import androidx.compose.material.icons.filled.VolumeUp
+import androidx.compose.material.icons.filled.Folder
+import androidx.compose.material.icons.filled.FlashOn
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Button
 import androidx.compose.material3.ButtonDefaults
@@ -67,6 +70,7 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.core.graphics.toColorInt
 import coil.compose.rememberAsyncImagePainter
+import com.kon.myaacapp.ui.theme.resolveFitzgeraldColor
 import java.io.File
 
 @Composable
@@ -243,9 +247,9 @@ fun SentenceBar(
                     emoji = tile.definition.emoji,
                     backgroundColor = backgroundColor,
                     aspectRatio = 1f,
-                    isCategory = false,
+                    tileType = TileType.BASIC, // Fixed: Replaced 'isCategory = false' with the explicit type
                     onClick = { },
-                    modifier = Modifier.size(80.dp) // Fixed square size for sentence tiles
+                    modifier = Modifier.size(80.dp)
                 )
             }
         }
@@ -431,12 +435,13 @@ fun AACTileItem(tile: CombinedTile, userGender: Gender, orientation: Int, onClic
         emoji = tile.definition.emoji,
         backgroundColor = backgroundColor,
         aspectRatio = aspectRatio,
-        isCategory = tile.definition.isCategory,
+        tileType = tile.definition.resolvedType, // Pass the new resolved type
         isHidden = tile.layoutState.isHidden,
         onClick = onClick
     )
 }
 
+// 2. Update the TileUI signature and content:
 @Composable
 fun TileUI(
     label: String,
@@ -444,14 +449,15 @@ fun TileUI(
     emoji: String?,
     backgroundColor: Color,
     aspectRatio: Float,
-    isCategory: Boolean,
+    tileType: TileType,
     isHidden: Boolean = false,
     onClick: () -> Unit,
     modifier: Modifier = Modifier,
-    labelFontSize: TextUnit = 14.sp,
-    showSpeakerIcon: Boolean = false,
+    labelFontSize: TextUnit = 14.sp
 ) {
     if (isHidden) return
+
+    val isFolder = tileType == TileType.FOLDER
 
     Card(
         modifier = modifier
@@ -459,8 +465,8 @@ fun TileUI(
             .aspectRatio(aspectRatio)
             .clickable(onClick = onClick)
             .border(
-                width = if (isCategory) 2.dp else 0.dp,
-                color = if (isCategory) Color.DarkGray else Color.Transparent,
+                width = if (isFolder) 3.dp else 0.dp, // Thicker border for folders
+                color = if (isFolder) Color.DarkGray else Color.Transparent,
                 shape = RoundedCornerShape(8.dp)
             ),
         shape = RoundedCornerShape(8.dp),
@@ -509,30 +515,25 @@ fun TileUI(
                 )
             }
 
-            if (showSpeakerIcon) {
+            // Visual Indicators based on TileType
+            val indicatorIcon = when (tileType) {
+                TileType.FOLDER -> Icons.Default.Folder
+                TileType.CONNECTOR -> Icons.AutoMirrored.Filled.ArrowForward
+                TileType.QUICK_FIRE -> Icons.Default.FlashOn // Lightning bolt
+                TileType.BASIC -> null
+            }
+
+            if (indicatorIcon != null) {
                 Icon(
-                    imageVector = Icons.Default.VolumeUp,
+                    imageVector = indicatorIcon,
                     contentDescription = null,
                     modifier = Modifier
                         .align(Alignment.TopEnd)
                         .padding(4.dp)
-                        .size(16.dp),
-                    tint = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.6f)
+                        .size(18.dp),
+                    tint = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.5f)
                 )
             }
         }
-    }
-}
-
-fun resolveFitzgeraldColor(partOfSpeech: String?): Color {
-    return when (partOfSpeech?.uppercase()) {
-        "PRONOUN", "PEOPLE" -> Color(0xFFFFF176) // Yellow
-        "VERB" -> Color(0xFFAED581) // Green
-        "NOUN" -> Color(0xFFBBDEFB) // Orange/Tan -> Blue in some versions
-        "ADJECTIVE" -> Color(0xFFB39DDB) // Blue -> Purple
-        "ADVERB" -> Color(0xFFF48FB1) // Brown -> Pink
-        "PREPOSITION", "CONJUNCTION" -> Color(0xFFFFCC80) // Pink -> Orange
-        "SOCIAL" -> Color(0xFFE1BEE7) // Purple
-        else -> Color(0xFFF5F5F5) // Light Gray
     }
 }

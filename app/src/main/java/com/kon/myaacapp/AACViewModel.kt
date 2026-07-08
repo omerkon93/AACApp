@@ -25,7 +25,7 @@ class AACViewModel(application: Application) : AndroidViewModel(application) {
     private val profileRepository: ProfileRepository
     private val ttsHelper: TextToSpeechHelper
     private val languageDownloadHelper: LanguageDownloadHelper
-    
+
     val tileService: AACTileService
     val audioService: AudioRecordingService
     val backupService: BackupService
@@ -93,7 +93,7 @@ class AACViewModel(application: Application) : AndroidViewModel(application) {
 
     private val _currentParentId = MutableStateFlow<String?>(null)
     val currentParentId: StateFlow<String?> = _currentParentId.asStateFlow()
-    
+
     private val navigationStack = mutableListOf<String?>()
 
     fun setCategory(parentId: String?) {
@@ -131,8 +131,8 @@ class AACViewModel(application: Application) : AndroidViewModel(application) {
     }
 
     val currentTiles: StateFlow<List<CombinedTile>> = combine(_currentParentId, languageCode) { parentId, lang ->
-            parentId to lang
-        }
+        parentId to lang
+    }
         .flatMapLatest { (parentId, lang) ->
             repository.getCombinedTiles(parentId, lang)
         }
@@ -222,32 +222,48 @@ class AACViewModel(application: Application) : AndroidViewModel(application) {
     }
 
     fun selectTile(tile: CombinedTile, onNavigateToCategory: (String) -> Unit) {
-        viewModelScope.launch {
-            val (shouldAdd, navigateId) = tileService.handleTilePress(tile)
-            
-            if (shouldAdd) {
+        val type = tile.definition.resolvedType
+
+        when (type) {
+            TileType.FOLDER -> {
+                // FOLDER: Navigate to the linked category, OR fallback to its own ID
+                val targetId = tile.definition.defaultLinkedCategoryId ?: tile.definition.id
+                onNavigateToCategory(targetId)
+            }
+            TileType.CONNECTOR -> {
+                // CONNECTOR: Add to sentence, speak, AND navigate.
                 addTileToSentence(tile)
-                repository.incrementClickCount(tile.id, tile.parentId, languageCode.value)
+                speakTile(tile)
+                tile.definition.defaultLinkedCategoryId?.let { onNavigateToCategory(it) }
             }
-            
-            val shouldSpeak = if (tile.layoutState.isQuickFire) {
-                true // ALWAYS speak quickfire
-            } else {
-                // If it was added to sentence (or is a category that doesn't add),
-                // only speak if setting is ON.
-                speakOnTilePress.value
+            TileType.QUICK_FIRE -> {
+                // QUICK FIRE: Speak immediately, do NOT add to sentence, do not navigate.
+                speakTile(tile)
             }
+            else -> {
+                // BASIC (Fallback): Add to sentence.
+                addTileToSentence(tile)
+            }
+        }
 
-            if (shouldSpeak) {
-                if (tile.definition.audioUri != null) {
-                    audioService.playRecording(tile.definition.audioUri)
-                } else {
-                    val speechText = tileService.getTTSText(tile)
-                    ttsHelper.speak(speechText)
-                }
-            }
+        // Always log the click for statistics
+        viewModelScope.launch {
+            repository.incrementClickCount(tile.definition.id, tile.layoutState.parentId, languageCode.value)
+        }
+    }
 
-            navigateId?.let { onNavigateToCategory(it) }
+    private fun speakTile(tile: CombinedTile) {
+        val textToSpeak = if (userGender.value == Gender.FEMALE) {
+            tile.definition.ttsTextFeminine ?: tile.definition.ttsText ?: tile.definition.label
+        } else {
+            tile.definition.ttsText ?: tile.definition.label
+        }
+
+        val audioUri = tile.definition.audioUri
+        if (audioUri != null) {
+            audioService.playRecording(audioUri)
+        } else {
+            ttsHelper.speak(textToSpeak)
         }
     }
 

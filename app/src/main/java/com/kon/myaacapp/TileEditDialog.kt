@@ -89,7 +89,7 @@ import androidx.core.content.ContextCompat
 import androidx.lifecycle.viewModelScope
 import com.canhub.cropper.CropImageOptions
 import com.kon.myaacapp.ui.theme.MyAACAppTheme
-import com.kon.myaacapp.ui.theme.resolveFitzgeraldColor
+import com.kon.myaacapp.ui.theme.resolveFitzgeraldColor // <--- IMPORTED YOUR EXACT FUNCTION
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
 import java.util.UUID
@@ -103,45 +103,52 @@ fun TileEditDialog(
     initialCellIndex: Int? = null,
     onDismiss: () -> Unit,
 ) {
+    // 1. Basic Info State
     var label by remember { mutableStateOf(existingTile?.label ?: "") }
     var ttsText by remember { mutableStateOf(existingTile?.ttsText ?: "") }
     var tileId by remember { mutableStateOf(existingTile?.id ?: "") }
+    var parentId by remember { mutableStateOf(if (existingTile == null) viewModel.currentParentId.value else existingTile.parentId) }
+
+    // 2. Visuals State
     var emoji by remember { mutableStateOf(existingTile?.emoji ?: "") }
     var imageUri by remember { mutableStateOf(existingTile?.imageUri) }
-    var isCategory by remember { mutableStateOf(existingTile?.isCategory ?: false) }
-    var parentId by remember { mutableStateOf(if (existingTile == null) viewModel.currentParentId.value else existingTile.parentId) }
     var backgroundColorHex by remember { mutableStateOf(existingTile?.backgroundColorHex ?: "") }
-
     var partOfSpeech by remember { mutableStateOf(existingTile?.partOfSpeech ?: "NONE") }
-    var isQuickFire by remember { mutableStateOf(existingTile?.isQuickFire ?: false) }
+
+    // 3. Tile Architecture State
+    var tileType by remember {
+        mutableStateOf(
+            when {
+                existingTile?.isCategory == true -> TileType.FOLDER
+                existingTile?.linkedCategoryId != null -> TileType.CONNECTOR
+                existingTile?.isQuickFire == true -> TileType.QUICK_FIRE
+                else -> TileType.BASIC
+            }
+        )
+    }
     var linkedCategoryId by remember { mutableStateOf(existingTile?.linkedCategoryId) }
+    var cellIndex by remember { mutableStateOf(existingTile?.cellIndex?.toString() ?: initialCellIndex?.toString() ?: "") }
+    var isHidden by remember { mutableStateOf(existingTile?.isHidden ?: false) }
+
+    // 4. Localization & Audio State
     var labelFeminine by remember { mutableStateOf(existingTile?.labelFeminine ?: "") }
     var ttsTextFeminine by remember { mutableStateOf(existingTile?.ttsTextFeminine ?: "") }
     var grammaticalGender by remember { mutableStateOf(existingTile?.grammaticalGender ?: "M") }
     var audioUri by remember { mutableStateOf(existingTile?.audioUri) }
-    var cellIndex by remember { 
-        mutableStateOf(
-            existingTile?.cellIndex?.toString() ?: initialCellIndex?.toString() ?: ""
-        )
-    }
-    var isHidden by remember { mutableStateOf(existingTile?.isHidden ?: false) }
 
-    // Dropdown and Overwrite Logic
+    // Dialog & UI State
     val maxCapacity = 15 // 0-14
     val tilesInParent by viewModel.getTilesByParentId(parentId).collectAsState(initial = emptyList())
-    var showOverwriteDialog by remember { mutableStateOf(value = false) }
+    var showOverwriteDialog by remember { mutableStateOf(false) }
     var pendingCellIndex by remember { mutableStateOf("") }
-    var dropdownExpanded by remember { mutableStateOf(value = false) }
-
-    // Emoji Picker State
-    var showEmojiPicker by remember { mutableStateOf(value = false) }
+    var dropdownExpanded by remember { mutableStateOf(false) }
+    var showEmojiPicker by remember { mutableStateOf(false) }
     var tempEmoji by remember { mutableStateOf("") }
     val focusRequester = remember { FocusRequester() }
 
     // Recording State
-    var isRecording by remember { mutableStateOf(value = false) }
+    var isRecording by remember { mutableStateOf(false) }
     var recordingDuration by remember { mutableLongStateOf(0L) }
-
     val languageCode by viewModel.languageCode.collectAsState()
 
     LaunchedEffect(isRecording) {
@@ -158,16 +165,22 @@ fun TileEditDialog(
 
     val categories by viewModel.allCategories.collectAsState()
     val posOptions = listOf("NONE", "NOUN", "VERB", "ADJECTIVE", "PRONOUN", "SOCIAL")
+
+    // Type Options Mapping referencing string resources
+    val typeOptions = mapOf(
+        TileType.BASIC to stringResource(R.string.tile_type_basic),
+        TileType.FOLDER to stringResource(R.string.tile_type_folder),
+        TileType.CONNECTOR to stringResource(R.string.tile_type_connector),
+        TileType.QUICK_FIRE to stringResource(R.string.tile_type_quick_fire)
+    )
+
     val context = LocalContext.current
     val imageStorageService = remember { ImageStorageService(context) }
     val configuration = LocalConfiguration.current
     val orientation = configuration.orientation
-
     var tempCameraUri by remember { mutableStateOf<Uri?>(null) }
 
-    val cropLauncher = rememberLauncherForActivityResult(
-        contract = CustomCropImageContract(),
-    ) { result ->
+    val cropLauncher = rememberLauncherForActivityResult(CustomCropImageContract()) { result ->
         if (result.isSuccessful) {
             val croppedUri = result.uriContent
             if (croppedUri != null) {
@@ -180,12 +193,27 @@ fun TileEditDialog(
         }
     }
 
-    val cameraLauncher = rememberLauncherForActivityResult(
-        contract = ActivityResultContracts.TakePicture(),
-    ) { success ->
+    val cameraLauncher = rememberLauncherForActivityResult(ActivityResultContracts.TakePicture()) { success ->
         if (success) {
             tempCameraUri?.let { uri ->
-                val cropOptions = CustomCropImageContractOptions(
+                cropLauncher.launch(
+                    CustomCropImageContractOptions(
+                        uri = uri,
+                        cropImageOptions = CropImageOptions(
+                            aspectRatioX = if (orientation == Configuration.ORIENTATION_LANDSCAPE) 12 else 10,
+                            aspectRatioY = 10,
+                            fixAspectRatio = true,
+                        ),
+                    )
+                )
+            }
+        }
+    }
+
+    val galleryLauncher = rememberLauncherForActivityResult(ActivityResultContracts.PickVisualMedia()) { uri ->
+        if (uri != null) {
+            cropLauncher.launch(
+                CustomCropImageContractOptions(
                     uri = uri,
                     cropImageOptions = CropImageOptions(
                         aspectRatioX = if (orientation == Configuration.ORIENTATION_LANDSCAPE) 12 else 10,
@@ -193,30 +221,11 @@ fun TileEditDialog(
                         fixAspectRatio = true,
                     ),
                 )
-                cropLauncher.launch(cropOptions)
-            }
-        }
-    }
-
-    val galleryLauncher = rememberLauncherForActivityResult(
-        contract = ActivityResultContracts.PickVisualMedia(),
-    ) { uri ->
-        if (uri != null) {
-            val cropOptions = CustomCropImageContractOptions(
-                uri = uri,
-                cropImageOptions = CropImageOptions(
-                    aspectRatioX = if (orientation == Configuration.ORIENTATION_LANDSCAPE) 12 else 10,
-                    aspectRatioY = 10,
-                    fixAspectRatio = true,
-                ),
             )
-            cropLauncher.launch(cropOptions)
         }
     }
 
-    val cameraPermissionLauncher = rememberLauncherForActivityResult(
-        contract = ActivityResultContracts.RequestPermission(),
-    ) { isGranted ->
+    val cameraPermissionLauncher = rememberLauncherForActivityResult(ActivityResultContracts.RequestPermission()) { isGranted ->
         if (isGranted) {
             val uri = imageStorageService.getTempUri()
             tempCameraUri = uri
@@ -224,9 +233,7 @@ fun TileEditDialog(
         }
     }
 
-    val permissionLauncher = rememberLauncherForActivityResult(
-        contract = ActivityResultContracts.RequestPermission(),
-    ) { isGranted ->
+    val permissionLauncher = rememberLauncherForActivityResult(ActivityResultContracts.RequestPermission()) { isGranted ->
         if (isGranted) {
             val tempId = UUID.randomUUID().toString()
             audioUri = viewModel.audioService.startRecording(tempId, languageCode)
@@ -269,37 +276,16 @@ fun TileEditDialog(
                     if (showOverwriteDialog) {
                         AlertDialog(
                             onDismissRequest = { showOverwriteDialog = false },
-                            title = {
-                                Text(
-                                    text = stringResource(R.string.cell_occupied_title),
-                                    textAlign = TextAlign.Center,
-                                    modifier = Modifier.fillMaxWidth(),
-                                )
-                            },
+                            title = { Text(stringResource(R.string.cell_occupied_title), textAlign = TextAlign.Center, modifier = Modifier.fillMaxWidth()) },
                             text = {
                                 val occupiedTile = tilesInParent.find { it.cellIndex?.toString() == pendingCellIndex }
-                                Text(
-                                    text = stringResource(R.string.cell_occupied_msg, occupiedTile?.label ?: ""),
-                                    textAlign = TextAlign.Center,
-                                    modifier = Modifier.fillMaxWidth(),
-                                )
+                                Text(stringResource(R.string.cell_occupied_msg, occupiedTile?.label ?: ""), textAlign = TextAlign.Center, modifier = Modifier.fillMaxWidth())
                             },
                             confirmButton = {
-                                TextButton(
-                                    onClick = {
-                                        cellIndex = pendingCellIndex
-                                        showOverwriteDialog = false
-                                    },
-                                ) {
-                                    Text(stringResource(R.string.ok))
-                                }
+                                TextButton(onClick = { cellIndex = pendingCellIndex; showOverwriteDialog = false }) { Text(stringResource(R.string.ok)) }
                             },
                             dismissButton = {
-                                TextButton(
-                                    onClick = { showOverwriteDialog = false },
-                                ) {
-                                    Text(stringResource(R.string.cancel))
-                                }
+                                TextButton(onClick = { showOverwriteDialog = false }) { Text(stringResource(R.string.cancel)) }
                             },
                         )
                     }
@@ -307,32 +293,18 @@ fun TileEditDialog(
                     if (showEmojiPicker) {
                         AlertDialog(
                             onDismissRequest = { showEmojiPicker = false },
-                            title = {
-                                Text(
-                                    text = stringResource(R.string.enter_emoji),
-                                    textAlign = TextAlign.Center,
-                                    modifier = Modifier.fillMaxWidth(),
-                                )
-                            },
+                            title = { Text(stringResource(R.string.enter_emoji), textAlign = TextAlign.Center, modifier = Modifier.fillMaxWidth()) },
                             text = {
                                 Column(horizontalAlignment = Alignment.CenterHorizontally) {
                                     OutlinedTextField(
                                         value = tempEmoji,
-                                        onValueChange = {
-                                            if (it.length <= 4) { // Allow for compound emojis
-                                                tempEmoji = it
-                                            }
-                                        },
-                                        modifier = Modifier
-                                            .fillMaxWidth()
-                                            .focusRequester(focusRequester),
+                                        onValueChange = { if (it.length <= 4) tempEmoji = it },
+                                        modifier = Modifier.fillMaxWidth().focusRequester(focusRequester),
                                         placeholder = { Text(stringResource(R.string.type_emoji_here)) },
                                         textStyle = LocalTextStyle.current.copy(textAlign = TextAlign.Center, fontSize = 24.sp),
                                         singleLine = true,
                                     )
-                                    LaunchedEffect(Unit) {
-                                        focusRequester.requestFocus()
-                                    }
+                                    LaunchedEffect(Unit) { focusRequester.requestFocus() }
                                 }
                             },
                             confirmButton = {
@@ -345,16 +317,10 @@ fun TileEditDialog(
                                         }
                                     },
                                     enabled = tempEmoji.isNotBlank(),
-                                ) {
-                                    Text(stringResource(R.string.ok))
-                                }
+                                ) { Text(stringResource(R.string.ok)) }
                             },
                             dismissButton = {
-                                TextButton(
-                                    onClick = { showEmojiPicker = false },
-                                ) {
-                                    Text(stringResource(R.string.cancel))
-                                }
+                                TextButton(onClick = { showEmojiPicker = false }) { Text(stringResource(R.string.cancel)) }
                             },
                         )
                     }
@@ -420,18 +386,13 @@ fun TileEditDialog(
                                         modifier = Modifier.fillMaxWidth(),
                                         horizontalArrangement = Arrangement.spacedBy(16.dp),
                                     ) {
-                                        // Camera Picker
+                                        // Camera
                                         Surface(
                                             modifier = Modifier
                                                 .weight(1f)
                                                 .height(100.dp)
                                                 .clickable {
-                                                    val hasPermission = ContextCompat.checkSelfPermission(
-                                                        context,
-                                                        Manifest.permission.CAMERA,
-                                                    ) == PackageManager.PERMISSION_GRANTED
-
-                                                    if (hasPermission) {
+                                                    if (ContextCompat.checkSelfPermission(context, Manifest.permission.CAMERA) == PackageManager.PERMISSION_GRANTED) {
                                                         val uri = imageStorageService.getTempUri()
                                                         tempCameraUri = uri
                                                         cameraLauncher.launch(uri)
@@ -443,62 +404,46 @@ fun TileEditDialog(
                                             border = BorderStroke(2.dp, MaterialTheme.colorScheme.outlineVariant),
                                             color = Color.Transparent,
                                         ) {
-                                            Column(
-                                                horizontalAlignment = Alignment.CenterHorizontally,
-                                                verticalArrangement = Arrangement.Center,
-                                            ) {
+                                            Column(horizontalAlignment = Alignment.CenterHorizontally, verticalArrangement = Arrangement.Center) {
                                                 Icon(Icons.Default.PhotoCamera, contentDescription = null)
                                                 Text(stringResource(R.string.take_photo), style = MaterialTheme.typography.labelSmall)
                                             }
                                         }
 
-                                        // Gallery Picker
+                                        // Gallery
                                         Surface(
                                             modifier = Modifier
                                                 .weight(1f)
                                                 .height(100.dp)
-                                                .clickable {
-                                                    galleryLauncher.launch(
-                                                        PickVisualMediaRequest(ActivityResultContracts.PickVisualMedia.ImageOnly),
-                                                    )
-                                                },
+                                                .clickable { galleryLauncher.launch(PickVisualMediaRequest(ActivityResultContracts.PickVisualMedia.ImageOnly)) },
                                             shape = RoundedCornerShape(16.dp),
                                             border = BorderStroke(2.dp, MaterialTheme.colorScheme.outlineVariant),
                                             color = Color.Transparent,
                                         ) {
-                                            Column(
-                                                horizontalAlignment = Alignment.CenterHorizontally,
-                                                verticalArrangement = Arrangement.Center,
-                                            ) {
+                                            Column(horizontalAlignment = Alignment.CenterHorizontally, verticalArrangement = Arrangement.Center) {
                                                 Icon(Icons.Default.PhotoLibrary, contentDescription = null)
                                                 Text(stringResource(R.string.pick_from_gallery), style = MaterialTheme.typography.labelSmall)
                                             }
                                         }
 
-                                        // Emoji Picker Logic
+                                        // Emoji
                                         Surface(
                                             modifier = Modifier
                                                 .weight(1f)
                                                 .height(100.dp)
-                                                .clickable {
-                                                    tempEmoji = emoji
-                                                    showEmojiPicker = true
-                                                },
+                                                .clickable { tempEmoji = emoji; showEmojiPicker = true },
                                             shape = RoundedCornerShape(16.dp),
                                             border = BorderStroke(2.dp, MaterialTheme.colorScheme.primary.copy(alpha = 0.5f)),
                                             color = MaterialTheme.colorScheme.primaryContainer.copy(alpha = 0.1f),
                                         ) {
-                                            Column(
-                                                horizontalAlignment = Alignment.CenterHorizontally,
-                                                verticalArrangement = Arrangement.Center,
-                                            ) {
+                                            Column(horizontalAlignment = Alignment.CenterHorizontally, verticalArrangement = Arrangement.Center) {
                                                 Text(emoji.ifBlank { "🍎" }, fontSize = 32.sp)
                                                 Text(stringResource(R.string.change_emoji), style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.primary)
                                             }
                                         }
                                     }
 
-                                    // Part of Speech / Color
+                                    // Part of Speech - FlowRow layout restored
                                     Text(stringResource(R.string.part_of_speech_label), style = MaterialTheme.typography.labelLarge)
                                     @OptIn(ExperimentalLayoutApi::class)
                                     FlowRow(
@@ -519,32 +464,24 @@ fun TileEditDialog(
                                                 else -> R.string.pos_none
                                             }
 
+                                            // Contrast fix: Pure white selections get a light gray highlight so they don't vanish
+                                            val selectedBgColor = if (isSelected) {
+                                                if (pos == "NONE") Color.LightGray.copy(alpha = 0.3f) else color.copy(alpha = 0.3f)
+                                            } else Color.Transparent
+
+                                            val selectedBorderColor = if (isSelected) {
+                                                if (pos == "NONE") Color.DarkGray else color
+                                            } else MaterialTheme.colorScheme.outlineVariant
+
                                             Surface(
-                                                modifier = Modifier
-                                                    .clickable { partOfSpeech = pos },
+                                                modifier = Modifier.clickable { partOfSpeech = pos },
                                                 shape = RoundedCornerShape(16.dp),
-                                                color = if (isSelected) color.copy(alpha = 0.3f) else Color.Transparent,
-                                                border = BorderStroke(
-                                                    width = if (isSelected) 2.dp else 1.dp,
-                                                    color = if (isSelected) color else MaterialTheme.colorScheme.outlineVariant
-                                                )
+                                                color = selectedBgColor,
+                                                border = BorderStroke(if (isSelected) 2.dp else 1.dp, selectedBorderColor)
                                             ) {
-                                                Row(
-                                                    modifier = Modifier.padding(horizontal = 12.dp, vertical = 6.dp),
-                                                    verticalAlignment = Alignment.CenterVertically,
-                                                    horizontalArrangement = Arrangement.spacedBy(8.dp)
-                                                ) {
-                                                    Box(
-                                                        modifier = Modifier
-                                                            .size(16.dp)
-                                                            .background(color, CircleShape)
-                                                            .border(1.dp, MaterialTheme.colorScheme.outline, CircleShape)
-                                                    )
-                                                    Text(
-                                                        text = stringResource(labelRes),
-                                                        style = MaterialTheme.typography.bodyMedium,
-                                                        color = if (isSelected) MaterialTheme.colorScheme.onSurface else MaterialTheme.colorScheme.onSurfaceVariant
-                                                    )
+                                                Row(modifier = Modifier.padding(horizontal = 12.dp, vertical = 6.dp), verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                                                    Box(modifier = Modifier.size(16.dp).background(color, CircleShape).border(1.dp, MaterialTheme.colorScheme.outline, CircleShape))
+                                                    Text(stringResource(labelRes), style = MaterialTheme.typography.bodyMedium, color = if (isSelected) MaterialTheme.colorScheme.onSurface else MaterialTheme.colorScheme.onSurfaceVariant)
                                                 }
                                             }
                                         }
@@ -553,7 +490,7 @@ fun TileEditDialog(
                             }
                         }
 
-                        // Audio Section
+                        // Section 3: Audio
                         item {
                             EditSection(
                                 title = stringResource(R.string.section_audio),
@@ -569,12 +506,7 @@ fun TileEditDialog(
                                                     viewModel.audioService.stopRecording()
                                                     isRecording = false
                                                 } else {
-                                                    val hasPermission = ContextCompat.checkSelfPermission(
-                                                        context,
-                                                        Manifest.permission.RECORD_AUDIO,
-                                                    ) == PackageManager.PERMISSION_GRANTED
-
-                                                    if (hasPermission) {
+                                                    if (ContextCompat.checkSelfPermission(context, Manifest.permission.RECORD_AUDIO) == PackageManager.PERMISSION_GRANTED) {
                                                         val tempId = UUID.randomUUID().toString()
                                                         audioUri = viewModel.audioService.startRecording(tempId, languageCode)
                                                         if (audioUri != null) isRecording = true
@@ -585,9 +517,7 @@ fun TileEditDialog(
                                             }
                                         },
                                         modifier = Modifier.fillMaxWidth(),
-                                        colors = ButtonDefaults.buttonColors(
-                                            containerColor = if (isRecording) MaterialTheme.colorScheme.error else MaterialTheme.colorScheme.primary,
-                                        ),
+                                        colors = ButtonDefaults.buttonColors(containerColor = if (isRecording) MaterialTheme.colorScheme.error else MaterialTheme.colorScheme.primary),
                                         shape = RoundedCornerShape(12.dp),
                                     ) {
                                         Icon(if (isRecording) Icons.Default.Stop else Icons.Default.Mic, contentDescription = null)
@@ -596,10 +526,7 @@ fun TileEditDialog(
                                     }
 
                                     if ((audioUri != null) && !isRecording) {
-                                        Row(
-                                            modifier = Modifier.fillMaxWidth(),
-                                            horizontalArrangement = Arrangement.spacedBy(8.dp),
-                                        ) {
+                                        Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                                             Button(
                                                 onClick = { audioUri?.let { viewModel.audioService.playRecording(it) } },
                                                 modifier = Modifier.weight(1f),
@@ -610,10 +537,7 @@ fun TileEditDialog(
                                                 Text(stringResource(R.string.test_audio))
                                             }
                                             OutlinedButton(
-                                                onClick = {
-                                                    audioUri?.let { viewModel.audioService.deleteRecording(it) }
-                                                    audioUri = null
-                                                },
+                                                onClick = { audioUri?.let { viewModel.audioService.deleteRecording(it) }; audioUri = null },
                                                 modifier = Modifier.weight(1f),
                                                 colors = ButtonDefaults.outlinedButtonColors(contentColor = MaterialTheme.colorScheme.error),
                                                 shape = RoundedCornerShape(12.dp),
@@ -636,28 +560,35 @@ fun TileEditDialog(
                                 iconColor = MaterialTheme.colorScheme.onSurfaceVariant,
                             ) {
                                 Column(verticalArrangement = Arrangement.spacedBy(16.dp)) {
+
+                                    // 1. TILE TYPE
                                     Column(verticalArrangement = Arrangement.spacedBy(4.dp)) {
-                                        Text("מזהה ייחודי (ID) - למתקדמים", style = MaterialTheme.typography.labelLarge, fontWeight = FontWeight.SemiBold, color = MaterialTheme.colorScheme.onSurfaceVariant)
-                                        OutlinedTextField(
-                                            value = tileId,
-                                            onValueChange = { tileId = it.trim() },
-                                            placeholder = { Text("לדוגמה: my_custom_id") },
-                                            modifier = Modifier.fillMaxWidth(),
-                                            shape = RoundedCornerShape(12.dp),
-                                            enabled = existingTile == null,
-                                            supportingText = {
-                                                if (existingTile != null) {
-                                                    Text("לא ניתן לשנות מזהה (ID) של אריח קיים.", color = MaterialTheme.colorScheme.error)
-                                                } else {
-                                                    Text("השאר ריק כדי שהמערכת תיצור ID אקראי באופן אוטומטי.")
+                                        Text(stringResource(R.string.tile_type_label), style = MaterialTheme.typography.labelLarge, fontWeight = FontWeight.SemiBold, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                                        var typeExpanded by remember { mutableStateOf(false) }
+                                        Box {
+                                            OutlinedTextField(
+                                                value = typeOptions[tileType] ?: stringResource(R.string.tile_type_basic),
+                                                onValueChange = {},
+                                                readOnly = true,
+                                                modifier = Modifier.fillMaxWidth(),
+                                                shape = RoundedCornerShape(12.dp),
+                                                trailingIcon = { IconButton(onClick = { typeExpanded = true }) { Icon(Icons.Default.ArrowDropDown, contentDescription = null) } },
+                                            )
+                                            DropdownMenu(expanded = typeExpanded, onDismissRequest = { typeExpanded = false }) {
+                                                typeOptions.forEach { (type, text) ->
+                                                    DropdownMenuItem(
+                                                        text = { Text(text) },
+                                                        onClick = { tileType = type; typeExpanded = false }
+                                                    )
                                                 }
                                             }
-                                        )
+                                        }
                                     }
 
+                                    // 2. PARENT FOLDER
                                     Column(verticalArrangement = Arrangement.spacedBy(4.dp)) {
                                         Text(stringResource(R.string.parent_category_label), style = MaterialTheme.typography.labelLarge, fontWeight = FontWeight.SemiBold, color = MaterialTheme.colorScheme.onSurfaceVariant)
-                                        var parentExpanded by remember { mutableStateOf(value = false) }
+                                        var parentExpanded by remember { mutableStateOf(false) }
                                         Box {
                                             OutlinedTextField(
                                                 value = categories.find { it.id == parentId }?.label ?: stringResource(R.string.root_home),
@@ -665,11 +596,7 @@ fun TileEditDialog(
                                                 readOnly = true,
                                                 modifier = Modifier.fillMaxWidth(),
                                                 shape = RoundedCornerShape(12.dp),
-                                                trailingIcon = {
-                                                    IconButton(onClick = { parentExpanded = true }) {
-                                                        Icon(Icons.Default.ArrowDropDown, contentDescription = null)
-                                                    }
-                                                },
+                                                trailingIcon = { IconButton(onClick = { parentExpanded = true }) { Icon(Icons.Default.ArrowDropDown, contentDescription = null) } },
                                             )
                                             DropdownMenu(expanded = parentExpanded, onDismissRequest = { parentExpanded = false }) {
                                                 DropdownMenuItem(text = { Text(stringResource(R.string.root_home)) }, onClick = { parentId = null; parentExpanded = false })
@@ -680,6 +607,31 @@ fun TileEditDialog(
                                         }
                                     }
 
+                                    // 3. JUMP TO CATEGORY
+                                    if (tileType == TileType.FOLDER || tileType == TileType.CONNECTOR) {
+                                        Column(verticalArrangement = Arrangement.spacedBy(4.dp)) {
+                                            Text(stringResource(R.string.jump_to_category), style = MaterialTheme.typography.labelLarge, fontWeight = FontWeight.SemiBold, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                                            var expanded by remember { mutableStateOf(false) }
+                                            Box {
+                                                OutlinedTextField(
+                                                    value = categories.find { it.id == linkedCategoryId }?.label ?: stringResource(R.string.none_speech_only),
+                                                    onValueChange = {},
+                                                    readOnly = true,
+                                                    modifier = Modifier.fillMaxWidth(),
+                                                    shape = RoundedCornerShape(12.dp),
+                                                    trailingIcon = { IconButton(onClick = { expanded = true }) { Icon(Icons.Default.ArrowDropDown, contentDescription = null) } },
+                                                )
+                                                DropdownMenu(expanded = expanded, onDismissRequest = { expanded = false }) {
+                                                    DropdownMenuItem(text = { Text(stringResource(R.string.none_speech_only)) }, onClick = { linkedCategoryId = null; expanded = false })
+                                                    categories.forEach { cat ->
+                                                        DropdownMenuItem(text = { Text(cat.label) }, onClick = { linkedCategoryId = cat.id; expanded = false })
+                                                    }
+                                                }
+                                            }
+                                        }
+                                    }
+
+                                    // 4. POSITION
                                     Column(verticalArrangement = Arrangement.spacedBy(4.dp)) {
                                         Text(stringResource(R.string.cell_index_label), style = MaterialTheme.typography.labelLarge, fontWeight = FontWeight.SemiBold, color = MaterialTheme.colorScheme.onSurfaceVariant)
                                         ExposedDropdownMenuBox(
@@ -730,45 +682,27 @@ fun TileEditDialog(
                                         }
                                     }
 
-                                    Column(verticalArrangement = Arrangement.spacedBy(4.dp)) {
-                                        Text(stringResource(R.string.jump_to_category), style = MaterialTheme.typography.labelLarge, fontWeight = FontWeight.SemiBold, color = MaterialTheme.colorScheme.onSurfaceVariant)
-                                        var expanded by remember { mutableStateOf(value = false) }
-                                        Box {
-                                            OutlinedTextField(
-                                                value = categories.find { it.id == linkedCategoryId }?.label ?: stringResource(R.string.none_speech_only),
-                                                onValueChange = {},
-                                                readOnly = true,
-                                                modifier = Modifier.fillMaxWidth(),
-                                                shape = RoundedCornerShape(12.dp),
-                                                trailingIcon = {
-                                                    IconButton(onClick = { expanded = true }) {
-                                                        Icon(Icons.Default.ArrowDropDown, contentDescription = null)
-                                                    }
-                                                },
-                                            )
-                                            DropdownMenu(expanded = expanded, onDismissRequest = { expanded = false }) {
-                                                DropdownMenuItem(text = { Text(stringResource(R.string.none_speech_only)) }, onClick = { linkedCategoryId = null; expanded = false })
-                                                categories.forEach { cat ->
-                                                    DropdownMenuItem(text = { Text(cat.label) }, onClick = { linkedCategoryId = cat.id; expanded = false })
-                                                }
-                                            }
-                                        }
-                                    }
-
-                                    Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(24.dp)) {
-                                        Row(verticalAlignment = Alignment.CenterVertically) {
-                                            Checkbox(checked = isCategory, onCheckedChange = { isCategory = it })
-                                            Text(stringResource(R.string.category_folder), style = MaterialTheme.typography.bodyMedium)
-                                        }
-                                        Row(verticalAlignment = Alignment.CenterVertically) {
-                                            Checkbox(checked = isQuickFire, onCheckedChange = { isQuickFire = it })
-                                            Text(stringResource(R.string.quick_response), style = MaterialTheme.typography.bodyMedium)
-                                        }
-                                    }
-
+                                    // 5. HIDDEN CHECKBOX
                                     Row(verticalAlignment = Alignment.CenterVertically) {
                                         Checkbox(checked = isHidden, onCheckedChange = { isHidden = it })
                                         Text(stringResource(R.string.hide_tile_label), style = MaterialTheme.typography.bodyMedium)
+                                    }
+
+                                    // 6. CUSTOM ID
+                                    Column(verticalArrangement = Arrangement.spacedBy(4.dp)) {
+                                        Text(stringResource(R.string.advanced_id_label), style = MaterialTheme.typography.labelLarge, fontWeight = FontWeight.SemiBold, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                                        OutlinedTextField(
+                                            value = tileId,
+                                            onValueChange = { tileId = it.trim() },
+                                            placeholder = { Text(stringResource(R.string.advanced_id_placeholder)) },
+                                            modifier = Modifier.fillMaxWidth(),
+                                            shape = RoundedCornerShape(12.dp),
+                                            enabled = existingTile == null,
+                                            supportingText = {
+                                                if (existingTile != null) Text(stringResource(R.string.advanced_id_error_existing), color = MaterialTheme.colorScheme.error)
+                                                else Text(stringResource(R.string.advanced_id_hint))
+                                            }
+                                        )
                                     }
                                 }
                             }
@@ -807,8 +741,7 @@ fun TileEditDialog(
                             }
                         }
 
-
-                        // Live Preview Card
+                        // Live Preview Color Logic
                         item {
                             val tileColor = resolveFitzgeraldColor(partOfSpeech)
                             val displayLabel = label.ifBlank { stringResource(R.string.label_placeholder) }
@@ -826,15 +759,13 @@ fun TileEditDialog(
                                     label = displayLabel,
                                     imageUri = imageUri,
                                     emoji = if (imageUri == null) emoji.ifBlank { "🍎" } else null,
-                                    backgroundColor = if (partOfSpeech == "NONE") MaterialTheme.colorScheme.primary else tileColor,
+                                    backgroundColor = tileColor,
                                     aspectRatio = aspectRatio,
-                                    isCategory = isCategory,
-                                    onClick = {
-                                        viewModel.playPreviewAudio(ttsText, audioUri)
-                                    },
+                                    tileType = tileType,
+                                    isHidden = isHidden,
+                                    onClick = { viewModel.playPreviewAudio(ttsText, audioUri) },
                                     modifier = Modifier.width(200.dp),
-                                    labelFontSize = 24.sp,
-                                    showSpeakerIcon = true,
+                                    labelFontSize = 24.sp
                                 )
                             }
                         }
@@ -855,15 +786,15 @@ fun TileEditDialog(
                             horizontalArrangement = Arrangement.spacedBy(16.dp),
                             verticalAlignment = Alignment.CenterVertically,
                         ) {
-                            TextButton(
-                                onClick = onDismiss,
-                                modifier = Modifier.weight(1f),
-                            ) {
-                                Text(stringResource(R.string.cancel_changes))
-                            }
+                            TextButton(onClick = onDismiss, modifier = Modifier.weight(1f)) { Text(stringResource(R.string.cancel_changes)) }
+
                             Button(
                                 onClick = {
                                     if (label.isNotBlank() && ttsText.isNotBlank()) {
+                                        val finalIsCategory = tileType == TileType.FOLDER
+                                        val finalIsQuickFire = tileType == TileType.QUICK_FIRE
+                                        val finalLinkedId = if (tileType == TileType.FOLDER || tileType == TileType.CONNECTOR) linkedCategoryId else null
+
                                         if (existingTile == null) {
                                             viewModel.addTile(
                                                 id = tileId.ifBlank { null },
@@ -871,12 +802,12 @@ fun TileEditDialog(
                                                 ttsText = ttsText,
                                                 emoji = emoji.ifBlank { null },
                                                 imageUri = imageUri,
-                                                isCategory = isCategory,
+                                                isCategory = finalIsCategory,
                                                 parentId = parentId,
                                                 backgroundColorHex = backgroundColorHex.ifBlank { null },
                                                 partOfSpeech = if (partOfSpeech == "NONE") null else partOfSpeech,
-                                                isQuickFire = isQuickFire,
-                                                linkedCategoryId = linkedCategoryId,
+                                                isQuickFire = finalIsQuickFire,
+                                                linkedCategoryId = finalLinkedId,
                                                 labelFeminine = labelFeminine.ifBlank { null },
                                                 ttsTextFeminine = ttsTextFeminine.ifBlank { null },
                                                 grammaticalGender = grammaticalGender,
@@ -891,12 +822,12 @@ fun TileEditDialog(
                                                     ttsText = ttsText,
                                                     emoji = emoji.ifBlank { null },
                                                     imageUri = imageUri,
-                                                    isCategory = isCategory,
+                                                    isCategory = finalIsCategory,
                                                     parentId = parentId,
                                                     backgroundColorHex = backgroundColorHex.ifBlank { null },
                                                     partOfSpeech = if (partOfSpeech == "NONE") null else partOfSpeech,
-                                                    isQuickFire = isQuickFire,
-                                                    linkedCategoryId = linkedCategoryId,
+                                                    isQuickFire = finalIsQuickFire,
+                                                    linkedCategoryId = finalLinkedId,
                                                     labelFeminine = labelFeminine.ifBlank { null },
                                                     ttsTextFeminine = ttsTextFeminine.ifBlank { null },
                                                     grammaticalGender = grammaticalGender,

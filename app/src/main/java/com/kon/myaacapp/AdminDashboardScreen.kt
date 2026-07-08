@@ -1,90 +1,37 @@
 package com.kon.myaacapp
 
-import androidx.activity.compose.rememberLauncherForActivityResult
-import androidx.activity.result.contract.ActivityResultContracts
-import androidx.compose.foundation.BorderStroke
-import androidx.compose.foundation.background
-import androidx.compose.foundation.clickable
-import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
-import androidx.compose.foundation.layout.Column
-import androidx.compose.foundation.layout.Row
-import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.WindowInsets
-import androidx.compose.foundation.layout.aspectRatio
-import androidx.compose.foundation.layout.fillMaxSize
-import androidx.compose.foundation.layout.fillMaxWidth
-import androidx.compose.foundation.layout.height
-import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.padding
-import androidx.compose.foundation.layout.size
-import androidx.compose.foundation.layout.width
-import androidx.compose.foundation.lazy.grid.GridCells
-import androidx.compose.foundation.lazy.grid.LazyVerticalGrid
-import androidx.compose.foundation.lazy.grid.items
-import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
-import androidx.compose.material.icons.filled.Add
-import androidx.compose.material.icons.filled.Analytics
 import androidx.compose.material.icons.filled.ArrowUpward
-import androidx.compose.material.icons.filled.Build
-import androidx.compose.material.icons.filled.Download
-import androidx.compose.material.icons.filled.Edit
-import androidx.compose.material.icons.filled.FolderOpen
 import androidx.compose.material.icons.filled.Home
-import androidx.compose.material.icons.filled.Person
-import androidx.compose.material.icons.filled.Refresh
-import androidx.compose.material.icons.filled.Search
-import androidx.compose.material.icons.filled.Settings
-import androidx.compose.material.icons.filled.Upload
-import androidx.compose.material.icons.filled.VisibilityOff
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Button
 import androidx.compose.material3.ButtonDefaults
-import androidx.compose.material3.Card
-import androidx.compose.material3.CardDefaults
 import androidx.compose.material3.CenterAlignedTopAppBar
-import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.ExperimentalMaterial3Api
-import androidx.compose.material3.FilterChip
-import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
-import androidx.compose.material3.NavigationBar
-import androidx.compose.material3.NavigationBarItem
-import androidx.compose.material3.OutlinedButton
-import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Scaffold
-import androidx.compose.material3.Surface
-import androidx.compose.material3.Switch
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.CompositionLocalProvider
-import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
-import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
-import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.draw.clip
-import androidx.compose.ui.graphics.Color
-import androidx.compose.ui.layout.ContentScale
-import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalLayoutDirection
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.font.FontWeight
-import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.LayoutDirection
 import androidx.compose.ui.unit.dp
-import androidx.compose.ui.unit.sp
-import coil.compose.AsyncImage
 
 enum class AdminTab {
     HOME, SETTINGS, STATISTICS, SYSTEM
@@ -104,7 +51,7 @@ fun AdminDashboardScreen(
     var initialCellIndex by remember { mutableStateOf<Int?>(null) }
     var showTilePicker by remember { mutableStateOf(false) }
     var tileForAction by remember { mutableStateOf<AACTile?>(null) }
-    
+
     val langCode by viewModel.languageCode.collectAsState()
     val currentParentId by viewModel.currentParentId.collectAsState()
     val layoutDir = if (langCode == "he") LayoutDirection.Rtl else LayoutDirection.Ltr
@@ -113,7 +60,7 @@ fun AdminDashboardScreen(
         Scaffold(
             topBar = {
                 CenterAlignedTopAppBar(
-                    title = { 
+                    title = {
                         Text(
                             text = when (selectedTab) {
                                 AdminTab.HOME -> if (currentParentId == null) stringResource(R.string.edit_main_screen) else stringResource(R.string.edit_category)
@@ -123,7 +70,7 @@ fun AdminDashboardScreen(
                             },
                             style = MaterialTheme.typography.titleMedium,
                             fontWeight = FontWeight.Bold
-                        ) 
+                        )
                     },
                     navigationIcon = {
                         IconButton(onClick = onNavigateBack) {
@@ -155,9 +102,7 @@ fun AdminDashboardScreen(
                     AdminTab.HOME -> {
                         AdminEditableGridScreen(
                             viewModel = viewModel,
-                            onEditTile = { tile: AACTile? ->
-                                tileForAction = tile
-                            },
+                            onEditTile = { tile: AACTile? -> tileForAction = tile },
                             onCreateTile = { cellIndex: Int ->
                                 editingTile = null
                                 initialCellIndex = cellIndex
@@ -173,9 +118,7 @@ fun AdminDashboardScreen(
                                 initialCellIndex = tile?.cellIndex
                                 showTileDialog = true
                             },
-                            onDeleteTile = { tile: AACTile ->
-                                tileToDelete = tile
-                            }
+                            onDeleteTile = { tile: AACTile -> tileToDelete = tile }
                         )
                     }
                     AdminTab.STATISTICS -> {
@@ -199,12 +142,10 @@ fun AdminDashboardScreen(
             onTileSelected = { tile ->
                 showTilePicker = false
                 if (tile == null) {
-                    // Create New
                     showTileDialog = true
                 } else {
-                    // ATTACH existing tile to this cell instead of moving it
-                    val currentParentId = viewModel.currentParentId.value
-                    viewModel.attachTileToCategory(tile.id, currentParentId, initialCellIndex)
+                    val parentId = viewModel.currentParentId.value
+                    viewModel.attachTileToCategory(tile.id, parentId, initialCellIndex)
                     initialCellIndex = null
                 }
             }
@@ -236,10 +177,9 @@ fun AdminDashboardScreen(
     }
 
     if (showTileDialog) {
-        // Wrap the existing TileEditDialog
         TileEditDialog(
             viewModel = viewModel,
-            existingTile = editingTile, 
+            existingTile = editingTile,
             initialCellIndex = initialCellIndex,
             onDismiss = {
                 showTileDialog = false
@@ -260,8 +200,8 @@ fun AdminDashboardScreen(
                 showTileDialog = true
             },
             onRemove = {
-                val currentParentId = viewModel.currentParentId.value
-                viewModel.removeTileFromCategory(tileForAction!!.id, currentParentId)
+                val parentId = viewModel.currentParentId.value
+                viewModel.removeTileFromCategory(tileForAction!!.id, parentId)
                 tileForAction = null
             },
             onOpen = if (tileForAction?.isCategory == true) {
@@ -271,470 +211,5 @@ fun AdminDashboardScreen(
                 }
             } else null
         )
-    }
-}
-
-@Composable
-fun TileActionDialog(
-    tile: AACTile,
-    onDismiss: () -> Unit,
-    onEdit: () -> Unit,
-    onRemove: () -> Unit,
-    onOpen: (() -> Unit)? = null
-) {
-    AlertDialog(
-        onDismissRequest = onDismiss,
-        title = { Text(stringResource(R.string.tile_action_title), fontWeight = FontWeight.Bold) },
-        text = {
-            Column(
-                modifier = Modifier.fillMaxWidth(),
-                verticalArrangement = Arrangement.spacedBy(12.dp)
-            ) {
-                // Preview of the tile
-                Box(
-                    modifier = Modifier
-                        .size(80.dp)
-                        .align(Alignment.CenterHorizontally)
-                        .clip(RoundedCornerShape(12.dp))
-                        .background(MaterialTheme.colorScheme.surfaceVariant),
-                    contentAlignment = Alignment.Center
-                ) {
-                    if (tile.imageUri != null) {
-                        AsyncImage(
-                            model = tile.imageUri,
-                            contentDescription = null,
-                            modifier = Modifier.fillMaxSize(),
-                            contentScale = ContentScale.Crop
-                        )
-                    } else {
-                        Text(tile.emoji ?: "✨", fontSize = 40.sp)
-                    }
-                }
-                
-                Text(
-                    text = tile.label,
-                    style = MaterialTheme.typography.titleMedium,
-                    modifier = Modifier.align(Alignment.CenterHorizontally),
-                    textAlign = androidx.compose.ui.text.style.TextAlign.Center
-                )
-                
-                Spacer(modifier = Modifier.height(8.dp))
-
-                if (onOpen != null) {
-                    Button(
-                        onClick = onOpen,
-                        modifier = Modifier.fillMaxWidth(),
-                        shape = RoundedCornerShape(12.dp)
-                    ) {
-                        Icon(Icons.Default.FolderOpen, contentDescription = null)
-                        Spacer(Modifier.width(8.dp))
-                        Text(stringResource(R.string.action_open_category))
-                    }
-                }
-
-                OutlinedButton(
-                    onClick = onEdit,
-                    modifier = Modifier.fillMaxWidth(),
-                    shape = RoundedCornerShape(12.dp)
-                ) {
-                    Icon(Icons.Default.Edit, contentDescription = null)
-                    Spacer(Modifier.width(8.dp))
-                    Text(stringResource(R.string.action_edit_tile))
-                }
-
-                Button(
-                    onClick = onRemove,
-                    modifier = Modifier.fillMaxWidth(),
-                    colors = ButtonDefaults.buttonColors(containerColor = MaterialTheme.colorScheme.errorContainer, contentColor = MaterialTheme.colorScheme.onErrorContainer),
-                    shape = RoundedCornerShape(12.dp)
-                ) {
-                    Icon(Icons.Default.VisibilityOff, contentDescription = null)
-                    Spacer(Modifier.width(8.dp))
-                    Text(stringResource(R.string.action_remove_from_screen))
-                }
-            }
-        },
-        confirmButton = {},
-        dismissButton = {
-            TextButton(onClick = onDismiss) {
-                Text(stringResource(R.string.cancel))
-            }
-        }
-    )
-}
-
-@Composable
-fun TilePickerDialog(
-    viewModel: AACViewModel,
-    onDismiss: () -> Unit,
-    onTileSelected: (CombinedTile?) -> Unit
-) {
-    val allTiles by viewModel.allTiles.collectAsState()
-    var searchQuery by remember { mutableStateOf("") }
-    
-    val filteredTiles = remember(searchQuery, allTiles) {
-        if (searchQuery.isBlank()) {
-            allTiles
-        } else {
-            allTiles.filter {
-                it.label.contains(searchQuery, ignoreCase = true) ||
-                it.ttsText.contains(searchQuery, ignoreCase = true)
-            }
-        }
-    }
-
-    AlertDialog(
-        onDismissRequest = onDismiss,
-        title = { Text(stringResource(R.string.pick_or_create_tile), fontWeight = FontWeight.Bold) },
-        text = {
-            Column(modifier = Modifier.fillMaxWidth().heightIn(max = 500.dp)) {
-                OutlinedTextField(
-                    value = searchQuery,
-                    onValueChange = { searchQuery = it },
-                    modifier = Modifier.fillMaxWidth().padding(bottom = 16.dp),
-                    placeholder = { Text(stringResource(R.string.search_existing_tile)) },
-                    leadingIcon = { Icon(Icons.Default.Search, contentDescription = null) },
-                    shape = RoundedCornerShape(12.dp),
-                    singleLine = true
-                )
-
-                LazyVerticalGrid(
-                    columns = GridCells.Fixed(3),
-                    horizontalArrangement = Arrangement.spacedBy(8.dp),
-                    verticalArrangement = Arrangement.spacedBy(8.dp),
-                    modifier = Modifier.weight(1f)
-                ) {
-                    item {
-                        Card(
-                            modifier = Modifier
-                                .aspectRatio(1f)
-                                .clickable { onTileSelected(null) },
-                            colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.primaryContainer)
-                        ) {
-                            Box(modifier = Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
-                                Column(horizontalAlignment = Alignment.CenterHorizontally) {
-                                    Icon(Icons.Default.Add, contentDescription = null)
-                                    Text(stringResource(R.string.new_tile), style = MaterialTheme.typography.labelSmall)
-                                }
-                            }
-                        }
-                    }
-
-                    items(filteredTiles) { tile: CombinedTile ->
-                        Card(
-                            modifier = Modifier
-                                .aspectRatio(1f)
-                                .clickable { onTileSelected(tile) },
-                            border = BorderStroke(1.dp, MaterialTheme.colorScheme.outlineVariant)
-                        ) {
-                            Box(modifier = Modifier.fillMaxSize()) {
-                                if (tile.imageUri != null) {
-                                    AsyncImage(
-                                        model = tile.imageUri,
-                                        contentDescription = null,
-                                        modifier = Modifier.fillMaxSize().clip(RoundedCornerShape(8.dp)),
-                                        contentScale = ContentScale.Crop
-                                    )
-                                } else {
-                                    Text(
-                                        text = tile.emoji ?: "✨",
-                                        modifier = Modifier.align(Alignment.Center),
-                                        fontSize = 24.sp
-                                    )
-                                }
-                                Surface(
-                                    modifier = Modifier.align(Alignment.BottomCenter).fillMaxWidth(),
-                                    color = Color.Black.copy(alpha = 0.6f)
-                                ) {
-                                    Text(
-                                        tile.label,
-                                        color = Color.White,
-                                        fontSize = 10.sp,
-                                        textAlign = androidx.compose.ui.text.style.TextAlign.Center,
-                                        modifier = Modifier.padding(2.dp),
-                                        maxLines = 1,
-                                        overflow = TextOverflow.Ellipsis
-                                    )
-                                }
-                            }
-                        }
-                    }
-                }
-            }
-        },
-        confirmButton = {},
-        dismissButton = {
-            TextButton(onClick = onDismiss) { Text(stringResource(R.string.cancel)) }
-        }
-    )
-}
-
-@Composable
-fun AdminBottomNavigation(
-    selectedTab: AdminTab,
-    onTabSelected: (AdminTab) -> Unit
-) {
-    NavigationBar(
-        modifier = Modifier.height(64.dp),
-        windowInsets = WindowInsets(0.dp)
-    ) {
-        NavigationBarItem(
-            selected = selectedTab == AdminTab.HOME,
-            onClick = { onTabSelected(AdminTab.HOME) },
-            icon = { Icon(Icons.Default.Home, contentDescription = null) },
-            label = { Text(stringResource(R.string.bottom_nav_home)) }
-        )
-        NavigationBarItem(
-            selected = selectedTab == AdminTab.SETTINGS,
-            onClick = { onTabSelected(AdminTab.SETTINGS) },
-            icon = { Icon(Icons.Default.Settings, contentDescription = null) },
-            label = { Text(stringResource(R.string.bottom_nav_tiles)) }
-        )
-        NavigationBarItem(
-            selected = selectedTab == AdminTab.STATISTICS,
-            onClick = { onTabSelected(AdminTab.STATISTICS) },
-            icon = { Icon(Icons.Default.Analytics, contentDescription = null) },
-            label = { Text(stringResource(R.string.bottom_nav_statistics)) }
-        )
-        NavigationBarItem(
-            selected = selectedTab == AdminTab.SYSTEM,
-            onClick = { onTabSelected(AdminTab.SYSTEM) },
-            icon = { Icon(Icons.Default.Build, contentDescription = null) },
-            label = { Text(stringResource(R.string.bottom_nav_system)) }
-        )
-    }
-}
-
-@Composable
-fun AdminSystemSettings(
-    viewModel: AACViewModel,
-    onNavigateToProfiles: () -> Unit
-) {
-    val speakOnTilePress by viewModel.speakOnTilePress.collectAsState()
-    val langCode by viewModel.languageCode.collectAsState()
-    val importExportStatus by viewModel.importExportStatus.collectAsState()
-    val context = LocalContext.current
-    val contentResolver = context.contentResolver
-    var showResetConfirm by remember { mutableStateOf(false) }
-
-    val exportLauncher = rememberLauncherForActivityResult(
-        contract = ActivityResultContracts.CreateDocument("application/zip"),
-    ) { uri ->
-        uri?.let { viewModel.exportDatabase(it, contentResolver) }
-    }
-
-    val importLauncher = rememberLauncherForActivityResult(
-        contract = ActivityResultContracts.OpenDocument(),
-    ) { uri ->
-        uri?.let { viewModel.importDatabase(it, contentResolver) }
-    }
-
-    LaunchedEffect(importExportStatus) {
-        importExportStatus?.let {
-            android.widget.Toast.makeText(context, it, android.widget.Toast.LENGTH_LONG).show()
-            viewModel.clearImportExportStatus()
-        }
-    }
-
-    if (showResetConfirm) {
-        AlertDialog(
-            onDismissRequest = { showResetConfirm = false },
-            title = { Text(stringResource(R.string.reset_confirm_title)) },
-            text = { Text(stringResource(R.string.reset_confirm_msg)) },
-            confirmButton = {
-                Button(
-                    onClick = {
-                        showResetConfirm = false
-                        viewModel.resetToDefault(context)
-                    },
-                    colors = ButtonDefaults.buttonColors(containerColor = MaterialTheme.colorScheme.error)
-                ) {
-                    Text(stringResource(R.string.ok))
-                }
-            },
-            dismissButton = {
-                TextButton(onClick = { showResetConfirm = false }) {
-                    Text(stringResource(R.string.cancel))
-                }
-            }
-        )
-    }
-
-    Column(
-        modifier = Modifier
-            .fillMaxSize()
-            .padding(16.dp),
-        verticalArrangement = Arrangement.spacedBy(16.dp)
-    ) {
-        Card(
-            modifier = Modifier.fillMaxWidth(),
-            shape = RoundedCornerShape(16.dp)
-        ) {
-            Column(modifier = Modifier.padding(16.dp)) {
-                Text(stringResource(R.string.general_settings), style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.Bold)
-                Spacer(modifier = Modifier.height(16.dp))
-
-                Button(
-                    onClick = onNavigateToProfiles,
-                    modifier = Modifier.fillMaxWidth(),
-                    shape = RoundedCornerShape(12.dp)
-                ) {
-                    Icon(Icons.Default.Person, contentDescription = null)
-                    Spacer(Modifier.width(8.dp))
-                    Text(stringResource(R.string.profile_manager))
-                }
-
-                Spacer(modifier = Modifier.height(16.dp))
-                HorizontalDivider(modifier = Modifier.padding(vertical = 8.dp), thickness = 0.5.dp, color = MaterialTheme.colorScheme.outlineVariant)
-                Spacer(modifier = Modifier.height(16.dp))
-
-                Row(
-                    modifier = Modifier.fillMaxWidth(),
-                    verticalAlignment = Alignment.CenterVertically,
-                    horizontalArrangement = Arrangement.SpaceBetween
-                ) {
-                    Text(stringResource(R.string.speak_on_press))
-                    Switch(
-                        checked = speakOnTilePress,
-                        onCheckedChange = { viewModel.updateSpeakOnTilePress(it) }
-                    )
-                }
-
-                Spacer(modifier = Modifier.height(16.dp))
-
-                // Grammatical Gender Selector
-                val userGender by viewModel.userGender.collectAsState()
-                Text(stringResource(R.string.grammatical_gender), style = MaterialTheme.typography.bodyMedium)
-                Spacer(modifier = Modifier.height(8.dp))
-                Row(
-                    modifier = Modifier.fillMaxWidth(),
-                    horizontalArrangement = Arrangement.spacedBy(8.dp)
-                ) {
-                    FilterChip(
-                        selected = userGender == Gender.MALE,
-                        onClick = { viewModel.updateUserGender(Gender.MALE) },
-                        label = { Text(stringResource(R.string.male)) }
-                    )
-                    FilterChip(
-                        selected = userGender == Gender.FEMALE,
-                        onClick = { viewModel.updateUserGender(Gender.FEMALE) },
-                        label = { Text(stringResource(R.string.female)) }
-                    )
-                }
-                
-                Spacer(modifier = Modifier.height(16.dp))
-                
-                // Language Selector
-                val downloadStatus by viewModel.languageDownloadStatus.collectAsState()
-                Text(stringResource(R.string.language), style = MaterialTheme.typography.bodyMedium)
-                Spacer(modifier = Modifier.height(8.dp))
-                Row(
-                    modifier = Modifier.fillMaxWidth(),
-                    horizontalArrangement = Arrangement.spacedBy(8.dp),
-                    verticalAlignment = Alignment.CenterVertically
-                ) {
-                    FilterChip(
-                        selected = langCode == "he",
-                        onClick = { 
-                            viewModel.downloadAndSetLanguage("he") { success ->
-                                if (success) {
-                                    (context as? android.app.Activity)?.recreate()
-                                }
-                            }
-                        },
-                        label = { Text(stringResource(R.string.hebrew)) },
-                        enabled = downloadStatus is DownloadStatus.Idle || downloadStatus is DownloadStatus.Success || downloadStatus is DownloadStatus.Error
-                    )
-                    FilterChip(
-                        selected = langCode == "en",
-                        onClick = { 
-                            viewModel.downloadAndSetLanguage("en") { success ->
-                                if (success) {
-                                    (context as? android.app.Activity)?.recreate()
-                                }
-                            }
-                        },
-                        label = { Text(stringResource(R.string.english)) },
-                        enabled = downloadStatus is DownloadStatus.Idle || downloadStatus is DownloadStatus.Success || downloadStatus is DownloadStatus.Error
-                    )
-                    
-                    if (downloadStatus !is DownloadStatus.Idle) {
-                        Spacer(modifier = Modifier.width(8.dp))
-                        CircularProgressIndicator(modifier = Modifier.size(24.dp), strokeWidth = 2.dp)
-                    }
-                }
-                
-                when (val status = downloadStatus) {
-                    is DownloadStatus.Downloading -> {
-                        Text(
-                            stringResource(R.string.downloading_lang, status.progress),
-                            style = MaterialTheme.typography.labelSmall,
-                            color = MaterialTheme.colorScheme.primary
-                        )
-                    }
-                    is DownloadStatus.Installing -> {
-                        Text(
-                            stringResource(R.string.installing_lang),
-                            style = MaterialTheme.typography.labelSmall,
-                            color = MaterialTheme.colorScheme.primary
-                        )
-                    }
-                    is DownloadStatus.Error -> {
-                        Text(
-                            stringResource(R.string.lang_download_failed, status.message),
-                            style = MaterialTheme.typography.labelSmall,
-                            color = MaterialTheme.colorScheme.error
-                        )
-                    }
-                    else -> {}
-                }
-            }
-        }
-
-        Card(
-            modifier = Modifier.fillMaxWidth(),
-            shape = RoundedCornerShape(16.dp)
-        ) {
-            Column(modifier = Modifier.padding(16.dp)) {
-                Text(stringResource(R.string.backup_and_restore), style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.Bold)
-                Spacer(modifier = Modifier.height(16.dp))
-                
-                Button(
-                    onClick = { exportLauncher.launch("myaac_backup_${System.currentTimeMillis()}.zip") },
-                    modifier = Modifier.fillMaxWidth(),
-                    shape = RoundedCornerShape(12.dp)
-                ) {
-                    Icon(Icons.Default.Upload, contentDescription = null)
-                    Spacer(Modifier.width(8.dp))
-                    Text(stringResource(R.string.export_db))
-                }
-                
-                Spacer(modifier = Modifier.height(8.dp))
-                
-                OutlinedButton(
-                    onClick = { importLauncher.launch(arrayOf("application/zip", "application/octet-stream")) },
-                    modifier = Modifier.fillMaxWidth(),
-                    shape = RoundedCornerShape(12.dp)
-                ) {
-                    Icon(Icons.Default.Download, contentDescription = null)
-                    Spacer(Modifier.width(8.dp))
-                    Text(stringResource(R.string.import_db))
-                }
-
-                Spacer(modifier = Modifier.height(16.dp))
-                HorizontalDivider(modifier = Modifier.padding(vertical = 8.dp), thickness = 0.5.dp, color = MaterialTheme.colorScheme.outlineVariant)
-                Spacer(modifier = Modifier.height(16.dp))
-
-                TextButton(
-                    onClick = { showResetConfirm = true },
-                    modifier = Modifier.fillMaxWidth(),
-                    colors = ButtonDefaults.textButtonColors(contentColor = MaterialTheme.colorScheme.error)
-                ) {
-                    Icon(Icons.Default.Refresh, contentDescription = null)
-                    Spacer(Modifier.width(8.dp))
-                    Text(stringResource(R.string.reset_to_default))
-                }
-            }
-        }
     }
 }

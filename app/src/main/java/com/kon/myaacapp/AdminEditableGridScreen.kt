@@ -23,6 +23,9 @@ import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Add
 import androidx.compose.material.icons.filled.Edit
+import androidx.compose.material.icons.filled.Folder
+import androidx.compose.material.icons.filled.FlashOn
+import androidx.compose.material.icons.automirrored.filled.ArrowForward
 import androidx.compose.material3.Card
 import androidx.compose.material3.CardDefaults
 import androidx.compose.material3.Icon
@@ -49,10 +52,7 @@ import androidx.compose.ui.unit.sp
 import androidx.core.graphics.toColorInt
 import coil.compose.rememberAsyncImagePainter
 import androidx.compose.ui.draw.clip
-import com.kon.myaacapp.AACTile
-import com.kon.myaacapp.AACViewModel
-import com.kon.myaacapp.CombinedTile
-import com.kon.myaacapp.toLegacyAACTile
+import com.kon.myaacapp.ui.theme.resolveFitzgeraldColor // <--- Imported official colors
 import java.io.File
 
 @Composable
@@ -163,9 +163,18 @@ fun AdminTileItem(
     onClick: () -> Unit,
     onEdit: () -> Unit
 ) {
-    val backgroundColor = if (tile.definition.backgroundColorHex != null) {
-        try { Color(tile.definition.backgroundColorHex.toColorInt()) } catch (_: Exception) { Color.LightGray }
-    } else Color.LightGray
+    // FIXED: Use official theme colors instead of hardcoded LightGray
+    val backgroundColor = remember(tile.definition.backgroundColorHex, tile.definition.partOfSpeech) {
+        if (tile.definition.backgroundColorHex != null) {
+            try {
+                Color(tile.definition.backgroundColorHex.toColorInt())
+            } catch (_: Exception) {
+                resolveFitzgeraldColor(tile.definition.partOfSpeech)
+            }
+        } else {
+            resolveFitzgeraldColor(tile.definition.partOfSpeech)
+        }
+    }
 
     AdminTileUI(
         label = tile.definition.label,
@@ -173,7 +182,7 @@ fun AdminTileItem(
         imageUri = tile.definition.imageUri,
         backgroundColor = backgroundColor,
         aspectRatio = aspectRatio,
-        isCategory = tile.definition.isCategory,
+        tileType = tile.definition.resolvedType, // Pass the strict type
         onClick = onClick,
         onEdit = onEdit,
         isHidden = tile.layoutState.isHidden
@@ -187,22 +196,23 @@ fun AdminTileUI(
     imageUri: String?,
     backgroundColor: Color,
     aspectRatio: Float,
-    isCategory: Boolean,
+    tileType: TileType, // Changed from isCategory
     onClick: () -> Unit,
     onEdit: () -> Unit,
     modifier: Modifier = Modifier,
     labelSize: TextUnit = 12.sp,
-    borderColor: Color = if (isCategory) Color.DarkGray else Color.Transparent,
     isHidden: Boolean = false
 ) {
+    val isFolder = tileType == TileType.FOLDER
+
     Card(
         modifier = modifier
             .fillMaxWidth()
             .aspectRatio(aspectRatio)
             .clickable(onClick = onClick)
             .border(
-                width = if (isCategory) 2.dp else 0.dp,
-                color = borderColor,
+                width = if (isFolder) 3.dp else 0.dp,
+                color = if (isFolder) Color.DarkGray else Color.Transparent,
                 shape = RoundedCornerShape(8.dp)
             ),
         shape = RoundedCornerShape(8.dp),
@@ -235,7 +245,7 @@ fun AdminTileUI(
                         Text(text = emoji, fontSize = 24.sp)
                     }
                 }
-                
+
                 Text(
                     text = label,
                     fontSize = labelSize,
@@ -247,14 +257,34 @@ fun AdminTileUI(
                 )
             }
 
-            // Edit Indicator
+            // FIXED: Added Visual Indicators from Main Screen
+            val indicatorIcon = when (tileType) {
+                TileType.FOLDER -> null // The border handles folders in this view
+                TileType.CONNECTOR -> Icons.AutoMirrored.Filled.ArrowForward
+                TileType.QUICK_FIRE -> Icons.Default.FlashOn // Lightning bolt
+                TileType.BASIC -> null
+            }
+
+            if (indicatorIcon != null) {
+                Icon(
+                    imageVector = indicatorIcon,
+                    contentDescription = null,
+                    modifier = Modifier
+                        .align(Alignment.TopEnd)
+                        .padding(top = 4.dp, end = 36.dp) // Shifted left so it doesn't overlap the Edit button
+                        .size(14.dp),
+                    tint = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.6f)
+                )
+            }
+
+            // Edit Indicator (Top Left for Hebrew/RTL Layout)
             IconButton(
                 onClick = onEdit,
                 modifier = Modifier
-                    .align(Alignment.TopEnd)
+                    .align(Alignment.TopStart) // Aligned top start
                     .size(32.dp)
                     .padding(4.dp)
-                    .background(Color.Black.copy(alpha = 0.3f), RoundedCornerShape(4.dp))
+                    .background(Color.Black.copy(alpha = 0.4f), RoundedCornerShape(6.dp))
             ) {
                 Icon(
                     imageVector = Icons.Default.Edit,
@@ -268,10 +298,10 @@ fun AdminTileUI(
                 Box(
                     modifier = Modifier
                         .fillMaxSize()
-                        .background(Color.Gray.copy(alpha = 0.3f)),
+                        .background(Color.Gray.copy(alpha = 0.5f)),
                     contentAlignment = Alignment.Center
                 ) {
-                    Text("HIDDEN", color = Color.White, fontSize = 10.sp, fontWeight = FontWeight.Bold)
+                    Text("מוסתר", color = Color.White, fontSize = 12.sp, fontWeight = FontWeight.Bold)
                 }
             }
         }
