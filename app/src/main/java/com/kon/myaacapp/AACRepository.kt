@@ -333,9 +333,13 @@ class AACRepository(
         val file = File(langDir, "export_user_defined.json")
         val currentDefinitions = if (file.exists()) {
             try {
-                json.decodeFromString<List<TileDefinition>>(file.readText()).toMutableList()
+                // 1. Strip the hidden BOM character so the parser doesn't crash
+                val jsonString = file.readText().removePrefix("\uFEFF")
+                json.decodeFromString<List<TileDefinition>>(jsonString).toMutableList()
             } catch (e: Exception) {
-                mutableListOf()
+                // 2. CRITICAL: Never return an empty list here! It will wipe the user's data.
+                Log.e("Debug_AAC", "CRITICAL: Failed to parse existing definitions during save. Aborting overwrite!", e)
+                return@withContext
             }
         } else {
             mutableListOf()
@@ -343,7 +347,7 @@ class AACRepository(
 
         currentDefinitions.removeAll { it.id == definition.id }
         currentDefinitions.add(definition)
-        
+
         file.writeText(json.encodeToString(currentDefinitions))
     }
 
@@ -389,23 +393,26 @@ class AACRepository(
         // 1. Remove from profile layout
         val currentProfile = activeProfile.value ?: return
         val newLayout = currentProfile.layout.toMutableMap()
-        newLayout.remove(tile.id)
+        newLayout.remove(getLayoutKey(tile.parentId, tile.id))
         profileRepository.updateActiveProfile(currentProfile.copy(layout = newLayout))
 
-        // 2. Remove from user definitions on disk
+        // 2. Remove from user definitions on disk safely
         val tilesDir = File(context.filesDir, "tiles/${tile.languageCode}")
         val file = File(tilesDir, "export_user_defined.json")
         if (file.exists()) {
             try {
-                val currentDefinitions = json.decodeFromString<List<TileDefinition>>(file.readText()).toMutableList()
+                // Strip the hidden BOM character here too
+                val jsonString = file.readText().removePrefix("\uFEFF")
+                val currentDefinitions = json.decodeFromString<List<TileDefinition>>(jsonString).toMutableList()
+
                 if (currentDefinitions.removeAll { it.id == tile.id }) {
                     file.writeText(json.encodeToString(currentDefinitions))
                 }
             } catch (e: Exception) {
-                e.printStackTrace()
+                Log.e("Debug_AAC", "Failed to parse definitions during delete", e)
             }
         }
-        
+
         // 3. Remove from Room (backward compatibility)
         aacTileDao.deleteTile(tile)
 

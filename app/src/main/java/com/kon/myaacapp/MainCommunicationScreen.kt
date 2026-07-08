@@ -13,7 +13,6 @@ import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.aspectRatio
-import androidx.compose.foundation.layout.fillMaxHeight
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
@@ -23,17 +22,17 @@ import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.lazy.LazyRow
 import androidx.compose.foundation.lazy.grid.GridCells
 import androidx.compose.foundation.lazy.grid.LazyVerticalGrid
-import androidx.compose.foundation.lazy.grid.items
 import androidx.compose.foundation.lazy.items
+import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
 import androidx.compose.material.icons.automirrored.filled.Backspace
-import androidx.compose.material.icons.automirrored.filled.VolumeUp
-import androidx.compose.material.icons.filled.Clear
-import androidx.compose.material.icons.filled.PlayArrow
+import androidx.compose.material.icons.filled.Delete
+import androidx.compose.material.icons.filled.Edit
 import androidx.compose.material.icons.filled.Settings
+import androidx.compose.material.icons.filled.VolumeUp
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Button
 import androidx.compose.material3.ButtonDefaults
@@ -43,7 +42,6 @@ import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedTextField
-import androidx.compose.material3.Scaffold
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
@@ -54,30 +52,21 @@ import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.platform.LocalConfiguration
-import androidx.compose.ui.platform.LocalContext
-import androidx.compose.ui.platform.LocalDensity
-import androidx.compose.ui.platform.LocalWindowInfo
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.text.input.PasswordVisualTransformation
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.text.style.TextOverflow
-import androidx.compose.ui.tooling.preview.Preview
 import androidx.compose.ui.unit.TextUnit
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.core.graphics.toColorInt
 import coil.compose.rememberAsyncImagePainter
-import com.kon.myaacapp.AACViewModel
-import com.kon.myaacapp.CombinedTile
-import com.kon.myaacapp.Gender
-import com.kon.myaacapp.R
 import java.io.File
 
 @Composable
@@ -106,7 +95,7 @@ fun MainCommunicationScreen(
         onSpeak = { viewModel.speakSentence() },
         onClear = { viewModel.clearSentence() },
         onBackspace = { viewModel.backspaceSentence() },
-        onTileClick = { tile -> 
+        onTileClick = { tile ->
             viewModel.selectTile(tile, onNavigateToCategory)
         },
         onBackClick = {
@@ -134,71 +123,7 @@ fun MainCommunicationScreenContent(
     onBackClick: () -> Unit,
     onNavigateToAdmin: () -> Unit
 ) {
-    var showPinDialog by remember { mutableStateOf(value = false) }
-    val configuration = LocalConfiguration.current
-    val orientation = configuration.orientation
-
-    Column(modifier = Modifier.fillMaxSize()) {
-        // Sentence Bar & Action Buttons
-        Row(
-            modifier = Modifier
-                .fillMaxWidth()
-                .height(if (orientation == Configuration.ORIENTATION_LANDSCAPE) 100.dp else 120.dp)
-                .background(MaterialTheme.colorScheme.surfaceVariant)
-                .padding(8.dp),
-            verticalAlignment = Alignment.CenterVertically
-        ) {
-            SentenceBar(
-                sentence = sentence,
-                modifier = Modifier.weight(1f),
-                userGender = userGender
-            )
-            
-            Spacer(modifier = Modifier.width(8.dp))
-
-            ActionBar(
-                onSpeak = onSpeak,
-                onClear = onClear,
-                onBackspace = onBackspace,
-                onSettings = { showPinDialog = true },
-                onBack = onBackClick,
-                canGoBack = currentParentId != null
-            )
-        }
-
-        // Main Grid
-        Box(modifier = Modifier.weight(1f)) {
-            val columns = if (orientation == Configuration.ORIENTATION_LANDSCAPE) 6 else 3
-            val minRows = 4
-            val maxIndex = tiles.maxOfOrNull { it.layoutState.cellIndex } ?: -1
-            val totalRows = maxOf(minRows, (maxIndex / columns) + 1)
-            val totalCells = totalRows * columns
-            val tileMap = remember(tiles) { tiles.associateBy { it.layoutState.cellIndex } }
-            
-            LazyVerticalGrid(
-                columns = GridCells.Fixed(columns),
-                modifier = Modifier.fillMaxSize(),
-                contentPadding = PaddingValues(8.dp),
-                horizontalArrangement = Arrangement.spacedBy(8.dp),
-                verticalArrangement = Arrangement.spacedBy(8.dp)
-            ) {
-                items(totalCells) { index ->
-                    val tile = tileMap[index]
-                    if (tile != null) {
-                        AACTileItem(
-                            tile = tile,
-                            userGender = userGender,
-                            orientation = orientation,
-                            onClick = { onTileClick(tile) }
-                        )
-                    } else {
-                        // Empty slot to maintain grid structure
-                        Spacer(modifier = Modifier.fillMaxSize())
-                    }
-                }
-            }
-        }
-    }
+    var showPinDialog by remember { mutableStateOf(false) }
 
     if (showPinDialog) {
         AdminPinDialog(
@@ -209,36 +134,135 @@ fun MainCommunicationScreenContent(
             }
         )
     }
+
+    Column(
+        modifier = Modifier
+            .fillMaxSize()
+            .padding(8.dp)
+    ) {
+        // 1. Sentence Bar (The Pencil Icon triggers showPinDialog!)
+        SentenceBar(
+            sentence = sentence,
+            userGender = userGender,
+            onSettingsClick = { showPinDialog = true },
+            modifier = Modifier
+                .fillMaxWidth()
+                .height(100.dp)
+                .padding(bottom = 8.dp)
+        )
+
+        // 2. Action Buttons on their own line (Middle)
+        ActionBar(
+            onSpeak = onSpeak,
+            onClear = onClear,
+            onBackspace = onBackspace,
+            onBack = onBackClick,
+            canGoBack = currentParentId != null,
+            modifier = Modifier
+                .fillMaxWidth()
+                .padding(bottom = 8.dp)
+        )
+
+        // 3. Tile Grid (Fixed to respect cellIndex and empty spaces)
+        val orientation = LocalConfiguration.current.orientation
+        val columns = if (orientation == Configuration.ORIENTATION_LANDSCAPE) 6 else 3
+        val aspectRatio = if (orientation == Configuration.ORIENTATION_LANDSCAPE) 1.2f else 1.0f
+
+        // Calculate total cells needed to ensure we don't cut off the grid
+        // (Minimum 12 cells for a 3x4 grid)
+        val maxTileIndex = tiles.maxOfOrNull { it.layoutState.cellIndex } ?: 0
+        val minCells = if (orientation == Configuration.ORIENTATION_LANDSCAPE) 24 else 12
+        val totalCellsToRender = maxOf(minCells, maxTileIndex + 1)
+
+        LazyVerticalGrid(
+            columns = GridCells.Fixed(columns),
+            modifier = Modifier.weight(1f),
+            contentPadding = PaddingValues(bottom = 8.dp),
+            horizontalArrangement = Arrangement.spacedBy(8.dp),
+            verticalArrangement = Arrangement.spacedBy(8.dp)
+        ) {
+            // Iterate by exact grid positions, not just the list size
+            items(count = totalCellsToRender) { index ->
+                val tile = tiles.find { it.layoutState.cellIndex == index }
+
+                if (tile != null) {
+                    AACTileItem(
+                        tile = tile,
+                        userGender = userGender,
+                        orientation = orientation,
+                        onClick = { onTileClick(tile) }
+                    )
+                } else {
+                    // Render an invisible placeholder to preserve the empty slot
+                    Spacer(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .aspectRatio(aspectRatio)
+                    )
+                }
+            }
+        }
+    }
 }
 
 @Composable
 fun SentenceBar(
     sentence: List<CombinedTile>,
-    modifier: Modifier = Modifier,
-    userGender: Gender
+    userGender: Gender,
+    onSettingsClick: () -> Unit,
+    modifier: Modifier = Modifier
 ) {
-    Card(
-        modifier = modifier.fillMaxHeight(),
-        shape = RoundedCornerShape(8.dp),
-        colors = CardDefaults.cardColors(containerColor = Color.White),
-        elevation = CardDefaults.cardElevation(2.dp)
+    Row(
+        modifier = modifier
+            .background(Color(0xFFEEEEEE), RoundedCornerShape(16.dp))
+            .padding(8.dp),
+        verticalAlignment = Alignment.CenterVertically
     ) {
         LazyRow(
-            modifier = Modifier.fillMaxSize(),
-            contentPadding = PaddingValues(horizontal = 8.dp),
+            modifier = Modifier.weight(1f),
             horizontalArrangement = Arrangement.spacedBy(4.dp),
             verticalAlignment = Alignment.CenterVertically
         ) {
             items(sentence) { tile ->
-                Box(modifier = Modifier.size(if (LocalConfiguration.current.orientation == Configuration.ORIENTATION_LANDSCAPE) 70.dp else 90.dp)) {
-                    AACTileItem(
-                        tile = tile,
-                        userGender = userGender,
-                        orientation = LocalConfiguration.current.orientation,
-                        onClick = { /* Could allow clicking to remove */ }
-                    )
+                val displayLabel = if (userGender == Gender.FEMALE) {
+                    tile.definition.labelFeminine ?: tile.definition.label
+                } else {
+                    tile.definition.label
                 }
+
+                val backgroundColor = if (tile.definition.backgroundColorHex != null) {
+                    try { Color(tile.definition.backgroundColorHex.toColorInt()) }
+                    catch (_: Exception) { resolveFitzgeraldColor(tile.definition.partOfSpeech) }
+                } else {
+                    resolveFitzgeraldColor(tile.definition.partOfSpeech)
+                }
+
+                TileUI(
+                    label = displayLabel,
+                    imageUri = tile.definition.imageUri,
+                    emoji = tile.definition.emoji,
+                    backgroundColor = backgroundColor,
+                    aspectRatio = 1f,
+                    isCategory = false,
+                    onClick = { },
+                    modifier = Modifier.size(80.dp) // Fixed square size for sentence tiles
+                )
             }
+        }
+
+        Spacer(modifier = Modifier.width(8.dp))
+
+        IconButton(
+            onClick = onSettingsClick,
+            modifier = Modifier
+                .size(48.dp)
+                .background(Color.White, CircleShape)
+        ) {
+            Icon(
+                imageVector = Icons.Default.Settings,
+                contentDescription = "Admin Settings",
+                tint = Color.Gray
+            )
         }
     }
 }
@@ -248,45 +272,79 @@ fun ActionBar(
     onSpeak: () -> Unit,
     onClear: () -> Unit,
     onBackspace: () -> Unit,
-    onSettings: () -> Unit,
     onBack: () -> Unit,
     canGoBack: Boolean,
     modifier: Modifier = Modifier
 ) {
-    val isLandscape = LocalConfiguration.current.orientation == Configuration.ORIENTATION_LANDSCAPE
-    val buttonSize = if (isLandscape) 48.dp else 56.dp
-
     Row(
         modifier = modifier,
-        horizontalArrangement = Arrangement.spacedBy(4.dp),
+        horizontalArrangement = Arrangement.spacedBy(8.dp),
         verticalAlignment = Alignment.CenterVertically
     ) {
-        ActionButton(onBack, Icons.AutoMirrored.Filled.ArrowBack, stringResource(R.string.back), Color(0xFF9E9E9E), Modifier.size(buttonSize), enabled = true)
-        ActionButton(onBackspace, Icons.AutoMirrored.Filled.Backspace, stringResource(R.string.backspace), Color(0xFFFF9800), Modifier.size(buttonSize))
-        ActionButton(onClear, Icons.Default.Clear, stringResource(R.string.clear), Color(0xFFF44336), Modifier.size(buttonSize))
-        ActionButton(onSpeak, Icons.Default.PlayArrow, stringResource(R.string.speak), Color(0xFF4CAF50), Modifier.size(buttonSize))
-        ActionButton(onSettings, Icons.Default.Settings, stringResource(R.string.admin_access), Color(0xFF607D8B), Modifier.size(buttonSize))
+        ActionButton(
+            icon = Icons.AutoMirrored.Filled.ArrowBack,
+            backgroundColor = Color(0xFFE0E0E0),
+            iconTint = Color.DarkGray,
+            onClick = onBack,
+            enabled = canGoBack,
+            modifier = Modifier.weight(1f)
+        )
+
+        ActionButton(
+            icon = Icons.Default.Delete,
+            backgroundColor = Color(0xFFFFCDD2),
+            iconTint = Color.Red,
+            onClick = onClear,
+            enabled = true,
+            modifier = Modifier.weight(1f)
+        )
+
+        ActionButton(
+            icon = Icons.AutoMirrored.Filled.Backspace,
+            backgroundColor = Color(0xFFF8BBD0),
+            iconTint = Color(0xFFC2185B),
+            onClick = onBackspace,
+            enabled = true,
+            modifier = Modifier.weight(1f)
+        )
+
+        ActionButton(
+            icon = Icons.Default.VolumeUp,
+            backgroundColor = Color(0xFF64B5F6),
+            iconTint = Color.White,
+            onClick = onSpeak,
+            enabled = true,
+            modifier = Modifier.weight(2f)
+        )
     }
 }
 
 @Composable
 fun ActionButton(
-    onClick: () -> Unit,
     icon: ImageVector,
-    contentDescription: String,
-    color: Color,
-    modifier: Modifier = Modifier,
-    enabled: Boolean = true
+    backgroundColor: Color,
+    iconTint: Color,
+    onClick: () -> Unit,
+    enabled: Boolean,
+    modifier: Modifier = Modifier
 ) {
     Button(
         onClick = onClick,
-        modifier = modifier,
-        shape = RoundedCornerShape(8.dp),
-        colors = ButtonDefaults.buttonColors(containerColor = color),
-        contentPadding = PaddingValues(0.dp),
-        enabled = enabled
+        enabled = enabled,
+        modifier = modifier.height(64.dp),
+        colors = ButtonDefaults.buttonColors(
+            containerColor = backgroundColor,
+            disabledContainerColor = backgroundColor.copy(alpha = 0.4f)
+        ),
+        shape = RoundedCornerShape(12.dp),
+        contentPadding = PaddingValues(0.dp)
     ) {
-        Icon(icon, contentDescription = contentDescription, tint = Color.White)
+        Icon(
+            imageVector = icon,
+            contentDescription = null,
+            tint = if (enabled) iconTint else iconTint.copy(alpha = 0.4f),
+            modifier = Modifier.size(32.dp)
+        )
     }
 }
 
@@ -304,7 +362,7 @@ fun AdminPinDialog(onDismiss: () -> Unit, onConfirm: () -> Unit) {
                 Spacer(modifier = Modifier.height(8.dp))
                 OutlinedTextField(
                     value = pin,
-                    onValueChange = { 
+                    onValueChange = {
                         if (it.length <= 4 && it.all { char -> char.isDigit() }) {
                             pin = it
                             error = false
@@ -319,7 +377,7 @@ fun AdminPinDialog(onDismiss: () -> Unit, onConfirm: () -> Unit) {
                 )
                 if (error) {
                     Text(
-                        "PIN שגוי", // Or add to strings.xml
+                        "PIN שגוי",
                         color = MaterialTheme.colorScheme.error,
                         style = MaterialTheme.typography.bodySmall
                     )
@@ -439,7 +497,7 @@ fun TileUI(
                         )
                     }
                 }
-                
+
                 Text(
                     text = label,
                     fontSize = labelFontSize,
@@ -453,7 +511,7 @@ fun TileUI(
 
             if (showSpeakerIcon) {
                 Icon(
-                    imageVector = Icons.AutoMirrored.Filled.VolumeUp,
+                    imageVector = Icons.Default.VolumeUp,
                     contentDescription = null,
                     modifier = Modifier
                         .align(Alignment.TopEnd)

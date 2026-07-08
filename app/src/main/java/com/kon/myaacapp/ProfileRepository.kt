@@ -88,11 +88,22 @@ class ProfileRepository(
     }
 
     suspend fun createProfile(name: String) = withContext(Dispatchers.IO) {
+        // 1. Find the default profile to use as a template (fallback to active or first available)
+        val templateProfile = _profiles.value.find { it.profileId == "default" }
+            ?: activeProfile.value
+            ?: _profiles.value.firstOrNull()
+
+        // 2. Safely copy the layout map, or fallback to an empty map if nothing exists
+        val templateLayout = templateProfile?.layout?.toMutableMap() ?: emptyMap()
+
+        // 3. Create the new profile using the copied layout
         val newProfile = UserProfile(
             profileId = UUID.randomUUID().toString(),
             profileName = name,
-            activeLanguageCode = "he"
+            activeLanguageCode = templateProfile?.activeLanguageCode ?: "he",
+            layout = templateLayout
         )
+
         saveProfileInternal(newProfile)
         loadProfiles()
         settingsRepository.updateActiveProfileId(newProfile.profileId)
