@@ -17,9 +17,12 @@
     <string name="bottom_nav_system">System</string>
     <string name="general_settings">General Settings</string>
     <string name="speak_on_press">Speak on tile press</string>
-    <string name="backup_and_restore">Backup &amp; Restore</string>
-    <string name="export_db">Export Database (Backup)</string>
+    <string name="backup_and_restore">Backup &amp; Restore data</string>
+    <string name="backup_share">Share backup</string>
+    <string name="backup_failed">Backup failed</string>
+    <string name="export_db">Export Database (Export\\Backup)</string>
     <string name="import_db">Import Database (Restore)</string>
+    <string name="import_helper_text">Tip: If you received the file via WhatsApp, check your Downloads folder or search for "myaac" at the top of the file picker.</string>
     <string name="language">Language</string>
     <string name="hebrew">Hebrew</string>
     <string name="english">English</string>

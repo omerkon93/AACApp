@@ -17,9 +17,12 @@
     <string name="bottom_nav_system">מערכת</string>
     <string name="general_settings">הגדרות כלליות</string>
     <string name="speak_on_press">הקרא בלחיצה על אריח</string>
-    <string name="backup_and_restore">גיבוי ושחזור</string>
-    <string name="export_db">ייצוא מסד נתונים (Backup)</string>
-    <string name="import_db">ייבוא מסד נתונים (Restore)</string>
+    <string name="backup_and_restore">גיבוי ושחזור נתונים</string>
+    <string name="backup_share">שיתוף גיבוי</string>
+    <string name="backup_failed">גיבוי נכשל</string>
+    <string name="export_db">ייצוא מסד נתונים (Export\\Backup)</string>
+    <string name="import_db">ייבוא מסד נתונים (Import)</string>
+    <string name="import_helper_text">טיפ: אם הגיבוי נשלח בוואטסאפ, חפשו בתיקיית ההורדות (Downloads) או הקלידו "myaac" בשורת החיפוש.</string>
     <string name="language">שפה</string>
     <string name="hebrew">עברית</string>
     <string name="english">אנגלית</string>

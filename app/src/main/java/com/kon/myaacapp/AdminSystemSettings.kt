@@ -1,5 +1,6 @@
 package com.kon.myaacapp
 
+import android.content.Intent
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.foundation.layout.*
@@ -10,7 +11,7 @@ import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Download
 import androidx.compose.material.icons.filled.Person
 import androidx.compose.material.icons.filled.Refresh
-import androidx.compose.material.icons.filled.Upload
+import androidx.compose.material.icons.filled.Share
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
@@ -18,6 +19,7 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
 
 @Composable
@@ -32,12 +34,11 @@ fun AdminSystemSettings(
     val contentResolver = context.contentResolver
     var showResetConfirm by remember { mutableStateOf(false) }
 
-    val exportLauncher = rememberLauncherForActivityResult(
-        contract = ActivityResultContracts.CreateDocument("application/zip"),
-    ) { uri ->
-        uri?.let { viewModel.exportDatabase(it, contentResolver) }
-    }
+    // Pre-fetch strings so they can be used safely inside the onClick callbacks
+    val backupShareTitle = stringResource(R.string.backup_share)
+    val backupFailedMsg = stringResource(R.string.backup_failed)
 
+    // Broadened MIME types to ensure WhatsApp downloads are never greyed out
     val importLauncher = rememberLauncherForActivityResult(
         contract = ActivityResultContracts.OpenDocument(),
     ) { uri ->
@@ -192,11 +193,24 @@ fun AdminSystemSettings(
                 Spacer(modifier = Modifier.height(12.dp))
 
                 Button(
-                    onClick = { exportLauncher.launch("myaac_backup_${System.currentTimeMillis()}.zip") },
+                    onClick = {
+                        viewModel.exportAndShareDatabase(context) { uri ->
+                            if (uri != null) {
+                                val shareIntent = Intent(Intent.ACTION_SEND).apply {
+                                    type = "application/zip"
+                                    putExtra(Intent.EXTRA_STREAM, uri)
+                                    addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION)
+                                }
+                                context.startActivity(Intent.createChooser(shareIntent, backupShareTitle))
+                            } else {
+                                android.widget.Toast.makeText(context, backupFailedMsg, android.widget.Toast.LENGTH_SHORT).show()
+                            }
+                        }
+                    },
                     modifier = Modifier.fillMaxWidth(),
                     shape = RoundedCornerShape(12.dp)
                 ) {
-                    Icon(Icons.Default.Upload, contentDescription = null)
+                    Icon(Icons.Default.Share, contentDescription = null)
                     Spacer(Modifier.width(8.dp))
                     Text(stringResource(R.string.export_db))
                 }
@@ -204,7 +218,15 @@ fun AdminSystemSettings(
                 Spacer(modifier = Modifier.height(8.dp))
 
                 OutlinedButton(
-                    onClick = { importLauncher.launch(arrayOf("application/zip", "application/octet-stream")) },
+                    onClick = {
+                        importLauncher.launch(arrayOf(
+                            "application/zip",
+                            "application/octet-stream",
+                            "application/x-zip-compressed",
+                            "multipart/x-zip",
+                            "*/*"
+                        ))
+                    },
                     modifier = Modifier.fillMaxWidth(),
                     shape = RoundedCornerShape(12.dp)
                 ) {
@@ -212,6 +234,17 @@ fun AdminSystemSettings(
                     Spacer(Modifier.width(8.dp))
                     Text(stringResource(R.string.import_db))
                 }
+
+                // WhatsApp / Download folder helper text
+                Text(
+                    text = stringResource(R.string.import_helper_text),
+                    style = MaterialTheme.typography.bodySmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    textAlign = TextAlign.Center,
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .padding(horizontal = 8.dp, vertical = 4.dp)
+                )
 
                 Spacer(modifier = Modifier.height(8.dp))
                 HorizontalDivider(modifier = Modifier.padding(vertical = 4.dp), thickness = 0.5.dp, color = MaterialTheme.colorScheme.outlineVariant)

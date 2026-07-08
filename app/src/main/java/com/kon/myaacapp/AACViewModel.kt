@@ -9,6 +9,12 @@ import kotlinx.coroutines.flow.*
 import kotlinx.coroutines.launch
 import java.util.Calendar
 import java.io.File
+import java.io.FileOutputStream
+import android.content.Context
+import android.net.Uri
+import androidx.core.content.FileProvider
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.withContext
 
 enum class AnalyticsTimeFilter {
     DAILY, WEEKLY, MONTHLY, YEARLY, ALL_TIME
@@ -226,23 +232,31 @@ class AACViewModel(application: Application) : AndroidViewModel(application) {
 
         when (type) {
             TileType.FOLDER -> {
-                // FOLDER: Navigate to the linked category, OR fallback to its own ID
+                // FOLDER: Speak if toggle is on, then navigate
+                if (speakOnTilePress.value) {
+                    speakTile(tile)
+                }
                 val targetId = tile.definition.defaultLinkedCategoryId ?: tile.definition.id
                 onNavigateToCategory(targetId)
             }
             TileType.CONNECTOR -> {
-                // CONNECTOR: Add to sentence, speak, AND navigate.
+                // CONNECTOR: Add to sentence, speak if toggle is on, AND navigate.
                 addTileToSentence(tile)
-                speakTile(tile)
+                if (speakOnTilePress.value) {
+                    speakTile(tile)
+                }
                 tile.definition.defaultLinkedCategoryId?.let { onNavigateToCategory(it) }
             }
             TileType.QUICK_FIRE -> {
-                // QUICK FIRE: Speak immediately, do NOT add to sentence, do not navigate.
+                // QUICK FIRE: ALWAYS speak immediately, do NOT add to sentence, do not navigate.
                 speakTile(tile)
             }
             else -> {
-                // BASIC (Fallback): Add to sentence.
+                // BASIC (Fallback): Add to sentence, and speak if toggle is on!
                 addTileToSentence(tile)
+                if (speakOnTilePress.value) {
+                    speakTile(tile)
+                }
             }
         }
 
@@ -537,5 +551,44 @@ class AACViewModel(application: Application) : AndroidViewModel(application) {
         super.onCleared()
         languageDownloadHelper.unregister()
         ttsHelper.shutdown()
+    }
+
+    fun exportAndShareDatabase(context: Context, onReady: (Uri?) -> Unit) {
+        viewModelScope.launch(Dispatchers.IO) {
+            try {
+                // 1. Create a secure temporary folder in the cache
+                val backupsDir = File(context.cacheDir, "backups")
+                if (!backupsDir.exists()) backupsDir.mkdirs()
+
+                // 2. Clear old temporary backups to save space
+                backupsDir.listFiles()?.forEach { it.delete() }
+
+                // 3. Create the new backup file
+                val backupFile = File(backupsDir, "myaac_backup_${System.currentTimeMillis()}.zip")
+                val uri = Uri.fromFile(backupFile)
+
+                // 4. FIX: Call backupService directly so it blocks and WAITS for the zip to finish!
+                val success = backupService.exportDatabase(context.contentResolver, uri)
+
+                if (success) {
+                    // 5. Generate a secure FileProvider URI for other apps to read
+                    val secureUri = FileProvider.getUriForFile(
+                        context,
+                        "${context.packageName}.fileprovider",
+                        backupFile
+                    )
+
+                    withContext(Dispatchers.Main) {
+                        onReady(secureUri)
+                    }
+                } else {
+                    // Export failed internally
+                    withContext(Dispatchers.Main) { onReady(null) }
+                }
+            } catch (e: Exception) {
+                e.printStackTrace()
+                withContext(Dispatchers.Main) { onReady(null) }
+            }
+        }
     }
 }

@@ -10,7 +10,6 @@ import android.util.Log
 import kotlinx.coroutines.*
 import java.io.File
 import java.io.FileOutputStream
-import java.io.IOException
 import java.io.OutputStream
 import java.nio.ByteBuffer
 import java.nio.ByteOrder
@@ -31,6 +30,15 @@ class AudioRecordingService(private val context: Context) {
         private const val SILENCE_THRESHOLD = 1500 // Adjust based on testing
     }
 
+    // --- NEW HELPER: Resolves absolute vs relative paths for all audio functions ---
+    private fun resolveAudioPath(audioUri: String): String {
+        return if (audioUri.startsWith("/") || audioUri.startsWith("content://") || audioUri.startsWith("file://")) {
+            audioUri
+        } else {
+            File(context.filesDir, audioUri).absolutePath
+        }
+    }
+
     @SuppressLint("MissingPermission")
     fun startRecording(tileId: String, languageCode: String): String? {
         val normalizedLang = LocaleHelper.normalize(languageCode)
@@ -40,7 +48,7 @@ class AudioRecordingService(private val context: Context) {
         }
 
         val outputFile = File(outputDir, "audio_$tileId.wav")
-        
+
         val bufferSize = AudioRecord.getMinBufferSize(SAMPLE_RATE, CHANNEL_CONFIG, AUDIO_FORMAT)
         if ((bufferSize == AudioRecord.ERROR) || (bufferSize == AudioRecord.ERROR_BAD_VALUE)) {
             Log.e("AudioRecordingService", "Invalid buffer size")
@@ -98,7 +106,6 @@ class AudioRecordingService(private val context: Context) {
     private fun processAndSaveAudio(rawShorts: List<Short>, outputFile: File) {
         if (rawShorts.isEmpty()) return
 
-        // Use a more memory-efficient way to find start/end indices
         var startIdx = 0
         while (startIdx < rawShorts.size && kotlin.math.abs(rawShorts[startIdx].toInt()) < SILENCE_THRESHOLD) {
             startIdx++
@@ -122,8 +129,7 @@ class AudioRecordingService(private val context: Context) {
                 val totalDataLen = totalAudioLen + 36
 
                 writeWavHeader(fos, totalAudioLen, totalDataLen)
-                
-                // Write in chunks to be safer, although we still have rawShorts in memory
+
                 val buffer = ByteBuffer.allocate(2048).order(ByteOrder.LITTLE_ENDIAN)
                 for (i in startIdx..endIdx) {
                     if (!buffer.hasRemaining()) {
@@ -150,7 +156,7 @@ class AudioRecordingService(private val context: Context) {
         val channels = 1
         val byteRate = (SAMPLE_RATE * channels * 16 / 8).toLong()
         val header = ByteArray(44)
-        header[0] = 'R'.code.toByte() // RIFF/WAVE header
+        header[0] = 'R'.code.toByte()
         header[1] = 'I'.code.toByte()
         header[2] = 'F'.code.toByte()
         header[3] = 'F'.code.toByte()
@@ -162,15 +168,15 @@ class AudioRecordingService(private val context: Context) {
         header[9] = 'A'.code.toByte()
         header[10] = 'V'.code.toByte()
         header[11] = 'E'.code.toByte()
-        header[12] = 'f'.code.toByte() // 'fmt ' chunk
+        header[12] = 'f'.code.toByte()
         header[13] = 'm'.code.toByte()
         header[14] = 't'.code.toByte()
         header[15] = ' '.code.toByte()
-        header[16] = 16 // 4 bytes: size of 'fmt ' chunk
+        header[16] = 16
         header[17] = 0
         header[18] = 0
         header[19] = 0
-        header[20] = 1 // format = 1 (PCM)
+        header[20] = 1
         header[21] = 0
         header[22] = channels.toByte()
         header[23] = 0
@@ -182,9 +188,9 @@ class AudioRecordingService(private val context: Context) {
         header[29] = (byteRate shr 8 and 0xffL).toByte()
         header[30] = (byteRate shr 16 and 0xffL).toByte()
         header[31] = (byteRate shr 24 and 0xffL).toByte()
-        header[32] = (channels * 16 / 8).toByte() // block align
+        header[32] = (channels * 16 / 8).toByte()
         header[33] = 0
-        header[34] = 16 // bits per sample
+        header[34] = 16
         header[35] = 0
         header[36] = 'd'.code.toByte()
         header[37] = 'a'.code.toByte()
@@ -197,16 +203,18 @@ class AudioRecordingService(private val context: Context) {
         out.write(header, 0, 44)
     }
 
-    fun playRecording(path: String) {
-        stopPlayback()
-        mediaPlayer = MediaPlayer().apply {
-            try {
-                setDataSource(path)
+    fun playRecording(audioUri: String) {
+        try {
+            val actualPath = resolveAudioPath(audioUri) // FIXED: Uses the new helper
+
+            mediaPlayer?.reset()
+            mediaPlayer = MediaPlayer().apply {
+                setDataSource(actualPath)
                 prepare()
                 start()
-            } catch (e: IOException) {
-                Log.e("AudioRecordingService", "playRecording() failed", e)
             }
+        } catch (e: Exception) {
+            e.printStackTrace()
         }
     }
 
@@ -215,7 +223,8 @@ class AudioRecordingService(private val context: Context) {
         val player = MediaPlayer()
         mediaPlayer = player
         try {
-            player.setDataSource(path)
+            val actualPath = resolveAudioPath(path) // FIXED: Uses the new helper here too
+            player.setDataSource(actualPath)
             player.setOnCompletionListener {
                 stopPlayback()
                 if (continuation.isActive) continuation.resume(Unit)
@@ -266,7 +275,8 @@ class AudioRecordingService(private val context: Context) {
     }
 
     fun deleteRecording(path: String) {
-        val file = File(path)
+        val actualPath = resolveAudioPath(path) // FIXED: Ensures it deletes the right file
+        val file = File(actualPath)
         if (file.exists()) {
             file.delete()
         }
