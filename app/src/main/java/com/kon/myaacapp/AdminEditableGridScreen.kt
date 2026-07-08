@@ -23,7 +23,6 @@ import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Add
 import androidx.compose.material.icons.filled.Edit
-import androidx.compose.material.icons.filled.Folder
 import androidx.compose.material.icons.filled.FlashOn
 import androidx.compose.material.icons.automirrored.filled.ArrowForward
 import androidx.compose.material3.Card
@@ -33,9 +32,6 @@ import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
 import androidx.compose.runtime.*
-import androidx.compose.runtime.Composable
-import androidx.compose.runtime.collectAsState
-import androidx.compose.runtime.getValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
@@ -52,7 +48,7 @@ import androidx.compose.ui.unit.sp
 import androidx.core.graphics.toColorInt
 import coil.compose.rememberAsyncImagePainter
 import androidx.compose.ui.draw.clip
-import com.kon.myaacapp.ui.theme.resolveFitzgeraldColor // <--- Imported official colors
+import com.kon.myaacapp.ui.theme.resolveFitzgeraldColor
 import java.io.File
 
 @Composable
@@ -69,12 +65,10 @@ fun AdminEditableGridScreen(
     val rows = maxOf(minRows, (maxIndex / columns) + 1)
     val maxCells = columns * rows
 
-    // State to track our drag gesture
     var draggedIndex by remember { mutableStateOf<Int?>(null) }
     var hoveredIndex by remember { mutableStateOf<Int?>(null) }
 
     BoxWithConstraints(modifier = Modifier.fillMaxSize()) {
-        // Calculate rough cell dimensions for mapping touch coordinates to grid slots
         val cellWidthPx = constraints.maxWidth.toFloat() / columns
         val cellHeightPx = constraints.maxHeight.toFloat() / rows
 
@@ -118,7 +112,6 @@ fun AdminEditableGridScreen(
                 val tile = tileMap[index]
                 val aspectRatio = if (orientation == Configuration.ORIENTATION_LANDSCAPE) 1.2f else 1.0f
 
-                // Visual feedback states
                 val isDragged = index == draggedIndex
                 val isHovered = index == hoveredIndex
                 val scale by animateFloatAsState(if (isDragged) 0.9f else 1f, label = "scale")
@@ -163,7 +156,6 @@ fun AdminTileItem(
     onClick: () -> Unit,
     onEdit: () -> Unit
 ) {
-    // FIXED: Use official theme colors instead of hardcoded LightGray
     val backgroundColor = remember(tile.definition.backgroundColorHex, tile.definition.partOfSpeech) {
         if (tile.definition.backgroundColorHex != null) {
             try {
@@ -182,7 +174,7 @@ fun AdminTileItem(
         imageUri = tile.definition.imageUri,
         backgroundColor = backgroundColor,
         aspectRatio = aspectRatio,
-        tileType = tile.definition.resolvedType, // Pass the strict type
+        tileType = tile.definition.resolvedType,
         onClick = onClick,
         onEdit = onEdit,
         isHidden = tile.layoutState.isHidden
@@ -196,7 +188,7 @@ fun AdminTileUI(
     imageUri: String?,
     backgroundColor: Color,
     aspectRatio: Float,
-    tileType: TileType, // Changed from isCategory
+    tileType: TileType,
     onClick: () -> Unit,
     onEdit: () -> Unit,
     modifier: Modifier = Modifier,
@@ -257,33 +249,33 @@ fun AdminTileUI(
                 )
             }
 
-            // FIXED: Added Visual Indicators from Main Screen
             val indicatorIcon = when (tileType) {
-                TileType.FOLDER -> null // The border handles folders in this view
+                TileType.FOLDER -> null
                 TileType.CONNECTOR -> Icons.AutoMirrored.Filled.ArrowForward
-                TileType.QUICK_FIRE -> Icons.Default.FlashOn // Lightning bolt
+                TileType.QUICK_FIRE -> Icons.Default.FlashOn
                 TileType.BASIC -> null
             }
 
+            // FIXED: Removed the 36dp end padding so it aligns properly into the corner
             if (indicatorIcon != null) {
                 Icon(
                     imageVector = indicatorIcon,
                     contentDescription = null,
                     modifier = Modifier
-                        .align(Alignment.TopEnd)
-                        .padding(top = 4.dp, end = 36.dp) // Shifted left so it doesn't overlap the Edit button
-                        .size(14.dp),
+                        .align(Alignment.TopEnd) // Top-Left in RTL
+                        .padding(6.dp)
+                        .size(16.dp),
                     tint = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.6f)
                 )
             }
 
-            // Edit Indicator (Top Left for Hebrew/RTL Layout)
+            // Edit Indicator
             IconButton(
                 onClick = onEdit,
                 modifier = Modifier
-                    .align(Alignment.TopStart) // Aligned top start
-                    .size(32.dp)
+                    .align(Alignment.TopStart) // Top-Right in RTL
                     .padding(4.dp)
+                    .size(32.dp)
                     .background(Color.Black.copy(alpha = 0.4f), RoundedCornerShape(6.dp))
             ) {
                 Icon(

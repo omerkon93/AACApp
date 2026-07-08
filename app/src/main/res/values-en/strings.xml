@@ -133,9 +133,6 @@
     <string name="yearly_usage_title">Yearly Trends</string>
     <string name="all_time_usage_title">Usage Trends (All Time)</string>
     <string name="filter_all">All</string>
-    <string name="filter_missing_audio">🔇 No Audio</string>
-    <string name="filter_missing_tts">💬 No TTS</string>
-    <string name="filter_missing_image">🖼️ No Image</string>
     <string name="filter_unused">📉 Unused</string>
     <string name="filter_hidden">👻 Hidden</string>
     <string name="ai_insight_title">AI Insights</string>
@@ -166,4 +163,17 @@
     <string name="advanced_id_placeholder">Example: my_custom_id</string>
     <string name="advanced_id_error_existing">Cannot change the ID of an existing tile.</string>
     <string name="advanced_id_hint">Leave blank to auto-generate a random ID.</string>
+    <!-- Admin Filter Bottom Sheet -->
+    <string name="filter_by">Filter By</string>
+    <string name="filter_by_count">Filter By (%1$d)</string>
+    <string name="filter_active">Filter Active</string>
+    <string name="filter_section_media">Media Status</string>
+    <string name="filter_missing_audio">🔇 No Audio</string>
+    <string name="filter_missing_tts">💬 No TTS</string>
+    <string name="filter_missing_image">🖼️ No Image</string>
+    <string name="filter_section_type">Tile Type</string>
+    <string name="filter_section_usage">Tile Usage</string>
+    <string name="filter_usage_low">Low Usage (under 5 clicks)</string>
+    <string name="filter_usage_hidden">Hidden</string>
+    <string name="filter_apply">Apply Filters</string>
 </resources>
