@@ -484,7 +484,8 @@ fun TileUI(
                 Box(
                     modifier = Modifier
                         .weight(1f)
-                        .fillMaxWidth(),
+                        .fillMaxWidth()
+                        .padding(8.dp), // A little padding so images don't touch the edges
                     contentAlignment = Alignment.Center
                 ) {
                     if (imageUri != null) {
@@ -493,14 +494,11 @@ fun TileUI(
                             painter = rememberAsyncImagePainter(if (file.exists()) file else imageUri),
                             contentDescription = null,
                             modifier = Modifier.fillMaxSize(),
-                            contentScale = ContentScale.Fit
+                            contentScale = ContentScale.Fit // Keeps aspect ratio without cropping
                         )
                     } else if (emoji != null) {
-                        Text(
-                            text = emoji,
-                            fontSize = 32.sp,
-                            textAlign = TextAlign.Center
-                        )
+                        // Bumped up from 24.sp to 56.sp!
+                        Text(text = emoji, fontSize = 56.sp)
                     }
                 }
 

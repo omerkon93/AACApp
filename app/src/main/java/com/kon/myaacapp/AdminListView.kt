@@ -26,6 +26,7 @@ import androidx.compose.ui.draw.clip
 import androidx.compose.ui.draw.scale
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.layout.ContentScale
+import androidx.compose.ui.platform.LocalConfiguration
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
@@ -201,17 +202,22 @@ fun AdminListView(
         }
     }
 
+    // --- FILTER BOTTOM SHEET ---
     if (showFilterSheet) {
         ModalBottomSheet(
             onDismissRequest = { showFilterSheet = false },
             sheetState = sheetState,
             containerColor = MaterialTheme.colorScheme.surface
+            // Removed windowInsets to fix the compatibility error
         ) {
+            val configuration = LocalConfiguration.current
+            val maxScrollHeight = configuration.screenHeightDp.dp * 0.65f // Deterministic max height
+
             Column(
                 modifier = Modifier
                     .fillMaxWidth()
                     .padding(horizontal = 16.dp)
-                    .padding(bottom = 32.dp)
+                    .padding(bottom = 24.dp) // Adjusted padding for safe areas
             ) {
                 Text(
                     text = stringResource(R.string.filter_by),
@@ -220,9 +226,11 @@ fun AdminListView(
                     modifier = Modifier.padding(bottom = 16.dp)
                 )
 
+                // FIXED: Replaced weight(1f, fill=false) with heightIn(max = ...)
                 Column(
                     modifier = Modifier
-                        .weight(1f, fill = false)
+                        .fillMaxWidth()
+                        .heightIn(max = maxScrollHeight)
                         .verticalScroll(rememberScrollState()),
                     verticalArrangement = Arrangement.spacedBy(16.dp)
                 ) {
@@ -291,6 +299,7 @@ fun AdminListView(
                     }
                 }
 
+                // Sticky Footer Buttons
                 Row(
                     modifier = Modifier
                         .fillMaxWidth()
