@@ -1,5 +1,6 @@
 package com.kon.myaacapp
 
+import android.annotation.SuppressLint
 import android.content.res.Configuration
 import androidx.activity.compose.BackHandler
 import androidx.compose.foundation.Image
@@ -30,12 +31,11 @@ import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
 import androidx.compose.material.icons.automirrored.filled.ArrowForward
 import androidx.compose.material.icons.automirrored.filled.Backspace
+import androidx.compose.material.icons.automirrored.filled.VolumeUp
 import androidx.compose.material.icons.filled.Delete
-import androidx.compose.material.icons.filled.Edit
-import androidx.compose.material.icons.filled.Settings
-import androidx.compose.material.icons.filled.VolumeUp
-import androidx.compose.material.icons.filled.Folder
 import androidx.compose.material.icons.filled.FlashOn
+import androidx.compose.material.icons.filled.Folder
+import androidx.compose.material.icons.filled.Settings
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Button
 import androidx.compose.material3.ButtonDefaults
@@ -216,10 +216,20 @@ fun SentenceBar(
     onSettingsClick: () -> Unit,
     modifier: Modifier = Modifier
 ) {
-    Row(
-        modifier = modifier
+    val rowModifier = remember {
+        Modifier
             .background(Color(0xFFEEEEEE), RoundedCornerShape(16.dp))
-            .padding(8.dp),
+            .padding(8.dp)
+    }
+    val settingsButtonModifier = remember {
+        Modifier
+            .size(48.dp)
+            .background(Color.White, CircleShape)
+    }
+    val tileModifier = remember { Modifier.size(86.dp) }
+
+    Row(
+        modifier = modifier.then(rowModifier),
         verticalAlignment = Alignment.CenterVertically
     ) {
         LazyRow(
@@ -227,30 +237,75 @@ fun SentenceBar(
             horizontalArrangement = Arrangement.spacedBy(4.dp),
             verticalAlignment = Alignment.CenterVertically
         ) {
-            items(sentence) { tile ->
+            items(
+                items = sentence,
+                key = { it.definition.id }
+            ) { tile ->
                 val displayLabel = if (userGender == Gender.FEMALE) {
                     tile.definition.labelFeminine ?: tile.definition.label
                 } else {
                     tile.definition.label
                 }
 
-                val backgroundColor = if (tile.definition.backgroundColorHex != null) {
-                    try { Color(tile.definition.backgroundColorHex.toColorInt()) }
-                    catch (_: Exception) { resolveFitzgeraldColor(tile.definition.partOfSpeech) }
-                } else {
-                    resolveFitzgeraldColor(tile.definition.partOfSpeech)
+                val backgroundColor = remember(tile.definition.backgroundColorHex, tile.definition.partOfSpeech) {
+                    if (tile.definition.backgroundColorHex != null) {
+                        try { Color(tile.definition.backgroundColorHex.toColorInt()) }
+                        catch (_: Exception) { resolveFitzgeraldColor(tile.definition.partOfSpeech) }
+                    } else {
+                        resolveFitzgeraldColor(tile.definition.partOfSpeech)
+                    }
                 }
 
-                TileUI(
-                    label = displayLabel,
-                    imageUri = tile.definition.imageUri,
-                    emoji = tile.definition.emoji,
-                    backgroundColor = backgroundColor,
-                    aspectRatio = 1f,
-                    tileType = TileType.BASIC, // Fixed: Replaced 'isCategory = false' with the explicit type
-                    onClick = { },
-                    modifier = Modifier.size(80.dp)
-                )
+                val imageModel = remember(tile.definition.imageUri) {
+                    tile.definition.imageUri?.let { uri ->
+                        val file = File(uri)
+                        if (file.exists()) file else uri
+                    }
+                }
+
+                Card(
+                    modifier = tileModifier,
+                    shape = RoundedCornerShape(8.dp),
+                    colors = CardDefaults.cardColors(containerColor = backgroundColor),
+                    elevation = CardDefaults.cardElevation(defaultElevation = 1.dp)
+                ) {
+                    Column(
+                        modifier = Modifier
+                            .fillMaxSize()
+                            .padding(2.dp),
+                        horizontalAlignment = Alignment.CenterHorizontally,
+                        verticalArrangement = Arrangement.Center
+                    ) {
+                        Box(
+                            modifier = Modifier
+                                .weight(1f)
+                                .fillMaxWidth(),
+                            contentAlignment = Alignment.Center
+                        ) {
+                            if (imageModel != null) {
+                                Image(
+                                    painter = rememberAsyncImagePainter(imageModel),
+                                    contentDescription = null,
+                                    modifier = Modifier.fillMaxSize(),
+                                    contentScale = ContentScale.Fit
+                                )
+                            } else if (tile.definition.emoji != null) {
+                                // Scaled down to 24.sp to fit the 64dp container without clipping
+                                Text(text = tile.definition.emoji, fontSize = 36.sp)
+                            }
+                        }
+
+                        Text(
+                            text = displayLabel,
+                            fontSize = 9.sp,
+                            fontWeight = FontWeight.Bold,
+                            textAlign = TextAlign.Center,
+                            maxLines = 1,
+                            overflow = TextOverflow.Ellipsis,
+                            modifier = Modifier.fillMaxWidth()
+                        )
+                    }
+                }
             }
         }
 
@@ -258,9 +313,7 @@ fun SentenceBar(
 
         IconButton(
             onClick = onSettingsClick,
-            modifier = Modifier
-                .size(48.dp)
-                .background(Color.White, CircleShape)
+            modifier = settingsButtonModifier
         ) {
             Icon(
                 imageVector = Icons.Default.Settings,
@@ -313,7 +366,7 @@ fun ActionBar(
         )
 
         ActionButton(
-            icon = Icons.Default.VolumeUp,
+            icon = Icons.AutoMirrored.Filled.VolumeUp,
             backgroundColor = Color(0xFF64B5F6),
             iconTint = Color.White,
             onClick = onSpeak,
@@ -452,7 +505,7 @@ fun TileUI(
     tileType: TileType,
     isHidden: Boolean = false,
     onClick: () -> Unit,
-    modifier: Modifier = Modifier,
+    @SuppressLint("ModifierParameter") modifier: Modifier = Modifier,
     labelFontSize: TextUnit = 14.sp
 ) {
     if (isHidden) return
