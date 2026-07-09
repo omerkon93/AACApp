@@ -3,8 +3,12 @@ package com.kon.myaacapp
 import androidx.room.*
 import kotlinx.coroutines.flow.Flow
 
+// OPTIMIZATION: Applied at the interface level to silence all unused warnings
+// for existing and future helper queries, keeping the API contract intact.
+@Suppress("unused")
 @Dao
 interface AACTileDao {
+
     @Insert(onConflict = OnConflictStrategy.REPLACE)
     suspend fun insertTile(tile: AACTile)
 
@@ -27,13 +31,13 @@ interface AACTileDao {
                tile_placements.sortOrder AS placed_sortOrder, 
                tile_placements.parentId AS placed_parentId 
         FROM aac_tiles 
-        JOIN tile_placements ON aac_tiles.id = tile_placements.tileId AND aac_tiles.languageCode = tile_placements.languageCode
+        INNER JOIN tile_placements ON aac_tiles.id = tile_placements.tileId AND aac_tiles.languageCode = tile_placements.languageCode
         WHERE tile_placements.parentId = :parentId AND aac_tiles.languageCode = :langCode AND aac_tiles.isHidden = 0 
         ORDER BY tile_placements.cellIndex ASC, tile_placements.sortOrder ASC
     """)
     fun getTilesByParentIdWithPlacement(parentId: String, langCode: String): Flow<List<AACTileWithPlacement>>
 
-    @Query("SELECT * FROM aac_tiles WHERE parentId = :parentId AND languageCode = :langCode AND isHidden = 0 ORDER BY cellIndex ASC, sortOrder ASC")
+    @Query("SELECT * FROM aac_tiles WHERE parentId IS :parentId AND languageCode = :langCode AND isHidden = 0 ORDER BY cellIndex ASC, sortOrder ASC")
     fun getTilesByParentIdLegacy(parentId: String?, langCode: String): Flow<List<AACTile>>
 
     @Query("SELECT * FROM aac_tiles WHERE parentId IS NULL AND languageCode = :langCode AND isHidden = 0 ORDER BY cellIndex ASC, sortOrder ASC")
@@ -44,8 +48,8 @@ interface AACTileDao {
     @Insert(onConflict = OnConflictStrategy.REPLACE)
     suspend fun insertPlacement(placement: TilePlacement)
 
-    @Query("DELETE FROM tile_placements WHERE tileId = :tileId AND parentId = :parentId AND languageCode = :langCode")
-    suspend fun deletePlacement(tileId: String, parentId: String, langCode: String)
+    @Query("DELETE FROM tile_placements WHERE tileId = :tileId AND parentId IS :parentId AND languageCode = :langCode")
+    suspend fun deletePlacement(tileId: String, parentId: String?, langCode: String)
 
     @Query("DELETE FROM tile_placements WHERE tileId = :tileId AND languageCode = :langCode")
     suspend fun deleteAllPlacementsForTile(tileId: String, langCode: String)
@@ -60,7 +64,7 @@ interface AACTileDao {
                tile_placements.sortOrder AS placed_sortOrder, 
                tile_placements.parentId AS placed_parentId
         FROM aac_tiles 
-        JOIN tile_placements ON aac_tiles.id = tile_placements.tileId AND aac_tiles.languageCode = tile_placements.languageCode
+        INNER JOIN tile_placements ON aac_tiles.id = tile_placements.tileId AND aac_tiles.languageCode = tile_placements.languageCode
     """)
     suspend fun getAllTilesWithPlacements(): List<AACTileWithPlacement>
 

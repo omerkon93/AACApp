@@ -6,9 +6,6 @@ import androidx.room.Room
 import androidx.room.RoomDatabase
 import androidx.room.migration.Migration
 import androidx.sqlite.db.SupportSQLiteDatabase
-import kotlinx.coroutines.CoroutineScope
-import kotlinx.coroutines.Dispatchers
-import kotlinx.coroutines.launch
 
 @Database(entities = [AACTile::class, TileClickEvent::class, TilePlacement::class], version = 7, exportSchema = false)
 abstract class AACDatabase : RoomDatabase() {
@@ -31,40 +28,12 @@ abstract class AACDatabase : RoomDatabase() {
                     AACDatabase::class.java,
                     "aac_database"
                 )
-                .addMigrations(MIGRATION_3_4)
-                .addCallback(object : Callback() {
-                    override fun onCreate(db: SupportSQLiteDatabase) {
-                        super.onCreate(db)
-                        // Prepopulate the database when it is first created
-                        triggerInitialLoad(context)
-                    }
+                    .addMigrations(MIGRATION_3_4)
+                    .fallbackToDestructiveMigration(dropAllTables = false)
+                    .build()
 
-                    override fun onOpen(db: SupportSQLiteDatabase) {
-                        super.onOpen(db)
-                        // Fallback: check if empty and load if needed
-                        triggerInitialLoad(context)
-                    }
-                })
-                .fallbackToDestructiveMigration()
-                .build()
                 INSTANCE = instance
                 instance
-            }
-        }
-
-        private fun triggerInitialLoad(context: Context) {
-            CoroutineScope(Dispatchers.IO).launch {
-                val database = getDatabase(context)
-                val settingsRepository = SettingsRepository(context)
-                val profileRepository = ProfileRepository(context, settingsRepository, this)
-                val repository = AACRepository(database.aacTileDao(), context, profileRepository)
-                if (repository.isEmpty()) {
-                    val backupService = BackupService(context.applicationContext, repository)
-                    backupService.importFromAssets("initial_data.zip")
-                } else {
-                    // Try to migrate placements if they are missing
-                    repository.migrateLegacyPlacements()
-                }
             }
         }
     }

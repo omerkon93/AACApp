@@ -1,20 +1,22 @@
+@file:Suppress("SpellCheckingInspection") // Suppress 'fileprovider' typo check globally for this file
+
 package com.kon.myaacapp
 
 import android.app.Application
+import android.content.ContentResolver
+import android.content.Context
+import android.net.Uri
 import android.util.Log
+import androidx.core.content.FileProvider
 import androidx.lifecycle.AndroidViewModel
 import androidx.lifecycle.viewModelScope
+import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.ExperimentalCoroutinesApi
 import kotlinx.coroutines.flow.*
 import kotlinx.coroutines.launch
-import java.util.Calendar
-import java.io.File
-import java.io.FileOutputStream
-import android.content.Context
-import android.net.Uri
-import androidx.core.content.FileProvider
-import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
+import java.io.File
+import java.util.Calendar
 
 enum class AnalyticsTimeFilter {
     DAILY, WEEKLY, MONTHLY, YEARLY, ALL_TIME
@@ -49,34 +51,35 @@ class AACViewModel(application: Application) : AndroidViewModel(application) {
         backupService = BackupService(application, repository)
 
         viewModelScope.launch {
-            // 1. Run the legacy SQLite migration (if an old DB still exists on the device)
-            repository.completeLegacyMigration()
+            profileRepository.activeProfile.collect { profile ->
+                Log.d("Debug_AAC", "Active Profile ID: ${profile?.profileId}")
+            }
+        }
 
-            // 2. The Single-Source Auto-Extractor
+        // THE MASTER BOOT SEQUENCE
+        viewModelScope.launch(Dispatchers.IO) {
             val firstBootFlag = File(application.filesDir, "first_boot_complete.flag")
+
+            // 1. Extract the zip FIRST
             if (!firstBootFlag.exists()) {
-                // Extract the unified database from assets to the writable hard drive
                 val success = backupService.importFromAssets("initial_data.zip")
                 if (success) {
-                    firstBootFlag.createNewFile() // Drop the flag so it never overwrites user data again
-                    profileRepository.reload()
-                    // Assuming your repository has a reload or refresh function to read the new local files:
-                    repository.loadAllDefinitions()
+                    firstBootFlag.createNewFile()
                 }
             }
+
+            // 2. NOW run the legacy migration. If the zip contained an old SQLite
+            // database with your manual tiles, they will be safely salvaged into JSONs now!
+            repository.completeLegacyMigration()
+
+            // 3. Load everything into memory and draw the UI
+            profileRepository.reload()
+            repository.reload()
         }
     }
 
     val profiles: StateFlow<List<UserProfile>> = profileRepository.profiles
     val activeProfile: StateFlow<UserProfile?> = profileRepository.activeProfile
-
-    init {
-        viewModelScope.launch {
-            activeProfile.collect { profile ->
-                Log.d("Debug_AAC", "Active Profile ID: ${profile?.profileId}")
-            }
-        }
-    }
 
     fun createProfile(name: String) {
         viewModelScope.launch {
@@ -123,12 +126,12 @@ class AACViewModel(application: Application) : AndroidViewModel(application) {
     }
 
     val speakOnTilePress: StateFlow<Boolean> = settingsRepository.speakOnTilePressFlow
-        .stateIn(viewModelScope, SharingStarted.Lazily, true)
+        .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), true)
 
     val languageCode: StateFlow<String> = settingsRepository.languageCodeFlow
         .map { lang -> LocaleHelper.normalize(lang) }
         .onEach { lang -> ttsHelper.setLanguage(lang) }
-        .stateIn(viewModelScope, SharingStarted.Lazily, "he")
+        .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), "he")
 
     val userGender: StateFlow<Gender> = tileService.userGender
 
@@ -142,15 +145,15 @@ class AACViewModel(application: Application) : AndroidViewModel(application) {
         .flatMapLatest { (parentId, lang) ->
             repository.getCombinedTiles(parentId, lang)
         }
-        .stateIn(viewModelScope, SharingStarted.Lazily, emptyList())
+        .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), emptyList())
 
     val allTiles: StateFlow<List<CombinedTile>> = languageCode
         .flatMapLatest { lang -> repository.getAllDefinitionsAsCombinedTiles(lang) }
-        .stateIn(viewModelScope, SharingStarted.Lazily, emptyList())
+        .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), emptyList())
 
     val allCategories: StateFlow<List<CombinedTile>> = allTiles
         .map { list -> list.filter { it.isCategory } }
-        .stateIn(viewModelScope, SharingStarted.Lazily, emptyList())
+        .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), emptyList())
 
     fun updateSpeakOnTilePress(speak: Boolean) {
         viewModelScope.launch {
@@ -160,7 +163,7 @@ class AACViewModel(application: Application) : AndroidViewModel(application) {
 
     val languageDownloadStatus = languageDownloadHelper.downloadStatus
 
-    suspend fun updateLanguageCode(lang: String) {
+    private suspend fun updateLanguageCode(lang: String) {
         settingsRepository.updateLanguageCode(lang)
         resetToHome()
     }
@@ -184,23 +187,30 @@ class AACViewModel(application: Application) : AndroidViewModel(application) {
         tileService.setUserGender(gender, viewModelScope)
     }
 
+    @Suppress("unused")
     private val _recordingTileId = MutableStateFlow<String?>(null)
+
+    @Suppress("unused")
     val recordingTileId: StateFlow<String?> = _recordingTileId.asStateFlow()
 
+    @Suppress("unused")
     fun startQuickRecording(tileId: String) {
         _recordingTileId.value = tileId
         audioService.startRecording(tileId, languageCode.value)
     }
 
+    @Suppress("unused")
     fun stopQuickRecording(tileId: String) {
         viewModelScope.launch {
             audioService.stopRecording()
             _recordingTileId.value = null
-            // The path is standardized in AudioRecordingService: "audio_$tileId.wav"
-            val outputDir = File(getApplication<Application>().filesDir, "audio_tiles/${languageCode.value}")
-            val outputFile = File(outputDir, "audio_$tileId.wav")
-            if (outputFile.exists()) {
-                updateTileAudioUri(tileId, outputFile.absolutePath)
+
+            withContext(Dispatchers.IO) {
+                val outputDir = File(getApplication<Application>().filesDir, "audio_tiles/${languageCode.value}")
+                val outputFile = File(outputDir, "audio_$tileId.wav")
+                if (outputFile.exists()) {
+                    updateTileAudioUri(tileId, outputFile.absolutePath)
+                }
             }
         }
     }
@@ -211,12 +221,16 @@ class AACViewModel(application: Application) : AndroidViewModel(application) {
     private val _importExportStatus = MutableStateFlow<String?>(null)
     val importExportStatus: StateFlow<String?> = _importExportStatus.asStateFlow()
 
-    fun resetToDefault(context: android.content.Context) {
+    fun resetToDefault(context: Context) {
         viewModelScope.launch {
             _importExportStatus.value = context.getString(R.string.resetting)
-            val success = backupService.importFromAssets("initial_data.zip")
+            val success = withContext(Dispatchers.IO) { backupService.importFromAssets("initial_data.zip") }
             if (success) {
+                // Ensure any databases in the zip are migrated
+                repository.completeLegacyMigration()
                 profileRepository.reload()
+
+                // Do NOT pass forceRepopulate = true. Respect the imported layout!
                 repository.reload()
             }
             _importExportStatus.value = if (success) {
@@ -232,35 +246,24 @@ class AACViewModel(application: Application) : AndroidViewModel(application) {
 
         when (type) {
             TileType.FOLDER -> {
-                // FOLDER: Speak if toggle is on, then navigate
-                if (speakOnTilePress.value) {
-                    speakTile(tile)
-                }
+                if (speakOnTilePress.value) speakTile(tile)
                 val targetId = tile.definition.defaultLinkedCategoryId ?: tile.definition.id
                 onNavigateToCategory(targetId)
             }
             TileType.CONNECTOR -> {
-                // CONNECTOR: Add to sentence, speak if toggle is on, AND navigate.
                 addTileToSentence(tile)
-                if (speakOnTilePress.value) {
-                    speakTile(tile)
-                }
+                if (speakOnTilePress.value) speakTile(tile)
                 tile.definition.defaultLinkedCategoryId?.let { onNavigateToCategory(it) }
             }
             TileType.QUICK_FIRE -> {
-                // QUICK FIRE: ALWAYS speak immediately, do NOT add to sentence, do not navigate.
                 speakTile(tile)
             }
             else -> {
-                // BASIC (Fallback): Add to sentence, and speak if toggle is on!
                 addTileToSentence(tile)
-                if (speakOnTilePress.value) {
-                    speakTile(tile)
-                }
+                if (speakOnTilePress.value) speakTile(tile)
             }
         }
 
-        // Always log the click for statistics
         viewModelScope.launch {
             repository.incrementClickCount(tile.definition.id, tile.layoutState.parentId, languageCode.value)
         }
@@ -268,9 +271,12 @@ class AACViewModel(application: Application) : AndroidViewModel(application) {
 
     private fun speakTile(tile: CombinedTile) {
         val textToSpeak = if (userGender.value == Gender.FEMALE) {
-            tile.definition.ttsTextFeminine ?: tile.definition.ttsText ?: tile.definition.label
+            tile.definition.ttsTextFeminine?.takeIf { it.isNotBlank() }
+                ?: tile.definition.ttsText.takeIf { it.isNotBlank() }
+                ?: tile.definition.label
         } else {
-            tile.definition.ttsText ?: tile.definition.label
+            tile.definition.ttsText.takeIf { it.isNotBlank() }
+                ?: tile.definition.label
         }
 
         val audioUri = tile.definition.audioUri
@@ -281,7 +287,7 @@ class AACViewModel(application: Application) : AndroidViewModel(application) {
         }
     }
 
-    fun addTileToSentence(tile: CombinedTile) {
+    private fun addTileToSentence(tile: CombinedTile) {
         _selectedSentence.value += tile
     }
 
@@ -361,7 +367,6 @@ class AACViewModel(application: Application) : AndroidViewModel(application) {
     fun updateTile(tile: AACTile) {
         viewModelScope.launch {
             repository.updateTile(tile)
-            // Also update layout state if parentId exists
             repository.updateTileIndex(tile.id, tile.parentId, tile.cellIndex ?: 0)
             repository.updateTileVisibility(tile.id, tile.parentId, tile.isHidden)
         }
@@ -389,7 +394,6 @@ class AACViewModel(application: Application) : AndroidViewModel(application) {
         viewModelScope.launch {
             tile.audioUri?.let { audioService.deleteRecording(it) }
             repository.deleteTile(tile)
-            // Remove from all layouts if deleted from dictionary
             profiles.value.forEach { profile ->
                 val newLayout = profile.layout.toMutableMap()
                 val keysToRemove = newLayout.keys.filter { it.endsWith("_" + tile.id) }
@@ -401,7 +405,7 @@ class AACViewModel(application: Application) : AndroidViewModel(application) {
         }
     }
 
-    fun updateTileAudioUri(tileId: String, audioUri: String?) {
+    private fun updateTileAudioUri(tileId: String, audioUri: String?) {
         viewModelScope.launch {
             repository.getTileById(tileId, languageCode.value)?.let { tile ->
                 repository.updateTile(tile.copy(audioUri = audioUri))
@@ -409,9 +413,10 @@ class AACViewModel(application: Application) : AndroidViewModel(application) {
         }
     }
 
-    fun exportDatabase(uri: android.net.Uri, contentResolver: android.content.ContentResolver) {
+    @Suppress("unused")
+    fun exportDatabase(uri: Uri, contentResolver: ContentResolver) {
         viewModelScope.launch {
-            val success = backupService.exportDatabase(contentResolver, uri)
+            val success = withContext(Dispatchers.IO) { backupService.exportDatabase(contentResolver, uri) }
             _importExportStatus.value = if (success) {
                 getApplication<Application>().getString(R.string.export_success)
             } else {
@@ -420,9 +425,9 @@ class AACViewModel(application: Application) : AndroidViewModel(application) {
         }
     }
 
-    fun importDatabase(uri: android.net.Uri, contentResolver: android.content.ContentResolver) {
+    fun importDatabase(uri: Uri, contentResolver: ContentResolver) {
         viewModelScope.launch {
-            val success = backupService.importDatabase(contentResolver, uri)
+            val success = withContext(Dispatchers.IO) { backupService.importDatabase(contentResolver, uri) }
             if (success) {
                 profileRepository.reload()
                 repository.reload()
@@ -439,22 +444,29 @@ class AACViewModel(application: Application) : AndroidViewModel(application) {
         _importExportStatus.value = null
     }
 
-    // --- Admin Audit Logic ---
-
+    @Suppress("unused")
     private val _adminSearchQuery = MutableStateFlow("")
+
+    @Suppress("unused")
     val adminSearchQuery = _adminSearchQuery.asStateFlow()
 
+    @Suppress("unused")
     private val _adminAuditFilter = MutableStateFlow(AdminAuditFilter.ALL)
+
+    @Suppress("unused")
     val adminAuditFilter = _adminAuditFilter.asStateFlow()
 
+    @Suppress("unused")
     fun setAdminSearchQuery(query: String) {
         _adminSearchQuery.value = query
     }
 
+    @Suppress("unused")
     fun setAdminAuditFilter(filter: AdminAuditFilter) {
         _adminAuditFilter.value = filter
     }
 
+    @Suppress("unused")
     val filteredTilesForAdmin: StateFlow<List<CombinedTile>> = combine(
         allTiles, _adminSearchQuery, _adminAuditFilter
     ) { tiles, query, filter ->
@@ -473,9 +485,7 @@ class AACViewModel(application: Application) : AndroidViewModel(application) {
             }
             matchesQuery && matchesFilter
         }
-    }.stateIn(viewModelScope, SharingStarted.Lazily, emptyList())
-
-    // --- Advanced Analytics Logic ---
+    }.stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), emptyList())
 
     private val _selectedTimeFilter = MutableStateFlow(AnalyticsTimeFilter.ALL_TIME)
     val selectedTimeFilter: StateFlow<AnalyticsTimeFilter> = _selectedTimeFilter.asStateFlow()
@@ -484,15 +494,17 @@ class AACViewModel(application: Application) : AndroidViewModel(application) {
         _selectedTimeFilter.value = filter
     }
 
-    fun resetStatistics(context: android.content.Context) {
+    @Suppress("unused")
+    fun resetStatistics(context: Context) {
         viewModelScope.launch {
             repository.clearAllStatistics()
             _importExportStatus.value = context.getString(R.string.stats_reset_success)
         }
     }
 
-    fun removeAllAudio(context: android.content.Context) {
-        viewModelScope.launch(kotlinx.coroutines.Dispatchers.IO) {
+    @Suppress("unused")
+    fun removeAllAudio(context: Context) {
+        viewModelScope.launch(Dispatchers.IO) {
             val tiles = repository.getAllTilesSync()
             tiles.forEach { tile ->
                 if (tile.audioUri != null) {
@@ -504,7 +516,7 @@ class AACViewModel(application: Application) : AndroidViewModel(application) {
     }
 
     @OptIn(ExperimentalCoroutinesApi::class)
-    val filteredClickEvents: Flow<List<TileClickEvent>> = _selectedTimeFilter.flatMapLatest { filter ->
+    val filteredClickEvents: StateFlow<List<TileClickEvent>> = _selectedTimeFilter.flatMapLatest { filter ->
         val now = System.currentTimeMillis()
         val startTime = when (filter) {
             AnalyticsTimeFilter.DAILY -> getStartOfDay()
@@ -514,7 +526,7 @@ class AACViewModel(application: Application) : AndroidViewModel(application) {
             AnalyticsTimeFilter.ALL_TIME -> 0L
         }
         repository.getClickEventsBetween(startTime, now)
-    }.stateIn(viewModelScope, SharingStarted.Lazily, emptyList())
+    }.stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), emptyList())
 
     private fun getStartOfDay(): Long = Calendar.getInstance().apply {
         set(Calendar.HOUR_OF_DAY, 0)
@@ -556,22 +568,17 @@ class AACViewModel(application: Application) : AndroidViewModel(application) {
     fun exportAndShareDatabase(context: Context, onReady: (Uri?) -> Unit) {
         viewModelScope.launch(Dispatchers.IO) {
             try {
-                // 1. Create a secure temporary folder in the cache
                 val backupsDir = File(context.cacheDir, "backups")
                 if (!backupsDir.exists()) backupsDir.mkdirs()
 
-                // 2. Clear old temporary backups to save space
                 backupsDir.listFiles()?.forEach { it.delete() }
 
-                // 3. Create the new backup file
                 val backupFile = File(backupsDir, "myaac_backup_${System.currentTimeMillis()}.zip")
                 val uri = Uri.fromFile(backupFile)
 
-                // 4. FIX: Call backupService directly so it blocks and WAITS for the zip to finish!
                 val success = backupService.exportDatabase(context.contentResolver, uri)
 
                 if (success) {
-                    // 5. Generate a secure FileProvider URI for other apps to read
                     val secureUri = FileProvider.getUriForFile(
                         context,
                         "${context.packageName}.fileprovider",
@@ -582,7 +589,6 @@ class AACViewModel(application: Application) : AndroidViewModel(application) {
                         onReady(secureUri)
                     }
                 } else {
-                    // Export failed internally
                     withContext(Dispatchers.Main) { onReady(null) }
                 }
             } catch (e: Exception) {

@@ -1,14 +1,12 @@
-@file:Suppress("DEPRECATION")
 package com.kon.myaacapp
 
 import android.app.Activity
 import android.content.Context
 import android.content.Intent
 import android.net.Uri
-import android.os.Build
 import android.os.Bundle
-import android.os.Parcelable
 import androidx.activity.result.contract.ActivityResultContract
+import androidx.core.content.IntentCompat
 import com.canhub.cropper.CropImage
 import com.canhub.cropper.CropImageActivity
 import com.canhub.cropper.CropImageOptions
@@ -21,13 +19,16 @@ import com.canhub.cropper.CropImageView
 class CustomCropImageContract : ActivityResultContract<CustomCropImageContractOptions, CropImageView.CropResult>() {
     override fun createIntent(context: Context, input: CustomCropImageContractOptions) =
         Intent(context, CropImageActivity::class.java).apply {
-            addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION)
+            // OPTIMIZATION: Ensure both read AND write permissions are granted.
+            // The external activity needs write access to save the cropped output back to your app's cache.
+            addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION or Intent.FLAG_GRANT_WRITE_URI_PERMISSION)
+
             putExtra(
                 CropImage.CROP_IMAGE_EXTRA_BUNDLE,
                 Bundle(2).apply {
                     putParcelable(CropImage.CROP_IMAGE_EXTRA_SOURCE, input.uri)
                     putParcelable(CropImage.CROP_IMAGE_EXTRA_OPTIONS, input.cropImageOptions)
-                },
+                }
             )
         }
 
@@ -35,14 +36,22 @@ class CustomCropImageContract : ActivityResultContract<CustomCropImageContractOp
         resultCode: Int,
         intent: Intent?,
     ): CropImageView.CropResult {
-        // Now explicitly calls the private extension function defined below
-        val result = intent?.getSafeParcelableExtraCompat<CropImage.ActivityResult>(CropImage.CROP_IMAGE_EXTRA_RESULT)
-
-        return if (result == null || resultCode == Activity.RESULT_CANCELED) {
-            CropImage.CancelledResult
-        } else {
-            result
+        // OPTIMIZATION: Fast-fail to avoid executing reflection/parcelable extraction
+        // if the user simply backed out of the camera/gallery without acting.
+        if (intent == null || resultCode == Activity.RESULT_CANCELED) {
+            return CropImage.CancelledResult
         }
+
+        // OPTIMIZATION: Replaced custom extension with AndroidX IntentCompat.
+        // This is Google's official, bulletproof method for cross-version Parcelable extraction.
+        // It eliminates the need for file-wide deprecation suppression and protects against OEM crashes.
+        val result = IntentCompat.getParcelableExtra(
+            intent,
+            CropImage.CROP_IMAGE_EXTRA_RESULT,
+            CropImage.ActivityResult::class.java
+        )
+
+        return result ?: CropImage.CancelledResult
     }
 }
 
@@ -54,15 +63,5 @@ data class CustomCropImageContractOptions(
     val cropImageOptions: CropImageOptions,
 )
 
-/**
- * Helper to get parcelable extra in a backward compatible way.
- * Marked as 'private' and renamed to avoid conflicting overloads with other utility files.
- */
-private inline fun <reified T : Parcelable> Intent.getSafeParcelableExtraCompat(key: String): T? {
-    return if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
-        getParcelableExtra(key, T::class.java)
-    } else {
-        @Suppress("DEPRECATION")
-        getParcelableExtra(key) as? T
-    }
-}
+// REMOVED: private inline fun <reified T : Parcelable> Intent.getSafeParcelableExtraCompat(...)
+// This was deleted to rely entirely on the much safer AndroidX IntentCompat library.

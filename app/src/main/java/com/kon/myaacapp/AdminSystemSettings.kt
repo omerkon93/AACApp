@@ -34,15 +34,18 @@ fun AdminSystemSettings(
     val contentResolver = context.contentResolver
     var showResetConfirm by remember { mutableStateOf(false) }
 
-    // Pre-fetch strings so they can be used safely inside the onClick callbacks
     val backupShareTitle = stringResource(R.string.backup_share)
     val backupFailedMsg = stringResource(R.string.backup_failed)
 
-    // Broadened MIME types to ensure WhatsApp downloads are never greyed out
     val importLauncher = rememberLauncherForActivityResult(
         contract = ActivityResultContracts.OpenDocument(),
     ) { uri ->
         uri?.let { viewModel.importDatabase(it, contentResolver) }
+    }
+
+    // OPTIMIZATION: Cache the MIME types array to prevent JVM reallocation on every tap/recomposition.
+    val mimeTypes = remember {
+        arrayOf("application/zip", "application/octet-stream", "application/x-zip-compressed", "multipart/x-zip", "*/*")
     }
 
     LaunchedEffect(importExportStatus) {
@@ -52,24 +55,65 @@ fun AdminSystemSettings(
         }
     }
 
+    // OPTIMIZATION: Memoize all click actions. This allows To Compose's "Strong Skipping Mode"
+    // to bypass recomposing buttons and chips when unrelated state changes occur.
+    val onProfilesClick = remember(onNavigateToProfiles) { { onNavigateToProfiles() } }
+    val onToggleSpeak = remember(viewModel) { { it: Boolean -> viewModel.updateSpeakOnTilePress(it) } }
+
+    val onMaleClick = remember(viewModel) { { viewModel.updateUserGender(Gender.MALE) } }
+    val onFemaleClick = remember(viewModel) { { viewModel.updateUserGender(Gender.FEMALE) } }
+
+    // Memoize the language switch logic, safely capturing the context to recreate the activity
+    val onHebrewClick = remember(viewModel, context) { {
+        viewModel.downloadAndSetLanguage("he") { success ->
+            if (success) { (context as? android.app.Activity)?.recreate() }
+        }
+    } }
+    val onEnglishClick = remember(viewModel, context) { {
+        viewModel.downloadAndSetLanguage("en") { success ->
+            if (success) { (context as? android.app.Activity)?.recreate() }
+        }
+    } }
+
+    val onExportClick = remember(viewModel, context, backupShareTitle, backupFailedMsg) { {
+        viewModel.exportAndShareDatabase(context) { uri ->
+            if (uri != null) {
+                val shareIntent = Intent(Intent.ACTION_SEND).apply {
+                    type = "application/zip"
+                    putExtra(Intent.EXTRA_STREAM, uri)
+                    addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION)
+                }
+                context.startActivity(Intent.createChooser(shareIntent, backupShareTitle))
+            } else {
+                android.widget.Toast.makeText(context, backupFailedMsg, android.widget.Toast.LENGTH_SHORT).show()
+            }
+        }
+    } }
+
+    val onImportClick = remember(importLauncher, mimeTypes) { { importLauncher.launch(mimeTypes) } }
+
+    val onShowReset = remember { { showResetConfirm = true } }
+    val onDismissReset = remember { { showResetConfirm = false } }
+    val onConfirmReset = remember(viewModel, context) { {
+        showResetConfirm = false
+        viewModel.resetToDefault(context)
+    } }
+
     if (showResetConfirm) {
         AlertDialog(
-            onDismissRequest = { showResetConfirm = false },
+            onDismissRequest = onDismissReset,
             title = { Text(stringResource(R.string.reset_confirm_title)) },
             text = { Text(stringResource(R.string.reset_confirm_msg)) },
             confirmButton = {
                 Button(
-                    onClick = {
-                        showResetConfirm = false
-                        viewModel.resetToDefault(context)
-                    },
+                    onClick = onConfirmReset,
                     colors = ButtonDefaults.buttonColors(containerColor = MaterialTheme.colorScheme.error)
                 ) {
                     Text(stringResource(R.string.ok))
                 }
             },
             dismissButton = {
-                TextButton(onClick = { showResetConfirm = false }) {
+                TextButton(onClick = onDismissReset) {
                     Text(stringResource(R.string.cancel))
                 }
             }
@@ -92,7 +136,7 @@ fun AdminSystemSettings(
                 Spacer(modifier = Modifier.height(12.dp))
 
                 Button(
-                    onClick = onNavigateToProfiles,
+                    onClick = onProfilesClick,
                     modifier = Modifier.fillMaxWidth(),
                     shape = RoundedCornerShape(12.dp)
                 ) {
@@ -113,7 +157,7 @@ fun AdminSystemSettings(
                     Text(stringResource(R.string.speak_on_press))
                     Switch(
                         checked = speakOnTilePress,
-                        onCheckedChange = { viewModel.updateSpeakOnTilePress(it) }
+                        onCheckedChange = onToggleSpeak
                     )
                 }
 
@@ -128,12 +172,12 @@ fun AdminSystemSettings(
                 ) {
                     FilterChip(
                         selected = userGender == Gender.MALE,
-                        onClick = { viewModel.updateUserGender(Gender.MALE) },
+                        onClick = onMaleClick,
                         label = { Text(stringResource(R.string.male)) }
                     )
                     FilterChip(
                         selected = userGender == Gender.FEMALE,
-                        onClick = { viewModel.updateUserGender(Gender.FEMALE) },
+                        onClick = onFemaleClick,
                         label = { Text(stringResource(R.string.female)) }
                     )
                 }
@@ -150,21 +194,13 @@ fun AdminSystemSettings(
                 ) {
                     FilterChip(
                         selected = langCode == "he",
-                        onClick = {
-                            viewModel.downloadAndSetLanguage("he") { success ->
-                                if (success) { (context as? android.app.Activity)?.recreate() }
-                            }
-                        },
+                        onClick = onHebrewClick,
                         label = { Text(stringResource(R.string.hebrew)) },
                         enabled = downloadStatus is DownloadStatus.Idle || downloadStatus is DownloadStatus.Success || downloadStatus is DownloadStatus.Error
                     )
                     FilterChip(
                         selected = langCode == "en",
-                        onClick = {
-                            viewModel.downloadAndSetLanguage("en") { success ->
-                                if (success) { (context as? android.app.Activity)?.recreate() }
-                            }
-                        },
+                        onClick = onEnglishClick,
                         label = { Text(stringResource(R.string.english)) },
                         enabled = downloadStatus is DownloadStatus.Idle || downloadStatus is DownloadStatus.Success || downloadStatus is DownloadStatus.Error
                     )
@@ -193,20 +229,7 @@ fun AdminSystemSettings(
                 Spacer(modifier = Modifier.height(12.dp))
 
                 Button(
-                    onClick = {
-                        viewModel.exportAndShareDatabase(context) { uri ->
-                            if (uri != null) {
-                                val shareIntent = Intent(Intent.ACTION_SEND).apply {
-                                    type = "application/zip"
-                                    putExtra(Intent.EXTRA_STREAM, uri)
-                                    addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION)
-                                }
-                                context.startActivity(Intent.createChooser(shareIntent, backupShareTitle))
-                            } else {
-                                android.widget.Toast.makeText(context, backupFailedMsg, android.widget.Toast.LENGTH_SHORT).show()
-                            }
-                        }
-                    },
+                    onClick = onExportClick,
                     modifier = Modifier.fillMaxWidth(),
                     shape = RoundedCornerShape(12.dp)
                 ) {
@@ -218,15 +241,7 @@ fun AdminSystemSettings(
                 Spacer(modifier = Modifier.height(8.dp))
 
                 OutlinedButton(
-                    onClick = {
-                        importLauncher.launch(arrayOf(
-                            "application/zip",
-                            "application/octet-stream",
-                            "application/x-zip-compressed",
-                            "multipart/x-zip",
-                            "*/*"
-                        ))
-                    },
+                    onClick = onImportClick,
                     modifier = Modifier.fillMaxWidth(),
                     shape = RoundedCornerShape(12.dp)
                 ) {
@@ -235,7 +250,6 @@ fun AdminSystemSettings(
                     Text(stringResource(R.string.import_db))
                 }
 
-                // WhatsApp / Download folder helper text
                 Text(
                     text = stringResource(R.string.import_helper_text),
                     style = MaterialTheme.typography.bodySmall,
@@ -251,7 +265,7 @@ fun AdminSystemSettings(
                 Spacer(modifier = Modifier.height(8.dp))
 
                 TextButton(
-                    onClick = { showResetConfirm = true },
+                    onClick = onShowReset,
                     modifier = Modifier.fillMaxWidth(),
                     colors = ButtonDefaults.textButtonColors(contentColor = MaterialTheme.colorScheme.error)
                 ) {

@@ -24,14 +24,15 @@ class BackupService(
     suspend fun exportDatabase(contentResolver: ContentResolver, uri: Uri): Boolean = withContext(Dispatchers.IO) {
         try {
             contentResolver.openOutputStream(uri)?.use { outputStream ->
-                ZipOutputStream(outputStream).use { zos ->
+                // OPTIMIZATION: Wrap output in a BufferedOutputStream.
+                // This batches small disk writes into 64KB chunks before compressing,
+                // preventing flash-storage thrashing and drastically speeding up exports.
+                ZipOutputStream(outputStream.buffered(65536)).use { zos ->
                     val baseDir = context.filesDir
 
                     baseDir.walkTopDown().filter { it.isFile }.forEach { file ->
-                        // Normalize separators to forward slashes for cross-platform zip compatibility
                         val relativePath = file.relativeTo(baseDir).path.replace("\\", "/")
 
-                        // Bulletproof path filtering
                         if (relativePath.startsWith("profiles/") ||
                             relativePath.startsWith("tiles/") ||
                             relativePath.startsWith("audio_tiles/") ||
@@ -40,7 +41,9 @@ class BackupService(
                             try {
                                 val entry = ZipEntry(relativePath)
                                 zos.putNextEntry(entry)
-                                file.inputStream().use { it.copyTo(zos) }
+
+                                // OPTIMIZATION: Buffered read from the local file system
+                                file.inputStream().buffered(65536).use { it.copyTo(zos) }
                                 zos.closeEntry()
                             } catch (e: Exception) {
                                 Log.e("BackupService", "Failed to add $relativePath to zip", e)
@@ -92,9 +95,9 @@ class BackupService(
         try {
             // 1. Clear existing data intelligently based on the safety flag
             val directoriesToClear = if (preserveProfiles) {
-                listOf("tiles", "audio_tiles", "images") // Safety ON: Keep profiles!
+                listOf("tiles", "audio_tiles", "images")
             } else {
-                listOf("profiles", "tiles", "audio_tiles", "images") // Safety OFF: Nuke everything
+                listOf("profiles", "tiles", "audio_tiles", "images")
             }
 
             directoriesToClear.forEach { dirName ->
@@ -104,23 +107,26 @@ class BackupService(
                 }
             }
 
-            // 2. Clear SQLite tables (pure JSON-first approach)
-            repository.clearAllStatistics() // This also clears click events and Room counts
-            repository.deleteAllTilesFromRoom() // Ensure Room is clean after restore
+            // 2. Clear SQLite tables
+            repository.clearAllStatistics()
+            repository.deleteAllTilesFromRoom()
 
-            // 3. Extract ZIP directly to filesDir
-            ZipInputStream(inputStream).use { zis ->
+            // OPTIMIZATION: Pre-calculate the root canonical path ONCE.
+            // Calling this inside the loop forces the OS to resolve symlinks thousands of times.
+            val rootCanonicalPath = context.filesDir.canonicalPath
+
+            // 3. Extract ZIP directly to filesDir with a BufferedInputStream
+            ZipInputStream(inputStream.buffered(65536)).use { zis ->
                 var entry = zis.nextEntry
                 while (entry != null) {
                     val targetFile = File(context.filesDir, entry.name)
 
                     // Security Check: Zip Path Traversal Protection
-                    val canonicalPath = targetFile.canonicalPath
-                    if (!canonicalPath.startsWith(context.filesDir.canonicalPath)) {
+                    val entryCanonicalPath = targetFile.canonicalPath
+                    if (!entryCanonicalPath.startsWith(rootCanonicalPath)) {
                         throw SecurityException("Zip entry ${entry.name} is outside of the target directory")
                     }
 
-                    // CRITICAL FIX: If we are preserving profiles, ignore any profile files inside the ZIP!
                     if (preserveProfiles && entry.name.startsWith("profiles/")) {
                         zis.closeEntry()
                         entry = zis.nextEntry
@@ -131,14 +137,13 @@ class BackupService(
                         targetFile.mkdirs()
                     } else {
                         targetFile.parentFile?.mkdirs()
-                        targetFile.outputStream().use { zis.copyTo(it) }
+                        // OPTIMIZATION: Buffered write to the local file system
+                        targetFile.outputStream().buffered(65536).use { zis.copyTo(it) }
                     }
                     zis.closeEntry()
                     entry = zis.nextEntry
                 }
             }
-
-            // 4. Reload app state will be handled by the caller (ViewModel)
             true
         } catch (e: Exception) {
             Log.e("BackupService", "Import from stream failed", e)

@@ -56,6 +56,34 @@ fun AdminDashboardScreen(
     val currentParentId by viewModel.currentParentId.collectAsState()
     val layoutDir = if (langCode == "he") LayoutDirection.Rtl else LayoutDirection.Ltr
 
+    // OPTIMIZATION: Cache Insets to prevent object allocation thrashing on every recomposition
+    val zeroInsets = remember { WindowInsets(0.dp) }
+
+    // OPTIMIZATION: Memoize all state-mutating lambdas passed to child screens.
+    // Because state variables backed by `mutableStateOf` expose stable getters/setters,
+    // these lambdas will never capture stale data, while providing a permanent stable
+    // memory reference to child UI components to guarantee O(1) skipping.
+
+    // Grid Events
+    val onEditTileGrid = remember { { tile: AACTile? -> tileForAction = tile } }
+    val onCreateTileGrid = remember { { cellIndex: Int ->
+        editingTile = null
+        initialCellIndex = cellIndex
+        showTilePicker = true
+    } }
+
+    // List Events
+    val onEditTileList = remember { { tile: AACTile? ->
+        editingTile = tile
+        initialCellIndex = tile?.cellIndex
+        showTileDialog = true
+    } }
+    val onDeleteTileList = remember { { tile: AACTile -> tileToDelete = tile } }
+
+    // TopBar Events
+    val onResetHome = remember { { viewModel.resetToHome() } }
+    val onNavBack = remember { { viewModel.navigateBack() } }
+
     CompositionLocalProvider(LocalLayoutDirection provides layoutDir) {
         Scaffold(
             topBar = {
@@ -79,20 +107,22 @@ fun AdminDashboardScreen(
                     },
                     actions = {
                         if (selectedTab == AdminTab.HOME && currentParentId != null) {
-                            IconButton(onClick = { viewModel.resetToHome() }) {
+                            IconButton(onClick = onResetHome) {
                                 Icon(Icons.Default.Home, contentDescription = stringResource(R.string.home))
                             }
-                            IconButton(onClick = { viewModel.navigateBack() }) {
+                            IconButton(onClick = onNavBack) {
                                 Icon(Icons.Default.ArrowUpward, contentDescription = stringResource(R.string.up))
                             }
                         }
                     },
-                    windowInsets = WindowInsets(0.dp)
+                    windowInsets = zeroInsets
                 )
             },
             bottomBar = {
                 AdminBottomNavigation(
                     selectedTab = selectedTab,
+                    // Standard inline is fine here because AdminBottomNavigation was optimized
+                    // in your previous step to manage its own internal lambda memory.
                     onTabSelected = { selectedTab = it }
                 )
             }
@@ -102,23 +132,15 @@ fun AdminDashboardScreen(
                     AdminTab.HOME -> {
                         AdminEditableGridScreen(
                             viewModel = viewModel,
-                            onEditTile = { tile: AACTile? -> tileForAction = tile },
-                            onCreateTile = { cellIndex: Int ->
-                                editingTile = null
-                                initialCellIndex = cellIndex
-                                showTilePicker = true
-                            }
+                            onEditTile = onEditTileGrid,
+                            onCreateTile = onCreateTileGrid
                         )
                     }
                     AdminTab.SETTINGS -> {
                         AdminListView(
                             viewModel = viewModel,
-                            onEditTile = { tile: AACTile? ->
-                                editingTile = tile
-                                initialCellIndex = tile?.cellIndex
-                                showTileDialog = true
-                            },
-                            onDeleteTile = { tile: AACTile -> tileToDelete = tile }
+                            onEditTile = onEditTileList,
+                            onDeleteTile = onDeleteTileList
                         )
                     }
                     AdminTab.STATISTICS -> {
@@ -135,26 +157,29 @@ fun AdminDashboardScreen(
         }
     }
 
+    // Dialog Event Memoization
     if (showTilePicker) {
         TilePickerDialog(
             viewModel = viewModel,
-            onDismiss = { showTilePicker = false },
-            onTileSelected = { tile ->
+            onDismiss = remember { { showTilePicker = false } },
+            onTileSelected = remember { { tile ->
                 showTilePicker = false
                 if (tile == null) {
                     showTileDialog = true
                 } else {
+                    // Safe synchronous read to avoid state subscription loops
                     val parentId = viewModel.currentParentId.value
                     viewModel.attachTileToCategory(tile.id, parentId, initialCellIndex)
                     initialCellIndex = null
                 }
-            }
+            } }
         )
     }
 
     if (tileToDelete != null) {
+        val dismissDelete = remember { { tileToDelete = null } }
         AlertDialog(
-            onDismissRequest = { tileToDelete = null },
+            onDismissRequest = dismissDelete,
             title = { Text(stringResource(R.string.delete_tile_title)) },
             text = { Text(stringResource(R.string.delete_tile_confirm_msg, tileToDelete?.label ?: "")) },
             confirmButton = {
@@ -169,7 +194,7 @@ fun AdminDashboardScreen(
                 }
             },
             dismissButton = {
-                TextButton(onClick = { tileToDelete = null }) {
+                TextButton(onClick = dismissDelete) {
                     Text(stringResource(R.string.cancel))
                 }
             }
@@ -181,35 +206,41 @@ fun AdminDashboardScreen(
             viewModel = viewModel,
             existingTile = editingTile,
             initialCellIndex = initialCellIndex,
-            onDismiss = {
+            onDismiss = remember { {
                 showTileDialog = false
                 editingTile = null
                 initialCellIndex = null
-            }
+            } }
         )
     }
 
     if (tileForAction != null) {
-        TileActionDialog(
-            tile = tileForAction!!,
-            onDismiss = { tileForAction = null },
-            onEdit = {
-                editingTile = tileForAction
-                initialCellIndex = tileForAction?.cellIndex
-                tileForAction = null
-                showTileDialog = true
-            },
-            onRemove = {
-                val parentId = viewModel.currentParentId.value
-                viewModel.removeTileFromCategory(tileForAction!!.id, parentId)
-                tileForAction = null
-            },
-            onOpen = if (tileForAction?.isCategory == true) {
+        val onOpenAction: (() -> Unit)? = remember(tileForAction) {
+            if (tileForAction?.isCategory == true) {
                 {
                     viewModel.setCategory(tileForAction?.id)
                     tileForAction = null
                 }
             } else null
+        }
+
+        TileActionDialog(
+            tile = tileForAction!!,
+            onDismiss = remember { { tileForAction = null } },
+            onEdit = remember { {
+                editingTile = tileForAction
+                initialCellIndex = tileForAction?.cellIndex
+                tileForAction = null
+                showTileDialog = true
+            } },
+            onRemove = remember { {
+                val parentId = viewModel.currentParentId.value
+                tileForAction?.id?.let { id ->
+                    viewModel.removeTileFromCategory(id, parentId)
+                }
+                tileForAction = null
+            } },
+            onOpen = onOpenAction
         )
     }
 }

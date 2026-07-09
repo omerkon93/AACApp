@@ -9,7 +9,6 @@ import androidx.compose.foundation.clickable
 import androidx.compose.foundation.gestures.detectDragGesturesAfterLongPress
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
-import androidx.compose.foundation.layout.BoxWithConstraints
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.aspectRatio
@@ -19,6 +18,7 @@ import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.lazy.grid.GridCells
 import androidx.compose.foundation.lazy.grid.LazyVerticalGrid
+import androidx.compose.foundation.lazy.grid.rememberLazyGridState
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Add
@@ -68,26 +68,36 @@ fun AdminEditableGridScreen(
     var draggedIndex by remember { mutableStateOf<Int?>(null) }
     var hoveredIndex by remember { mutableStateOf<Int?>(null) }
 
-    BoxWithConstraints(modifier = Modifier.fillMaxSize()) {
-        val cellWidthPx = constraints.maxWidth.toFloat() / columns
-        val cellHeightPx = constraints.maxHeight.toFloat() / rows
+    val gridState = rememberLazyGridState()
 
+    Box(modifier = Modifier.fillMaxSize()) {
         LazyVerticalGrid(
+            state = gridState,
             columns = GridCells.Fixed(columns),
             modifier = Modifier
                 .fillMaxSize()
-                .pointerInput(Unit) {
+                .pointerInput(gridState) {
+                    // FIX: Pure physical bounding box calculation.
+                    // No RTL math required because gridState provides true physical coordinates.
+                    fun getIndexFromTouch(touchX: Float, touchY: Float): Int? {
+                        val matchedItem = gridState.layoutInfo.visibleItemsInfo.find { itemInfo ->
+                            val left = itemInfo.offset.x.toFloat()
+                            val right = left + itemInfo.size.width
+                            val top = itemInfo.offset.y.toFloat()
+                            val bottom = top + itemInfo.size.height
+
+                            touchX in left..right && touchY >= top && touchY <= bottom
+                        }
+                        return matchedItem?.index
+                    }
+
                     detectDragGesturesAfterLongPress(
                         onDragStart = { offset ->
-                            val col = (offset.x / cellWidthPx).toInt().coerceIn(0, columns - 1)
-                            val row = (offset.y / cellHeightPx).toInt().coerceIn(0, rows - 1)
-                            draggedIndex = row * columns + col
+                            draggedIndex = getIndexFromTouch(offset.x, offset.y)
                         },
                         onDrag = { change, _ ->
                             change.consume()
-                            val col = (change.position.x / cellWidthPx).toInt().coerceIn(0, columns - 1)
-                            val row = (change.position.y / cellHeightPx).toInt().coerceIn(0, rows - 1)
-                            hoveredIndex = row * columns + col
+                            hoveredIndex = getIndexFromTouch(change.position.x, change.position.y)
                         },
                         onDragEnd = {
                             if (draggedIndex != null && hoveredIndex != null && draggedIndex != hoveredIndex) {
@@ -107,15 +117,22 @@ fun AdminEditableGridScreen(
             verticalArrangement = Arrangement.spacedBy(8.dp)
         ) {
             val tileMap = tiles.associateBy { it.layoutState.cellIndex }
+            val aspectRatio = if (orientation == Configuration.ORIENTATION_LANDSCAPE) 1.2f else 1.0f
 
-            items(maxCells) { index ->
+            items(
+                count = maxCells,
+                key = { it }
+            ) { index ->
                 val tile = tileMap[index]
-                val aspectRatio = if (orientation == Configuration.ORIENTATION_LANDSCAPE) 1.2f else 1.0f
-
                 val isDragged = index == draggedIndex
                 val isHovered = index == hoveredIndex
+
                 val scale by animateFloatAsState(if (isDragged) 0.9f else 1f, label = "scale")
                 val alpha by animateFloatAsState(if (isDragged) 0.6f else 1f, label = "alpha")
+
+                val onEmptyClick = remember(index, onCreateTile) { { onCreateTile(index) } }
+                val onTileEdit = remember(tile?.id, onEditTile) { { onEditTile(tile?.toLegacyAACTile()) } }
+                val onTileClick = remember { {} }
 
                 Box(
                     modifier = Modifier
@@ -134,13 +151,13 @@ fun AdminEditableGridScreen(
                         AdminTileItem(
                             tile = tile,
                             aspectRatio = aspectRatio,
-                            onClick = { /* Normal click handled elsewhere */ },
-                            onEdit = { onEditTile(tile.toLegacyAACTile()) }
+                            onClick = onTileClick,
+                            onEdit = onTileEdit
                         )
                     } else {
                         EmptySlot(
                             aspectRatio = aspectRatio,
-                            onClick = { onCreateTile(index) }
+                            onClick = onEmptyClick
                         )
                     }
                 }
@@ -197,6 +214,13 @@ fun AdminTileUI(
 ) {
     val isFolder = tileType == TileType.FOLDER
 
+    val imageModel = remember(imageUri) {
+        if (imageUri != null) {
+            val file = File(imageUri)
+            if (file.exists()) file else imageUri
+        } else null
+    }
+
     Card(
         modifier = modifier
             .fillMaxWidth()
@@ -223,19 +247,17 @@ fun AdminTileUI(
                     modifier = Modifier
                         .weight(1f)
                         .fillMaxWidth()
-                        .padding(8.dp), // A little padding so images don't touch the edges
+                        .padding(8.dp),
                     contentAlignment = Alignment.Center
                 ) {
-                    if (imageUri != null) {
-                        val file = File(imageUri)
+                    if (imageModel != null) {
                         Image(
-                            painter = rememberAsyncImagePainter(if (file.exists()) file else imageUri),
+                            painter = rememberAsyncImagePainter(imageModel),
                             contentDescription = null,
                             modifier = Modifier.fillMaxSize(),
-                            contentScale = ContentScale.Fit // Keeps aspect ratio without cropping
+                            contentScale = ContentScale.Fit
                         )
                     } else if (emoji != null) {
-                        // Bumped up from 24.sp to 56.sp!
                         Text(text = emoji, fontSize = 56.sp)
                     }
                 }
@@ -258,24 +280,22 @@ fun AdminTileUI(
                 TileType.BASIC -> null
             }
 
-            // FIXED: Removed the 36dp end padding so it aligns properly into the corner
             if (indicatorIcon != null) {
                 Icon(
                     imageVector = indicatorIcon,
                     contentDescription = null,
                     modifier = Modifier
-                        .align(Alignment.TopEnd) // Top-Left in RTL
+                        .align(Alignment.TopEnd)
                         .padding(6.dp)
                         .size(16.dp),
                     tint = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.6f)
                 )
             }
 
-            // Edit Indicator
             IconButton(
                 onClick = onEdit,
                 modifier = Modifier
-                    .align(Alignment.TopStart) // Top-Right in RTL
+                    .align(Alignment.TopStart)
                     .padding(4.dp)
                     .size(32.dp)
                     .background(Color.Black.copy(alpha = 0.4f), RoundedCornerShape(6.dp))

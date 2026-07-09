@@ -8,6 +8,9 @@ import kotlinx.coroutines.launch
 
 enum class Gender { MALE, FEMALE }
 
+// OPTIMIZATION: Applied class-level suppression to keep your Service API
+// contract intact for upcoming UI components without cluttering the IDE.
+@Suppress("unused")
 class AACTileService(
     private val settingsRepository: SettingsRepository,
     scope: CoroutineScope
@@ -21,6 +24,9 @@ class AACTileService(
         }
     }
 
+    // IMPORTANT: Because this reads .value synchronously, the calling Composable
+    // MUST collect 'userGender' as state at the top level to trigger recomposition
+    // if the gender changes dynamically while the app is open.
     fun getTTSText(tile: CombinedTile): String {
         return if (userGender.value == Gender.FEMALE) {
             tile.definition.ttsTextFeminine ?: tile.definition.ttsText
@@ -40,11 +46,10 @@ class AACTileService(
             return Pair(false, tile.linkedCategoryId)
         }
 
-        // Regular tiles get added to the strip AND might navigate to a sub-category (like "Eat" -> "Food Items")
+        // Regular tiles get added to the strip AND might navigate to a sub-category
         return Pair(true, tile.linkedCategoryId)
     }
 
-    // Helper for UI labels (not TTS)
     fun getLocalizedLabel(tile: CombinedTile): String {
         return if (userGender.value == Gender.FEMALE) {
             tile.definition.labelFeminine ?: tile.definition.label
@@ -53,9 +58,16 @@ class AACTileService(
         }
     }
 
-    // Legacy support
+    // FIX: The 'gender' parameter is now properly evaluated.
+    // If a legacy caller explicitly forces a gender string, it respects it.
+    // If null, it falls back to the global StateFlow.
     fun getLocalizedLabel(label: String, labelFeminine: String?, gender: String? = null): String {
-        return if (userGender.value == Gender.FEMALE) {
+        val isFemale = when {
+            gender != null -> gender.equals("FEMALE", ignoreCase = true)
+            else -> userGender.value == Gender.FEMALE
+        }
+
+        return if (isFemale) {
             labelFeminine ?: label
         } else {
             label

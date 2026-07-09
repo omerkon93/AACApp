@@ -37,19 +37,23 @@ fun TileActionDialog(
     onRemove: () -> Unit,
     onOpen: (() -> Unit)? = null
 ) {
+    // OPTIMIZATION: Cache static modifiers to prevent minor heap allocations
+    val fillWidthModifier = remember { Modifier.fillMaxWidth() }
+    val roundedShape = remember { RoundedCornerShape(12.dp) }
+
     AlertDialog(
         onDismissRequest = onDismiss,
         title = { Text(stringResource(R.string.tile_action_title), fontWeight = FontWeight.Bold) },
         text = {
             Column(
-                modifier = Modifier.fillMaxWidth(),
+                modifier = fillWidthModifier,
                 verticalArrangement = Arrangement.spacedBy(12.dp)
             ) {
                 Box(
                     modifier = Modifier
                         .size(80.dp)
                         .align(Alignment.CenterHorizontally)
-                        .clip(RoundedCornerShape(12.dp))
+                        .clip(roundedShape)
                         .background(MaterialTheme.colorScheme.surfaceVariant),
                     contentAlignment = Alignment.Center
                 ) {
@@ -76,9 +80,9 @@ fun TileActionDialog(
 
                 if (onOpen != null) {
                     Button(
-                        onClick = onOpen,
-                        modifier = Modifier.fillMaxWidth(),
-                        shape = RoundedCornerShape(12.dp)
+                        onClick = onOpen, // Function reference passed directly, highly optimal
+                        modifier = fillWidthModifier,
+                        shape = roundedShape
                     ) {
                         Icon(Icons.Default.FolderOpen, contentDescription = null)
                         Spacer(Modifier.width(8.dp))
@@ -88,8 +92,8 @@ fun TileActionDialog(
 
                 OutlinedButton(
                     onClick = onEdit,
-                    modifier = Modifier.fillMaxWidth(),
-                    shape = RoundedCornerShape(12.dp)
+                    modifier = fillWidthModifier,
+                    shape = roundedShape
                 ) {
                     Icon(Icons.Default.Edit, contentDescription = null)
                     Spacer(Modifier.width(8.dp))
@@ -98,9 +102,12 @@ fun TileActionDialog(
 
                 Button(
                     onClick = onRemove,
-                    modifier = Modifier.fillMaxWidth(),
-                    colors = ButtonDefaults.buttonColors(containerColor = MaterialTheme.colorScheme.errorContainer, contentColor = MaterialTheme.colorScheme.onErrorContainer),
-                    shape = RoundedCornerShape(12.dp)
+                    modifier = fillWidthModifier,
+                    colors = ButtonDefaults.buttonColors(
+                        containerColor = MaterialTheme.colorScheme.errorContainer,
+                        contentColor = MaterialTheme.colorScheme.onErrorContainer
+                    ),
+                    shape = roundedShape
                 ) {
                     Icon(Icons.Default.VisibilityOff, contentDescription = null)
                     Spacer(Modifier.width(8.dp))
@@ -137,6 +144,9 @@ fun TilePickerDialog(
         }
     }
 
+    // OPTIMIZATION: Memoize the "Add New" click action to prevent lambda reallocation
+    val onAddNewClick = remember(onTileSelected) { { onTileSelected(null) } }
+
     AlertDialog(
         onDismissRequest = onDismiss,
         title = { Text(stringResource(R.string.pick_or_create_tile), fontWeight = FontWeight.Bold) },
@@ -158,11 +168,12 @@ fun TilePickerDialog(
                     verticalArrangement = Arrangement.spacedBy(8.dp),
                     modifier = Modifier.weight(1f)
                 ) {
-                    item {
+                    // OPTIMIZATION: Added a hardcoded key so this item never re-renders during filtering
+                    item(key = "ADD_NEW_TILE_BUTTON") {
                         Card(
                             modifier = Modifier
                                 .aspectRatio(1f)
-                                .clickable { onTileSelected(null) },
+                                .clickable(onClick = onAddNewClick),
                             colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.primaryContainer)
                         ) {
                             Box(modifier = Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
@@ -174,44 +185,16 @@ fun TilePickerDialog(
                         }
                     }
 
-                    items(filteredTiles) { tile: CombinedTile ->
-                        Card(
-                            modifier = Modifier
-                                .aspectRatio(1f)
-                                .clickable { onTileSelected(tile) },
-                            border = BorderStroke(1.dp, MaterialTheme.colorScheme.outlineVariant)
-                        ) {
-                            Box(modifier = Modifier.fillMaxSize()) {
-                                if (tile.imageUri != null) {
-                                    AsyncImage(
-                                        model = tile.imageUri,
-                                        contentDescription = null,
-                                        modifier = Modifier.fillMaxSize().clip(RoundedCornerShape(8.dp)),
-                                        contentScale = ContentScale.Crop
-                                    )
-                                } else {
-                                    Text(
-                                        text = tile.emoji ?: "✨",
-                                        modifier = Modifier.align(Alignment.Center),
-                                        fontSize = 24.sp
-                                    )
-                                }
-                                Surface(
-                                    modifier = Modifier.align(Alignment.BottomCenter).fillMaxWidth(),
-                                    color = Color.Black.copy(alpha = 0.6f)
-                                ) {
-                                    Text(
-                                        tile.label,
-                                        color = Color.White,
-                                        fontSize = 10.sp,
-                                        textAlign = TextAlign.Center,
-                                        modifier = Modifier.padding(2.dp),
-                                        maxLines = 1,
-                                        overflow = TextOverflow.Ellipsis
-                                    )
-                                }
-                            }
-                        }
+                    items(
+                        items = filteredTiles,
+                        // OPTIMIZATION: Added the unique key mapping. Compose now tracks node movement in O(1) time.
+                        key = { it.id }
+                    ) { tile ->
+                        // OPTIMIZATION: Extracted to a scoped private composable to enable Strong Skipping.
+                        PickerTileItem(
+                            tile = tile,
+                            onTileSelected = onTileSelected
+                        )
                     }
                 }
             }
@@ -221,4 +204,53 @@ fun TilePickerDialog(
             TextButton(onClick = onDismiss) { Text(stringResource(R.string.cancel)) }
         }
     )
+}
+
+// OPTIMIZATION: Private scoped composable. Because `CombinedTile` is @Immutable,
+// this function will completely skip recomposition unless the specific tile data changes.
+@Composable
+private fun PickerTileItem(
+    tile: CombinedTile,
+    onTileSelected: (CombinedTile?) -> Unit
+) {
+    // Memoize the specific click lambda for this tile ID
+    val onClick = remember(tile.id, onTileSelected) { { onTileSelected(tile) } }
+
+    Card(
+        modifier = Modifier
+            .aspectRatio(1f)
+            .clickable(onClick = onClick),
+        border = BorderStroke(1.dp, MaterialTheme.colorScheme.outlineVariant)
+    ) {
+        Box(modifier = Modifier.fillMaxSize()) {
+            if (tile.imageUri != null) {
+                AsyncImage(
+                    model = tile.imageUri,
+                    contentDescription = null,
+                    modifier = Modifier.fillMaxSize().clip(RoundedCornerShape(8.dp)),
+                    contentScale = ContentScale.Crop
+                )
+            } else {
+                Text(
+                    text = tile.emoji ?: "✨",
+                    modifier = Modifier.align(Alignment.Center),
+                    fontSize = 24.sp
+                )
+            }
+            Surface(
+                modifier = Modifier.align(Alignment.BottomCenter).fillMaxWidth(),
+                color = Color.Black.copy(alpha = 0.6f)
+            ) {
+                Text(
+                    tile.label,
+                    color = Color.White,
+                    fontSize = 10.sp,
+                    textAlign = TextAlign.Center,
+                    modifier = Modifier.padding(2.dp),
+                    maxLines = 1,
+                    overflow = TextOverflow.Ellipsis
+                )
+            }
+        }
+    }
 }

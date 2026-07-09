@@ -1,8 +1,6 @@
 package com.kon.myaacapp
 
-import androidx.compose.animation.AnimatedVisibility
-import androidx.compose.animation.expandVertically
-import androidx.compose.animation.shrinkVertically
+// Removed unused AnimatedVisibility, expandVertically, shrinkVertically imports
 import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
@@ -26,13 +24,16 @@ import androidx.compose.ui.draw.clip
 import androidx.compose.ui.draw.scale
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.layout.ContentScale
-import androidx.compose.ui.platform.LocalConfiguration
+import androidx.compose.ui.platform.LocalDensity
+import androidx.compose.ui.platform.LocalWindowInfo
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import coil.compose.AsyncImage
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.withContext
 
 enum class MediaFilter { MISSING_AUDIO, MISSING_TTS, MISSING_IMAGE }
 enum class UsageFilter { LOW_USAGE, HIDDEN }
@@ -61,45 +62,69 @@ fun AdminListView(
     var showFilterSheet by remember { mutableStateOf(false) }
     val sheetState = rememberModalBottomSheetState(skipPartiallyExpanded = true)
 
-    // Dynamic Filtering Logic
-    val filteredTiles = remember(allTiles, searchQuery, isFilterActive, selectedMediaFilters, selectedTypes, selectedUsageFilters) {
-        var currentList = allTiles
+    // OPTIMIZATION: produceState pushes the heavy filtering off the main UI thread onto the CPU-optimized
+    // Dispatchers.Default. This prevents keyboard lag when typing in the search bar.
+    val filteredTiles by produceState(
+        initialValue = allTiles,
+        allTiles, searchQuery, isFilterActive, selectedMediaFilters, selectedTypes, selectedUsageFilters
+    ) {
+        withContext(Dispatchers.Default) {
+            // Early exit if no filters are applied
+            if (searchQuery.isBlank() && (!isFilterActive || activeFilterCount == 0)) {
+                value = allTiles
+                return@withContext
+            }
 
-        // 1. Apply Search
-        if (searchQuery.isNotBlank()) {
-            currentList = currentList.filter {
-                it.definition.label.contains(searchQuery, ignoreCase = true) ||
-                        it.definition.ttsText.contains(searchQuery, ignoreCase = true)
+            val query = searchQuery.lowercase()
+            val filterMedia = isFilterActive && selectedMediaFilters.isNotEmpty()
+            val filterTypes = isFilterActive && selectedTypes.isNotEmpty()
+            val filterUsage = isFilterActive && selectedUsageFilters.isNotEmpty()
+
+            val needsAudio = selectedMediaFilters.contains(MediaFilter.MISSING_AUDIO)
+            val needsTts = selectedMediaFilters.contains(MediaFilter.MISSING_TTS)
+            val needsImage = selectedMediaFilters.contains(MediaFilter.MISSING_IMAGE)
+            val needsHidden = selectedUsageFilters.contains(UsageFilter.HIDDEN)
+            val needsLowUsage = selectedUsageFilters.contains(UsageFilter.LOW_USAGE)
+
+            // OPTIMIZATION: Single-pass O(N) evaluation instead of 7 sequential O(N) list copies.
+            value = allTiles.filter { tile ->
+                // 1. Search Check
+                if (query.isNotBlank() &&
+                    !tile.definition.label.lowercase().contains(query) &&
+                    !tile.definition.ttsText.lowercase().contains(query)
+                ) {
+                    return@filter false
+                }
+
+                // 2. Media Filter Check
+                if (filterMedia) {
+                    var mediaMatch = false
+                    if (needsAudio && tile.definition.audioUri == null) mediaMatch = true
+                    if (needsTts && tile.definition.ttsText.isBlank()) mediaMatch = true
+                    if (needsImage && tile.definition.imageUri == null && tile.definition.emoji == null) mediaMatch = true
+                    if (!mediaMatch) return@filter false
+                }
+
+                // 3. Type Filter Check
+                if (filterTypes && !selectedTypes.contains(tile.definition.resolvedType)) {
+                    return@filter false
+                }
+
+                // 4. Usage Filter Check
+                if (filterUsage) {
+                    var usageMatch = false
+                    if (needsHidden && tile.layoutState.isHidden) usageMatch = true
+                    if (needsLowUsage && tile.layoutState.clickCount < 5) usageMatch = true
+                    if (!usageMatch) return@filter false
+                }
+
+                true // Item passed all active filters
             }
         }
-
-        // 2. Apply Filters (Only if the master toggle is ON)
-        if (isFilterActive && activeFilterCount > 0) {
-
-            if (selectedMediaFilters.contains(MediaFilter.MISSING_AUDIO)) {
-                currentList = currentList.filter { it.definition.audioUri == null }
-            }
-            if (selectedMediaFilters.contains(MediaFilter.MISSING_TTS)) {
-                currentList = currentList.filter { it.definition.ttsText.isBlank() }
-            }
-            if (selectedMediaFilters.contains(MediaFilter.MISSING_IMAGE)) {
-                currentList = currentList.filter { it.definition.imageUri == null && it.definition.emoji == null }
-            }
-
-            if (selectedTypes.isNotEmpty()) {
-                currentList = currentList.filter { selectedTypes.contains(it.definition.resolvedType) }
-            }
-
-            if (selectedUsageFilters.contains(UsageFilter.HIDDEN)) {
-                currentList = currentList.filter { it.layoutState.isHidden }
-            }
-            if (selectedUsageFilters.contains(UsageFilter.LOW_USAGE)) {
-                currentList = currentList.filter { it.layoutState.clickCount < 5 }
-            }
-        }
-
-        currentList
     }
+
+    // Memoize the master "Add" button click
+    val onAddClick = remember(onEditTile) { { onEditTile(null) } }
 
     Box(modifier = Modifier.fillMaxSize()) {
         Column(modifier = Modifier.fillMaxSize()) {
@@ -181,18 +206,26 @@ fun AdminListView(
                 contentPadding = PaddingValues(start = 16.dp, end = 16.dp, top = 8.dp, bottom = 80.dp),
                 verticalArrangement = Arrangement.spacedBy(8.dp)
             ) {
-                items(filteredTiles, key = { it.definition.id }) { tile ->
+                items(
+                    items = filteredTiles,
+                    key = { it.definition.id }
+                ) { tile ->
+                    // OPTIMIZATION: Memoize row-specific actions based on the unique tile ID.
+                    // This prevents LazyColumn from recreating lambdas and destroying "Strong Skipping Mode".
+                    val editAction = remember(tile.definition.id, onEditTile) { { onEditTile(tile.toLegacyAACTile()) } }
+                    val deleteAction = remember(tile.definition.id, onDeleteTile) { { onDeleteTile(tile.toLegacyAACTile()) } }
+
                     AdminListRowItem(
                         tile = tile,
-                        onEdit = { onEditTile(tile.toLegacyAACTile()) },
-                        onDelete = { onDeleteTile(tile.toLegacyAACTile()) }
+                        onEdit = editAction,
+                        onDelete = deleteAction
                     )
                 }
             }
         }
 
         FloatingActionButton(
-            onClick = { onEditTile(null) },
+            onClick = onAddClick,
             containerColor = MaterialTheme.colorScheme.primary,
             modifier = Modifier
                 .align(Alignment.BottomStart)
@@ -202,22 +235,25 @@ fun AdminListView(
         }
     }
 
-    // --- FILTER BOTTOM SHEET ---
     if (showFilterSheet) {
         ModalBottomSheet(
             onDismissRequest = { showFilterSheet = false },
             sheetState = sheetState,
             containerColor = MaterialTheme.colorScheme.surface
-            // Removed windowInsets to fix the compatibility error
         ) {
-            val configuration = LocalConfiguration.current
-            val maxScrollHeight = configuration.screenHeightDp.dp * 0.65f // Deterministic max height
+            // OPTIMIZATION: Fixes the deprecation warning. Safely maps physical container pixels to DP
+            // accounting for split-screen and multi-window scenarios perfectly.
+            val density = LocalDensity.current
+            val windowInfo = LocalWindowInfo.current
+            val maxScrollHeight = remember(density, windowInfo) {
+                with(density) { (windowInfo.containerSize.height * 0.65f).toDp() }
+            }
 
             Column(
                 modifier = Modifier
                     .fillMaxWidth()
                     .padding(horizontal = 16.dp)
-                    .padding(bottom = 24.dp) // Adjusted padding for safe areas
+                    .padding(bottom = 24.dp)
             ) {
                 Text(
                     text = stringResource(R.string.filter_by),
@@ -226,7 +262,6 @@ fun AdminListView(
                     modifier = Modifier.padding(bottom = 16.dp)
                 )
 
-                // FIXED: Replaced weight(1f, fill=false) with heightIn(max = ...)
                 Column(
                     modifier = Modifier
                         .fillMaxWidth()
@@ -234,7 +269,6 @@ fun AdminListView(
                         .verticalScroll(rememberScrollState()),
                     verticalArrangement = Arrangement.spacedBy(16.dp)
                 ) {
-
                     // SECTION 1: MEDIA STATUS
                     Column {
                         Text(stringResource(R.string.filter_section_media), style = MaterialTheme.typography.labelLarge, color = MaterialTheme.colorScheme.primary, modifier = Modifier.padding(bottom = 8.dp))
@@ -330,11 +364,14 @@ fun AdminListView(
 
 @Composable
 fun FilterCheckboxRow(label: String, isChecked: Boolean, onCheckedChange: (Boolean) -> Unit) {
+    // Memoize the row click to prevent lambda reallocation on checkbox toggles
+    val onRowClick = remember(isChecked, onCheckedChange) { { onCheckedChange(!isChecked) } }
+
     Row(
         modifier = Modifier
             .fillMaxWidth()
             .clip(RoundedCornerShape(8.dp))
-            .clickable { onCheckedChange(!isChecked) }
+            .clickable(onClick = onRowClick)
             .padding(vertical = 8.dp, horizontal = 8.dp),
         verticalAlignment = Alignment.CenterVertically
     ) {
