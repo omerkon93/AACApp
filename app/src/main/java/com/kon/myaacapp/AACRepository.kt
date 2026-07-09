@@ -54,51 +54,44 @@ class AACRepository(
         }
     }
 
-    private suspend fun scanLocalDefinitions(outList: MutableList<TileDefinition>) {
-        val tilesDir = File(context.filesDir, "tiles")
-        if (!tilesDir.exists()) return
-
-        // walkTopDown() ensures it searches recursively inside the /he/ and /en/ folders
-        tilesDir.walkTopDown().filter { it.extension == "json" }.forEach { file ->
-            try {
-                val jsonString = file.readText().removePrefix("\uFEFF")
-                val definitions = json.decodeFromString<List<TileDefinition>>(jsonString)
-                outList.addAll(definitions)
-            } catch (e: Exception) {
-                Log.e("Debug_AAC", "Failed to parse local definition JSON: ${file.name}", e)
-                e.printStackTrace()
-            }
+    private suspend fun loadDictionaryFile(file: File): List<TileDefinition> {
+        if (!file.exists()) return emptyList()
+        return try {
+            val jsonString = file.readText().removePrefix("\uFEFF")
+            json.decodeFromString<List<TileDefinition>>(jsonString)
+        } catch (e: Exception) {
+            Log.e("Debug_AAC", "Failed to parse JSON: ${file.name}", e)
+            emptyList()
         }
-        Log.d("Debug_AAC", "Found ${outList.size} total definitions after local scan")
-    }
-
-    private suspend fun scanUserDefinitions(outList: MutableList<TileDefinition>) {
-        val tilesDir = File(context.filesDir, "tiles")
-        if (!tilesDir.exists()) return
-
-        tilesDir.walkTopDown().filter { it.extension == "json" }.forEach { file ->
-            try {
-                val jsonString = file.readText().removePrefix("\uFEFF")
-                val definitions = json.decodeFromString<List<TileDefinition>>(jsonString)
-                outList.addAll(definitions)
-            } catch (e: Exception) {
-                Log.e("Debug_AAC", "Failed to parse user definition JSON: ${file.name}", e)
-                e.printStackTrace()
-            }
-        }
-        Log.d("Debug_AAC", "Found ${outList.size} total definitions after user scan")
     }
 
     suspend fun loadAllDefinitions() = withContext(Dispatchers.IO) {
-        val allDefinitions = mutableListOf<TileDefinition>()
+        val tilesDir = File(context.filesDir, "tiles")
+        val allMergedDefinitions = mutableListOf<TileDefinition>()
+
+        if (tilesDir.exists()) {
+            // Find all language folders (e.g., "he", "en")
+            val languageDirs = tilesDir.listFiles { file -> file.isDirectory } ?: emptyArray()
+
+            for (langDir in languageDirs) {
+                // 1. Read Factory Defaults
+                val defaultFile = File(langDir, "default_dictionary.json")
+                val defaultTiles = loadDictionaryFile(defaultFile)
+
+                // 2. Read User Edits (using your existing export file name!)
+                val userFile = File(langDir, "export_user_defined.json")
+                val userTiles = loadDictionaryFile(userFile)
+
+                // 3. Merge them!
+                val mergedLangTiles = mergeDictionaries(defaultTiles, userTiles)
+                allMergedDefinitions.addAll(mergedLangTiles)
+            }
+        }
 
         try {
-            // 1. Scan ALL definitions in filesDir (The Single Source of Truth)
-            scanLocalDefinitions(allDefinitions)
-
-            // 2. Also include any tiles from Room as definitions (backward compatibility for existing devices)
+            // 4. Also include any legacy tiles from Room (backward compatibility)
             val roomTiles = aacTileDao.getAllTilesSync()
-            allDefinitions.addAll(roomTiles.map { tile ->
+            val roomDefinitions = roomTiles.map { tile ->
                 TileDefinition(
                     id = tile.id,
                     label = tile.label,
@@ -112,14 +105,23 @@ class AACRepository(
                     partOfSpeech = tile.partOfSpeech,
                     grammaticalGender = tile.grammaticalGender,
                     isCategory = tile.isCategory,
+                    type = when {
+                        tile.isCategory -> TileType.FOLDER
+                        tile.linkedCategoryId != null -> TileType.CONNECTOR
+                        tile.isQuickFire -> TileType.QUICK_FIRE
+                        else -> TileType.BASIC
+                    },
                     languageCode = tile.languageCode,
                     defaultParentId = tile.parentId,
                     defaultCellIndex = tile.cellIndex,
                     defaultLinkedCategoryId = tile.linkedCategoryId
                 )
-            })
+            }
 
-            _baseDefinitions.value = allDefinitions.distinctBy { it.id + it.languageCode }
+            // 5. Do one final merge to ensure Room tiles (if any exist) override defaults
+            val finalDefinitions = mergeDictionaries(allMergedDefinitions, roomDefinitions)
+
+            _baseDefinitions.value = finalDefinitions
         } catch (e: Exception) {
             e.printStackTrace()
         }
@@ -542,5 +544,28 @@ class AACRepository(
             // 4. Reload memory to reflect the newly migrated JSON files
             loadAllDefinitions()
         }
+    }
+
+    /**
+     * Merges the factory default tiles with the user's custom/modified tiles.
+     * User tiles take priority. If an ID matches, the user's version overwrites the default.
+     * If the ID is new, it gets added to the list.
+     */
+    fun mergeDictionaries(
+        defaultTiles: List<TileDefinition>,
+        userTiles: List<TileDefinition>
+    ): List<TileDefinition> {
+
+        // 1. Create a map of the defaults using the Tile ID as the key
+        val mergedMap = defaultTiles.associateBy { it.id }.toMutableMap()
+
+        // 2. Loop through the user dictionary.
+        // If the ID exists, it overwrites the default. If it's new, it gets added!
+        userTiles.forEach { userTile ->
+            mergedMap[userTile.id] = userTile
+        }
+
+        // 3. Return the unified flat list
+        return mergedMap.values.toList()
     }
 }

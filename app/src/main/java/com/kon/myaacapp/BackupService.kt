@@ -63,7 +63,8 @@ class BackupService(
     suspend fun importDatabase(contentResolver: ContentResolver, uri: Uri): Boolean = withContext(Dispatchers.IO) {
         try {
             contentResolver.openInputStream(uri)?.use { inputStream ->
-                importDatabaseFromStream(inputStream)
+                // Full restore: wipe everything including profiles
+                importDatabaseFromStream(inputStream, preserveProfiles = false)
             } ?: false
         } catch (e: Exception) {
             Log.e("BackupService", "Import failed", e)
@@ -75,10 +76,10 @@ class BackupService(
         try {
             if (fileName.endsWith(".zip")) {
                 context.assets.open(fileName).use { inputStream ->
-                    importDatabaseFromStream(inputStream)
+                    // Factory reset: wipe dictionary/media, but PRESERVE profiles
+                    importDatabaseFromStream(inputStream, preserveProfiles = true)
                 }
             } else {
-                // Legacy path for unzipped JSON assets
                 false
             }
         } catch (e: Exception) {
@@ -87,10 +88,15 @@ class BackupService(
         }
     }
 
-    private suspend fun importDatabaseFromStream(inputStream: InputStream): Boolean = withContext(Dispatchers.IO) {
+    private suspend fun importDatabaseFromStream(inputStream: InputStream, preserveProfiles: Boolean): Boolean = withContext(Dispatchers.IO) {
         try {
-            // 1. Clear existing data
-            val directoriesToClear = listOf("profiles", "tiles", "audio_tiles", "images")
+            // 1. Clear existing data intelligently based on the safety flag
+            val directoriesToClear = if (preserveProfiles) {
+                listOf("tiles", "audio_tiles", "images") // Safety ON: Keep profiles!
+            } else {
+                listOf("profiles", "tiles", "audio_tiles", "images") // Safety OFF: Nuke everything
+            }
+
             directoriesToClear.forEach { dirName ->
                 val dir = File(context.filesDir, dirName)
                 if (dir.exists()) {
@@ -112,6 +118,13 @@ class BackupService(
                     val canonicalPath = targetFile.canonicalPath
                     if (!canonicalPath.startsWith(context.filesDir.canonicalPath)) {
                         throw SecurityException("Zip entry ${entry.name} is outside of the target directory")
+                    }
+
+                    // CRITICAL FIX: If we are preserving profiles, ignore any profile files inside the ZIP!
+                    if (preserveProfiles && entry.name.startsWith("profiles/")) {
+                        zis.closeEntry()
+                        entry = zis.nextEntry
+                        continue
                     }
 
                     if (entry.isDirectory) {
