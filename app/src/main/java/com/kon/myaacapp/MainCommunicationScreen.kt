@@ -23,7 +23,7 @@ import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.lazy.LazyRow
 import androidx.compose.foundation.lazy.grid.GridCells
 import androidx.compose.foundation.lazy.grid.LazyVerticalGrid
-import androidx.compose.foundation.lazy.items
+import androidx.compose.foundation.lazy.itemsIndexed
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.text.KeyboardOptions
@@ -237,10 +237,12 @@ fun SentenceBar(
             horizontalArrangement = Arrangement.spacedBy(4.dp),
             verticalAlignment = Alignment.CenterVertically
         ) {
-            items(
+            // FIX: Use itemsIndexed to create a guaranteed unique key
+            // by combining the tile ID and its position in the sentence.
+            itemsIndexed(
                 items = sentence,
-                key = { it.definition.id }
-            ) { tile ->
+                key = { index, tile -> "${tile.definition.id}_$index" }
+            ) { index, tile ->
                 val displayLabel = if (userGender == Gender.FEMALE) {
                     tile.definition.labelFeminine ?: tile.definition.label
                 } else {
@@ -290,8 +292,7 @@ fun SentenceBar(
                                     contentScale = ContentScale.Fit
                                 )
                             } else if (tile.definition.emoji != null) {
-                                // Scaled down to 24.sp to fit the 64dp container without clipping
-                                Text(text = tile.definition.emoji, fontSize = 36.sp)
+                                Text(text = tile.definition.emoji, fontSize = 24.sp)
                             }
                         }
 
