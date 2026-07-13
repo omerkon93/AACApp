@@ -58,7 +58,7 @@ import androidx.compose.ui.tooling.preview.Preview
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.kon.myaacapp.AACViewModel
-import com.kon.myaacapp.AnalyticsTimeFilter
+import com.kon.myaacapp.domain.model.AnalyticsTimeFilter
 import com.kon.myaacapp.R
 import com.kon.myaacapp.data.local.entity.AACTile
 import com.kon.myaacapp.data.local.entity.TileClickEvent

@@ -18,12 +18,16 @@ import com.kon.myaacapp.data.local.entity.TileClickEvent
 import com.kon.myaacapp.data.repository.AACRepository
 import com.kon.myaacapp.data.repository.ProfileRepository
 import com.kon.myaacapp.data.repository.SettingsRepository
+import com.kon.myaacapp.domain.model.AdminAuditFilter
+import com.kon.myaacapp.domain.model.AnalyticsTimeFilter
 import com.kon.myaacapp.domain.model.CombinedTile
 import com.kon.myaacapp.domain.model.ProfileCreationMode
 import com.kon.myaacapp.domain.model.TileType
 import com.kon.myaacapp.domain.model.UserProfile
 import com.kon.myaacapp.domain.service.AACTileService
+import com.kon.myaacapp.domain.service.AnalyticsManager
 import com.kon.myaacapp.domain.service.Gender
+import com.kon.myaacapp.domain.service.SentenceManager
 import com.kon.myaacapp.service.audio.AudioRecordingService
 import com.kon.myaacapp.service.audio.TextToSpeechHelper
 import com.kon.myaacapp.service.backup.BackupService
@@ -43,16 +47,7 @@ import kotlinx.coroutines.flow.stateIn
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 import java.io.File
-import java.util.Calendar
 import java.util.UUID
-
-enum class AnalyticsTimeFilter {
-    DAILY, WEEKLY, MONTHLY, YEARLY, ALL_TIME
-}
-
-enum class AdminAuditFilter {
-    ALL, MISSING_AUDIO, MISSING_TTS, MISSING_IMAGE, UNUSED, HIDDEN
-}
 
 @OptIn(ExperimentalCoroutinesApi::class)
 class AACViewModel(application: Application) : AndroidViewModel(application) {
@@ -61,6 +56,9 @@ class AACViewModel(application: Application) : AndroidViewModel(application) {
     private val profileRepository: ProfileRepository
     private val ttsHelper: TextToSpeechHelper
     private val languageDownloadHelper: LanguageDownloadHelper
+    private val analyticsManager: AnalyticsManager
+    private val sentenceManager: SentenceManager
+
 
     val tileService: AACTileService
     val audioService: AudioRecordingService
@@ -73,10 +71,29 @@ class AACViewModel(application: Application) : AndroidViewModel(application) {
         repository = AACRepository(database.aacTileDao(), application, profileRepository)
         ttsHelper = TextToSpeechHelper(application)
         languageDownloadHelper = LanguageDownloadHelper(application)
+        analyticsManager = AnalyticsManager(
+            repository = repository,
+            scope = viewModelScope,
+        )
 
-        tileService = AACTileService(settingsRepository, viewModelScope)
+        tileService = AACTileService(
+            settingsRepository = settingsRepository,
+            scope = viewModelScope,
+        )
+
         audioService = AudioRecordingService(application)
-        backupService = BackupService(application, repository)
+
+        backupService = BackupService(
+            application,
+            repository,
+        )
+
+        sentenceManager = SentenceManager(
+            audioService = audioService,
+            ttsHelper = ttsHelper,
+            tileService = tileService,
+            scope = viewModelScope,
+        )
 
         // THE MASTER BOOT SEQUENCE
         viewModelScope.launch(Dispatchers.IO) {
@@ -116,13 +133,18 @@ class AACViewModel(application: Application) : AndroidViewModel(application) {
                 creationMode = creationMode,
             )
 
+            sentenceManager.clear()
             resetToHome()
         }
     }
 
-    fun switchProfile(profileId: String) {
+    fun switchProfile(
+        profileId: String,
+    ) {
         viewModelScope.launch {
             profileRepository.switchProfile(profileId)
+
+            sentenceManager.clear()
             resetToHome()
         }
     }
@@ -139,6 +161,7 @@ class AACViewModel(application: Application) : AndroidViewModel(application) {
                 profileId = profileId,
             )
 
+            sentenceManager.clear()
             resetToHome()
         }
     }
@@ -212,18 +235,10 @@ class AACViewModel(application: Application) : AndroidViewModel(application) {
         val normalizedLanguage =
             LocaleHelper.normalize(requestedLanguage)
 
-        /*
-         * Update the selected language first. The UI locale must not depend on
-         * whether the optional tile dictionary is currently available.
-         */
         settingsRepository.updateLanguageCode(
             normalizedLanguage
         )
 
-        /*
-         * Reload definitions and create the language layout when definitions
-         * exist. An empty dictionary must not cancel the locale change.
-         */
         val tilesPrepared = repository.prepareLanguage(
             normalizedLanguage
         )
@@ -232,10 +247,15 @@ class AACViewModel(application: Application) : AndroidViewModel(application) {
             Log.w(
                 "AACViewModel",
                 "UI switched to $normalizedLanguage, " +
-                        "but no tile definitions were found."
+                        "but no tile definitions were found.",
             )
         }
 
+        /*
+         * Sentence tiles contain definitions from the previous language.
+         * Clear them before the Activity is recreated.
+         */
+        sentenceManager.clear()
         resetToHome()
 
         return true
@@ -303,8 +323,8 @@ class AACViewModel(application: Application) : AndroidViewModel(application) {
         }
     }
 
-    private val _selectedSentence = MutableStateFlow<List<CombinedTile>>(emptyList())
-    val selectedSentence: StateFlow<List<CombinedTile>> = _selectedSentence.asStateFlow()
+    val selectedSentence: StateFlow<List<CombinedTile>> =
+        sentenceManager.selectedSentence
 
     private val _importExportStatus = MutableStateFlow<String?>(null)
     val importExportStatus: StateFlow<String?> = _importExportStatus.asStateFlow()
@@ -375,35 +395,32 @@ class AACViewModel(application: Application) : AndroidViewModel(application) {
         }
     }
 
-    private fun addTileToSentence(tile: CombinedTile) {
-        _selectedSentence.value += tile
+    private fun addTileToSentence(
+        tile: CombinedTile,
+    ) {
+        sentenceManager.addTile(tile)
     }
 
     fun backspaceSentence() {
-        val currentList = _selectedSentence.value
-        if (currentList.isNotEmpty()) {
-            _selectedSentence.value = currentList.dropLast(1)
-        }
+        sentenceManager.backspace()
     }
 
     fun clearSentence() {
-        _selectedSentence.value = emptyList()
+        sentenceManager.clear()
     }
 
     fun speakSentence() {
-        viewModelScope.launch {
-            audioService.speakSentence(_selectedSentence.value, ttsHelper, tileService)
-        }
+        sentenceManager.speak()
     }
 
-    fun playPreviewAudio(ttsText: String, audioUri: String?) {
-        viewModelScope.launch {
-            if (audioUri != null) {
-                audioService.playRecording(audioUri)
-            } else if (ttsText.isNotBlank()) {
-                ttsHelper.speak(ttsText)
-            }
-        }
+    fun playPreviewAudio(
+        ttsText: String,
+        audioUri: String?,
+    ) {
+        sentenceManager.playPreview(
+            ttsText = ttsText,
+            audioUri = audioUri,
+        )
     }
 
     fun addTile(
@@ -575,11 +592,16 @@ class AACViewModel(application: Application) : AndroidViewModel(application) {
         }
     }.stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), emptyList())
 
-    private val _selectedTimeFilter = MutableStateFlow(AnalyticsTimeFilter.ALL_TIME)
-    val selectedTimeFilter: StateFlow<AnalyticsTimeFilter> = _selectedTimeFilter.asStateFlow()
+    val selectedTimeFilter: StateFlow<AnalyticsTimeFilter> =
+        analyticsManager.selectedTimeFilter
 
-    fun setTimeFilter(filter: AnalyticsTimeFilter) {
-        _selectedTimeFilter.value = filter
+    val filteredClickEvents: StateFlow<List<TileClickEvent>> =
+        analyticsManager.filteredClickEvents
+
+    fun setTimeFilter(
+        filter: AnalyticsTimeFilter,
+    ) {
+        analyticsManager.setTimeFilter(filter)
     }
 
     @Suppress("unused")
@@ -602,50 +624,6 @@ class AACViewModel(application: Application) : AndroidViewModel(application) {
             _importExportStatus.value = context.getString(R.string.audio_removed_success)
         }
     }
-
-    @OptIn(ExperimentalCoroutinesApi::class)
-    val filteredClickEvents: StateFlow<List<TileClickEvent>> = _selectedTimeFilter.flatMapLatest { filter ->
-        val now = System.currentTimeMillis()
-        val startTime = when (filter) {
-            AnalyticsTimeFilter.DAILY -> getStartOfDay()
-            AnalyticsTimeFilter.WEEKLY -> getStartOfWeek()
-            AnalyticsTimeFilter.MONTHLY -> getStartOfMonth()
-            AnalyticsTimeFilter.YEARLY -> getStartOfYear()
-            AnalyticsTimeFilter.ALL_TIME -> 0L
-        }
-        repository.getClickEventsBetween(startTime, now)
-    }.stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), emptyList())
-
-    private fun getStartOfDay(): Long = Calendar.getInstance().apply {
-        set(Calendar.HOUR_OF_DAY, 0)
-        set(Calendar.MINUTE, 0)
-        set(Calendar.SECOND, 0)
-        set(Calendar.MILLISECOND, 0)
-    }.timeInMillis
-
-    private fun getStartOfWeek(): Long = Calendar.getInstance().apply {
-        set(Calendar.DAY_OF_WEEK, firstDayOfWeek)
-        set(Calendar.HOUR_OF_DAY, 0)
-        set(Calendar.MINUTE, 0)
-        set(Calendar.SECOND, 0)
-        set(Calendar.MILLISECOND, 0)
-    }.timeInMillis
-
-    private fun getStartOfMonth(): Long = Calendar.getInstance().apply {
-        set(Calendar.DAY_OF_MONTH, 1)
-        set(Calendar.HOUR_OF_DAY, 0)
-        set(Calendar.MINUTE, 0)
-        set(Calendar.SECOND, 0)
-        set(Calendar.MILLISECOND, 0)
-    }.timeInMillis
-
-    private fun getStartOfYear(): Long = Calendar.getInstance().apply {
-        set(Calendar.DAY_OF_YEAR, 1)
-        set(Calendar.HOUR_OF_DAY, 0)
-        set(Calendar.MINUTE, 0)
-        set(Calendar.SECOND, 0)
-        set(Calendar.MILLISECOND, 0)
-    }.timeInMillis
 
     override fun onCleared() {
         super.onCleared()
