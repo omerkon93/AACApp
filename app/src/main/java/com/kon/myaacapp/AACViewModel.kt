@@ -1,4 +1,4 @@
-@file:Suppress("SpellCheckingInspection") // Suppress 'fileprovider' typo check globally for this file
+@file:Suppress("SpellCheckingInspection")
 
 package com.kon.myaacapp
 
@@ -10,13 +10,40 @@ import android.util.Log
 import androidx.core.content.FileProvider
 import androidx.lifecycle.AndroidViewModel
 import androidx.lifecycle.viewModelScope
+import com.kon.myaacapp.core.locale.LanguageDownloadHelper
+import com.kon.myaacapp.core.locale.LocaleHelper
+import com.kon.myaacapp.data.local.AACDatabase
+import com.kon.myaacapp.data.local.entity.AACTile
+import com.kon.myaacapp.data.local.entity.TileClickEvent
+import com.kon.myaacapp.data.repository.AACRepository
+import com.kon.myaacapp.data.repository.ProfileRepository
+import com.kon.myaacapp.data.repository.SettingsRepository
+import com.kon.myaacapp.domain.model.CombinedTile
+import com.kon.myaacapp.domain.model.TileType
+import com.kon.myaacapp.domain.model.UserProfile
+import com.kon.myaacapp.domain.service.AACTileService
+import com.kon.myaacapp.domain.service.Gender
+import com.kon.myaacapp.service.audio.AudioRecordingService
+import com.kon.myaacapp.service.audio.TextToSpeechHelper
+import com.kon.myaacapp.service.backup.BackupService
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.ExperimentalCoroutinesApi
-import kotlinx.coroutines.flow.*
+import kotlinx.coroutines.flow.Flow
+import kotlinx.coroutines.flow.MutableStateFlow
+import kotlinx.coroutines.flow.SharingStarted
+import kotlinx.coroutines.flow.StateFlow
+import kotlinx.coroutines.flow.asStateFlow
+import kotlinx.coroutines.flow.combine
+import kotlinx.coroutines.flow.firstOrNull
+import kotlinx.coroutines.flow.flatMapLatest
+import kotlinx.coroutines.flow.map
+import kotlinx.coroutines.flow.onEach
+import kotlinx.coroutines.flow.stateIn
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 import java.io.File
 import java.util.Calendar
+import java.util.UUID
 
 enum class AnalyticsTimeFilter {
     DAILY, WEEKLY, MONTHLY, YEARLY, ALL_TIME
@@ -78,8 +105,11 @@ class AACViewModel(application: Application) : AndroidViewModel(application) {
         }
     }
 
-    val profiles: StateFlow<List<UserProfile>> = profileRepository.profiles
-    val activeProfile: StateFlow<UserProfile?> = profileRepository.activeProfile
+    val profiles: StateFlow<List<UserProfile>> =
+        profileRepository.profiles
+
+    val activeProfile: StateFlow<UserProfile?> =
+        profileRepository.activeProfile
 
     fun createProfile(name: String) {
         viewModelScope.launch {
@@ -341,7 +371,7 @@ class AACViewModel(application: Application) : AndroidViewModel(application) {
             val nextIndex = cellIndex ?: (repository.getCombinedTiles(parentId, languageCode.value).firstOrNull()?.size ?: 0)
 
             val newTile = AACTile(
-                id = if (id.isNullOrBlank()) java.util.UUID.randomUUID().toString() else id,
+                id = if (id.isNullOrBlank()) UUID.randomUUID().toString() else id,
                 label = label,
                 ttsText = ttsText,
                 emoji = emoji,
