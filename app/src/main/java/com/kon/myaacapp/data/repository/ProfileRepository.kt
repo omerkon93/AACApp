@@ -3,7 +3,7 @@ package com.kon.myaacapp.data.repository
 import android.content.Context
 import android.util.Log
 import com.kon.myaacapp.R
-import com.kon.myaacapp.domain.model.TileLayoutState
+import com.kon.myaacapp.domain.model.ProfileCreationMode
 import com.kon.myaacapp.domain.model.UserProfile
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
@@ -147,27 +147,53 @@ class ProfileRepository(
 
     suspend fun createProfile(
         name: String,
+        creationMode: ProfileCreationMode,
     ) = withContext(Dispatchers.IO) {
-        val templateProfile =
-            _profiles.value.find { profile ->
-                profile.profileId == DEFAULT_PROFILE_ID
-            } ?: activeProfile.value
-            ?: _profiles.value.firstOrNull()
+        val normalizedName = name.trim()
 
-        /*
-         * Create a new Map instance so the new profile does not share a
-         * mutable map implementation with the template profile.
-         */
-        val templateLayout: Map<String, TileLayoutState> =
-            templateProfile?.layout?.toMap().orEmpty()
+        if (normalizedName.isBlank()) {
+            return@withContext
+        }
+
+        val currentProfile = activeProfile.value
+
+        val defaultProfile = _profiles.value.find { profile ->
+            profile.profileId == DEFAULT_PROFILE_ID
+        }
+
+        val initialLayout = when (creationMode) {
+            ProfileCreationMode.DUPLICATE_CURRENT -> {
+                currentProfile?.layout?.toMap().orEmpty()
+            }
+
+            ProfileCreationMode.DEFAULT_TEMPLATE -> {
+                defaultProfile?.layout?.toMap().orEmpty()
+            }
+
+            ProfileCreationMode.BLANK -> {
+                emptyMap()
+            }
+        }
+
+        val initialLanguageCode = when (creationMode) {
+            ProfileCreationMode.DEFAULT_TEMPLATE -> {
+                defaultProfile?.activeLanguageCode
+                    ?: DEFAULT_LANGUAGE_CODE
+            }
+
+            ProfileCreationMode.DUPLICATE_CURRENT,
+            ProfileCreationMode.BLANK,
+                -> {
+                currentProfile?.activeLanguageCode
+                    ?: DEFAULT_LANGUAGE_CODE
+            }
+        }
 
         val newProfile = UserProfile(
             profileId = UUID.randomUUID().toString(),
-            profileName = name.trim(),
-            activeLanguageCode =
-                templateProfile?.activeLanguageCode
-                    ?: DEFAULT_LANGUAGE_CODE,
-            layout = templateLayout,
+            profileName = normalizedName,
+            activeLanguageCode = initialLanguageCode,
+            layout = initialLayout,
         )
 
         if (!saveProfileInternal(newProfile)) {

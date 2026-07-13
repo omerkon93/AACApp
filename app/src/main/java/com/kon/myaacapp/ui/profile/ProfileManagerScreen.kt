@@ -1,12 +1,13 @@
 package com.kon.myaacapp.ui.profile
 
+import androidx.compose.foundation.BorderStroke
+import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
-import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.lazy.LazyColumn
@@ -29,6 +30,7 @@ import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedTextField
+import androidx.compose.material3.RadioButton
 import androidx.compose.material3.Scaffold
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
@@ -45,6 +47,7 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import com.kon.myaacapp.AACViewModel
 import com.kon.myaacapp.R
+import com.kon.myaacapp.domain.model.ProfileCreationMode
 import com.kon.myaacapp.domain.model.UserProfile
 
 @OptIn(ExperimentalMaterial3Api::class)
@@ -68,12 +71,18 @@ fun ProfileManagerScreen(
         }
     }
     val onDismissCreate = remember { { showCreateDialog = false } }
-    val onCreateProfile = remember(viewModel) {
-        { name: String ->
-            viewModel.createProfile(name)
-            showCreateDialog = false
+    val onCreateProfile:
+                (String, ProfileCreationMode) -> Unit =
+        remember(viewModel) {
+            { name, creationMode ->
+                viewModel.createProfile(
+                    name = name,
+                    creationMode = creationMode,
+                )
+
+                showCreateDialog = false
+            }
         }
-    }
 
     val onDismissDelete = remember { { profileToDelete = null } }
     val onConfirmDelete = remember(viewModel) {
@@ -258,38 +267,200 @@ fun ProfileItem(
 @Composable
 fun CreateProfileDialog(
     onDismiss: () -> Unit,
-    onCreate: (String) -> Unit
+    onCreate: (
+        name: String,
+        creationMode: ProfileCreationMode,
+    ) -> Unit,
 ) {
-    var name by remember { mutableStateOf("") }
+    var name by remember {
+        mutableStateOf("")
+    }
+
+    var selectedMode by remember {
+        mutableStateOf(
+            ProfileCreationMode.DUPLICATE_CURRENT
+        )
+    }
+
+    val normalizedName = name.trim()
+    val canCreate = normalizedName.isNotEmpty()
 
     AlertDialog(
         onDismissRequest = onDismiss,
-        title = { Text(stringResource(R.string.create_new_profile)) },
+        title = {
+            Text(
+                text = stringResource(
+                    R.string.create_new_profile
+                )
+            )
+        },
         text = {
-            Column {
-                Text(stringResource(R.string.enter_profile_name))
-                Spacer(Modifier.height(8.dp))
+            Column(
+                verticalArrangement =
+                    Arrangement.spacedBy(12.dp),
+            ) {
+                Text(
+                    text = stringResource(
+                        R.string.enter_profile_name
+                    )
+                )
+
                 OutlinedTextField(
                     value = name,
-                    onValueChange = { name = it },
-                    label = { Text(stringResource(R.string.profile_name)) },
+                    onValueChange = { updatedName ->
+                        name = updatedName
+                    },
+                    label = {
+                        Text(
+                            text = stringResource(
+                                R.string.profile_name
+                            )
+                        )
+                    },
                     singleLine = true,
-                    modifier = Modifier.fillMaxWidth()
+                    modifier = Modifier.fillMaxWidth(),
+                )
+
+                Text(
+                    text = stringResource(
+                        R.string.profile_creation_mode
+                    ),
+                    style = MaterialTheme.typography.titleSmall,
+                    fontWeight = FontWeight.Bold,
+                )
+
+                ProfileCreationModeOption(
+                    title = stringResource(
+                        R.string.profile_mode_duplicate
+                    ),
+                    description = stringResource(
+                        R.string.profile_mode_duplicate_description
+                    ),
+                    selected = selectedMode ==
+                            ProfileCreationMode.DUPLICATE_CURRENT,
+                    onClick = {
+                        selectedMode =
+                            ProfileCreationMode.DUPLICATE_CURRENT
+                    },
+                )
+
+                ProfileCreationModeOption(
+                    title = stringResource(
+                        R.string.profile_mode_default
+                    ),
+                    description = stringResource(
+                        R.string.profile_mode_default_description
+                    ),
+                    selected = selectedMode ==
+                            ProfileCreationMode.DEFAULT_TEMPLATE,
+                    onClick = {
+                        selectedMode =
+                            ProfileCreationMode.DEFAULT_TEMPLATE
+                    },
+                )
+
+                ProfileCreationModeOption(
+                    title = stringResource(
+                        R.string.profile_mode_blank
+                    ),
+                    description = stringResource(
+                        R.string.profile_mode_blank_description
+                    ),
+                    selected = selectedMode ==
+                            ProfileCreationMode.BLANK,
+                    onClick = {
+                        selectedMode =
+                            ProfileCreationMode.BLANK
+                    },
                 )
             }
         },
         confirmButton = {
             Button(
-                onClick = { if (name.isNotBlank()) onCreate(name) },
-                enabled = name.isNotBlank()
+                onClick = {
+                    onCreate(
+                        normalizedName,
+                        selectedMode,
+                    )
+                },
+                enabled = canCreate,
             ) {
-                Text(stringResource(R.string.add))
+                Text(
+                    text = stringResource(R.string.add)
+                )
             }
         },
         dismissButton = {
-            TextButton(onClick = onDismiss) {
-                Text(stringResource(R.string.cancel))
+            TextButton(
+                onClick = onDismiss
+            ) {
+                Text(
+                    text = stringResource(R.string.cancel)
+                )
+            }
+        },
+    )
+}
+
+@Composable
+private fun ProfileCreationModeOption(
+    title: String,
+    description: String,
+    selected: Boolean,
+    onClick: () -> Unit,
+) {
+    Card(
+        modifier = Modifier
+            .fillMaxWidth()
+            .clickable(onClick = onClick),
+        colors = CardDefaults.cardColors(
+            containerColor = if (selected) {
+                MaterialTheme.colorScheme.primaryContainer
+            } else {
+                MaterialTheme.colorScheme.surfaceVariant
+            }
+        ),
+        border = if (selected) {
+            BorderStroke(
+                width = 2.dp,
+                color = MaterialTheme.colorScheme.primary,
+            )
+        } else {
+            null
+        },
+    ) {
+        Row(
+            modifier = Modifier
+                .fillMaxWidth()
+                .padding(12.dp),
+            verticalAlignment = Alignment.CenterVertically,
+        ) {
+            RadioButton(
+                selected = selected,
+                onClick = onClick,
+            )
+
+            Spacer(
+                modifier = Modifier.width(8.dp)
+            )
+
+            Column(
+                modifier = Modifier.weight(1f)
+            ) {
+                Text(
+                    text = title,
+                    style = MaterialTheme.typography.titleSmall,
+                    fontWeight = FontWeight.Bold,
+                )
+
+                Text(
+                    text = description,
+                    style = MaterialTheme.typography.bodySmall,
+                    color = MaterialTheme
+                        .colorScheme
+                        .onSurfaceVariant,
+                )
             }
         }
-    )
+    }
 }

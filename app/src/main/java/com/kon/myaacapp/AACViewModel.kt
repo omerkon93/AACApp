@@ -19,6 +19,7 @@ import com.kon.myaacapp.data.repository.AACRepository
 import com.kon.myaacapp.data.repository.ProfileRepository
 import com.kon.myaacapp.data.repository.SettingsRepository
 import com.kon.myaacapp.domain.model.CombinedTile
+import com.kon.myaacapp.domain.model.ProfileCreationMode
 import com.kon.myaacapp.domain.model.TileType
 import com.kon.myaacapp.domain.model.UserProfile
 import com.kon.myaacapp.domain.service.AACTileService
@@ -105,9 +106,17 @@ class AACViewModel(application: Application) : AndroidViewModel(application) {
     val activeProfile: StateFlow<UserProfile?> =
         profileRepository.activeProfile
 
-    fun createProfile(name: String) {
+    fun createProfile(
+        name: String,
+        creationMode: ProfileCreationMode,
+    ) {
         viewModelScope.launch {
-            profileRepository.createProfile(name)
+            profileRepository.createProfile(
+                name = name,
+                creationMode = creationMode,
+            )
+
+            resetToHome()
         }
     }
 
