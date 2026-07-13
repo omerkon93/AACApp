@@ -127,9 +127,19 @@ class AACViewModel(application: Application) : AndroidViewModel(application) {
         }
     }
 
-    fun deleteProfile(profileId: String) {
+    fun deleteProfile(
+        profileId: String,
+    ) {
         viewModelScope.launch {
-            profileRepository.deleteProfile(profileId)
+            repository.deleteProfileAnalytics(
+                profileId = profileId,
+            )
+
+            profileRepository.deleteProfile(
+                profileId = profileId,
+            )
+
+            resetToHome()
         }
     }
 

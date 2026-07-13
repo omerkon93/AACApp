@@ -110,14 +110,36 @@ interface AACTileDao {
     @Insert
     suspend fun insertClickEvent(event: TileClickEvent)
 
-    @Query("SELECT * FROM tile_click_events WHERE timestamp BETWEEN :startTime AND :endTime")
-    fun getClickEventsBetween(startTime: Long, endTime: Long): Flow<List<TileClickEvent>>
+    @Query(
+        """
+    SELECT *
+    FROM tile_click_events
+    WHERE profileId = :profileId
+      AND timestamp BETWEEN :startTime AND :endTime
+    ORDER BY timestamp DESC
+    """
+    )
+    fun getClickEventsBetween(
+        profileId: String,
+        startTime: Long,
+        endTime: Long,
+    ): Flow<List<TileClickEvent>>
 
     @Query("SELECT * FROM tile_click_events")
     fun getAllClickEvents(): Flow<List<TileClickEvent>>
 
     @Query("DELETE FROM tile_click_events")
     suspend fun deleteAllClickEvents()
+
+    @Query(
+        """
+    DELETE FROM tile_click_events
+    WHERE profileId = :profileId
+    """
+    )
+    suspend fun deleteClickEventsForProfile(
+        profileId: String,
+    )
 
     @Query("UPDATE aac_tiles SET clickCount = 0")
     suspend fun resetAllLegacyClickCounts()

@@ -13,12 +13,15 @@ import com.kon.myaacapp.domain.model.TileLayoutState
 import com.kon.myaacapp.domain.model.TileType
 import com.kon.myaacapp.domain.model.UserProfile
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.ExperimentalCoroutinesApi
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.flow.combine
 import kotlinx.coroutines.flow.first
+import kotlinx.coroutines.flow.flatMapLatest
+import kotlinx.coroutines.flow.flowOf
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.sync.Mutex
 import kotlinx.coroutines.sync.withLock
@@ -553,20 +556,64 @@ class AACRepository(
     }
 
     @Suppress("UNUSED_PARAMETER")
-    suspend fun incrementClickCount(id: String, parentId: String?, langCode: String) {
-        updateLayoutState(id, parentId) { it.copy(clickCount = it.clickCount + 1) }
-        aacTileDao.insertClickEvent(TileClickEvent(tileId = id))
+    suspend fun incrementClickCount(
+        id: String,
+        parentId: String?,
+        langCode: String,
+    ) {
+        val currentProfile =
+            activeProfile.value ?: return
+
+        updateLayoutState(
+            tileId = id,
+            parentId = parentId,
+        ) { currentState ->
+            currentState.copy(
+                clickCount = currentState.clickCount + 1
+            )
+        }
+
+        aacTileDao.insertClickEvent(
+            TileClickEvent(
+                tileId = id,
+                profileId = currentProfile.profileId,
+            )
+        )
     }
 
-    fun getClickEventsBetween(startTime: Long, endTime: Long): Flow<List<TileClickEvent>> =
-        aacTileDao.getClickEventsBetween(startTime, endTime)
+    @OptIn(ExperimentalCoroutinesApi::class)
+    fun getClickEventsBetween(
+        startTime: Long,
+        endTime: Long,
+    ): Flow<List<TileClickEvent>> {
+        return activeProfile.flatMapLatest { profile ->
+            if (profile == null) {
+                flowOf(emptyList())
+            } else {
+                aacTileDao.getClickEventsBetween(
+                    profileId = profile.profileId,
+                    startTime = startTime,
+                    endTime = endTime,
+                )
+            }
+        }
+    }
 
     suspend fun clearAllStatistics() {
-        aacTileDao.deleteAllClickEvents()
-        aacTileDao.resetAllLegacyClickCounts()
         val profile = activeProfile.value ?: return
-        val newLayout = profile.layout.mapValues { it.value.copy(clickCount = 0) }
-        profileRepository.updateActiveProfile(profile.copy(layout = newLayout))
+
+        aacTileDao.deleteClickEventsForProfile(
+            profileId = profile.profileId,
+        )
+
+        val clearedLayout = profile.layout.mapValues {
+                (_, layoutState) ->
+            layoutState.copy(clickCount = 0)
+        }
+
+        profileRepository.updateActiveProfile(
+            profile.copy(layout = clearedLayout)
+        )
     }
 
     @Suppress("unused")
@@ -607,6 +654,14 @@ class AACRepository(
 
             profileRepository.updateActiveProfile(currentProfile.copy(layout = newLayout))
         }
+    }
+
+    suspend fun deleteProfileAnalytics(
+        profileId: String,
+    ) {
+        aacTileDao.deleteClickEventsForProfile(
+            profileId = profileId,
+        )
     }
 
     suspend fun completeLegacyMigration() = withContext(Dispatchers.IO) {
