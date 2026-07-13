@@ -54,8 +54,8 @@
     <string name="database_management">ניהול מסד נתונים</string>
     <string name="factory_reset_button">שחזור לנתוני יצרן (מחיקת כל המידע)</string>
     <string name="reset_to_default">איפוס לברירת מחדל</string>
-    <string name="reset_confirm_title">איפוס למצב ברירת מחדל?</string>
-    <string name="reset_confirm_msg">פעולה זו תמחק את כל האריחים הנוכחיים ותחזיר את האפליקציה למצב ההתחלתי. האם אתה בטוח?</string>
+    <string name="reset_confirm_title">איפוס הפרופיל הפעיל?</string>
+    <string name="reset_confirm_msg">פעולה זו תאפס את פריסת האריחים, הגדרות הנראות ומוני השימוש של הפרופיל הפעיל בלבד. פרופילים אחרים, אריחים מותאמים אישית וקובצי מדיה לא יימחקו.</string>
     <string name="reset_warning_msg">האם אתה בטוח? פעולה זו תמחק את כל האריחים וההקלטות שהוספת, ותשחזר את לוח התקשורת למצב ההתחלתי.</string>
     <string name="resetting">מבצע איפוס…</string>
     <string name="reset_success">האיפוס בוצע בהצלחה</string>

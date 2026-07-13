@@ -54,8 +54,8 @@
     <string name="database_management">Database Management</string>
     <string name="factory_reset_button">Factory Reset (Delete All Data)</string>
     <string name="reset_to_default">Reset to Default</string>
-    <string name="reset_confirm_title">Reset to Default?</string>
-    <string name="reset_confirm_msg">This will delete all current tiles and restore the app to its initial state. Are you sure?</string>
+    <string name="reset_confirm_title">Reset the active profile?</string>
+    <string name="reset_confirm_msg">This resets only the active profile’s tile layout, visibility settings, and aggregate usage counts. Other profiles, custom tiles, and media files will not be deleted.</string>
     <string name="reset_warning_msg">Are you sure? This will delete all tiles and recordings you have added, and restore the communication board to its initial state.</string>
     <string name="resetting">Resetting…</string>
     <string name="reset_success">Reset successful</string>

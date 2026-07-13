@@ -40,17 +40,9 @@ class BackupManager(
                 R.string.resetting
             )
 
-            val success = withContext(Dispatchers.IO) {
-                backupService.importFromAssets(
-                    "initial_data.zip"
-                )
-            }
-
-            if (success) {
-                repository.completeLegacyMigration()
-                profileRepository.reload()
-                repository.reload()
-            }
+            val success =
+                profileRepository
+                    .resetActiveProfileToDefault()
 
             _status.value = application.getString(
                 if (success) {

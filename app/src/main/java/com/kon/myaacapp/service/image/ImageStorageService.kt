@@ -131,18 +131,28 @@ class ImageStorageService(private val context: Context) {
      * Generates a temporary URI for storing high-resolution camera output or crop results.
      */
     fun getTempUri(): Uri {
-        val tempDir = File(context.cacheDir, "temp_images")
-        if (!tempDir.exists()) {
-            tempDir.mkdirs()
-        }
-        val tempFile = File(tempDir, "temp_${UUID.randomUUID()}.jpg")
+        val tempDirectory = File(
+            context.cacheDir,
+            "temp_images",
+        )
 
-        // FIX: Typo corrected from "FileProvider" to "FileProvider" if that was the specific complaint.
-        // Make sure this matches the <provider> authority string in your AndroidManifest.xml exactly.
+        check(
+            tempDirectory.exists() ||
+                    tempDirectory.mkdirs()
+        ) {
+            "Unable to create temporary image directory"
+        }
+
+        val temporaryFile = File.createTempFile(
+            "camera_",
+            ".jpg",
+            tempDirectory,
+        )
+
         return FileProvider.getUriForFile(
             context,
-            "${context.packageName}.FileProvider",
-            tempFile
+            "${context.packageName}.fileprovider",
+            temporaryFile,
         )
     }
 }

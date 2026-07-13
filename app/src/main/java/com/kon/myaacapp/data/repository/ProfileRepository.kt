@@ -17,6 +17,7 @@ import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 import kotlinx.serialization.json.Json
+import java.util.zip.ZipInputStream
 import java.io.File
 import java.util.UUID
 
@@ -29,6 +30,12 @@ class ProfileRepository(
         private const val TAG = "ProfileRepository"
         private const val DEFAULT_PROFILE_ID = "default"
         private const val DEFAULT_LANGUAGE_CODE = "he"
+
+        private const val INITIAL_DATA_ASSET =
+            "initial_data.zip"
+
+        private const val DEFAULT_PROFILE_ZIP_PATH =
+            "profiles/profile_default.json"
     }
 
     private val json = Json {
@@ -257,6 +264,112 @@ class ProfileRepository(
                 fallbackProfileId
             )
         }
+    }
+
+    suspend fun resetActiveProfileToDefault(): Boolean =
+        withContext(Dispatchers.IO) {
+            val currentProfile =
+                activeProfile.value ?: return@withContext false
+
+            val factoryProfile =
+                loadFactoryDefaultProfile()
+                    ?: return@withContext false
+
+            /*
+             * Reset only the active profile's layout.
+             *
+             * Preserve:
+             * - profile ID
+             * - profile name
+             * - currently selected language
+             *
+             * Replace:
+             * - tile placement
+             * - visibility
+             * - aggregate click counts
+             * - category links and quick-fire layout state
+             */
+            val resetProfile = currentProfile.copy(
+                activeLanguageCode =
+                    currentProfile.activeLanguageCode,
+                layout = factoryProfile.layout.mapValues { (_, layoutState) ->
+                    layoutState.copy(
+                        clickCount = 0,
+                        isHidden = false,
+                    )
+                },
+            )
+
+            if (!saveProfileInternal(resetProfile)) {
+                return@withContext false
+            }
+
+            _profiles.update { currentProfiles ->
+                currentProfiles.map { profile ->
+                    if (
+                        profile.profileId ==
+                        resetProfile.profileId
+                    ) {
+                        resetProfile
+                    } else {
+                        profile
+                    }
+                }
+            }
+
+            true
+        }
+
+    private fun loadFactoryDefaultProfile():
+            UserProfile? {
+        return runCatching {
+            context.assets
+                .open(INITIAL_DATA_ASSET)
+                .use { assetInputStream ->
+                    ZipInputStream(
+                        assetInputStream.buffered()
+                    ).use { zipInputStream ->
+                        var entry =
+                            zipInputStream.nextEntry
+
+                        while (entry != null) {
+                            val normalizedName =
+                                entry.name
+                                    .replace('\\', '/')
+                                    .removePrefix("/")
+
+                            if (
+                                !entry.isDirectory &&
+                                normalizedName ==
+                                DEFAULT_PROFILE_ZIP_PATH
+                            ) {
+                                val profileJson =
+                                    zipInputStream
+                                        .bufferedReader()
+                                        .readText()
+                                        .removePrefix("\uFEFF")
+
+                                return@runCatching json
+                                    .decodeFromString<UserProfile>(
+                                        profileJson
+                                    )
+                            }
+
+                            zipInputStream.closeEntry()
+                            entry =
+                                zipInputStream.nextEntry
+                        }
+
+                        null
+                    }
+                }
+        }.onFailure { error ->
+            Log.e(
+                TAG,
+                "Failed to load factory profile template",
+                error,
+            )
+        }.getOrNull()
     }
 
     suspend fun updateActiveProfile(

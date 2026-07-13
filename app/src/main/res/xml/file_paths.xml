@@ -1,7 +1,18 @@
 <?xml version="1.0" encoding="utf-8"?>
 <paths>
-    <external-files-path name="my_images" path="Pictures" />
-    <files-path name="internal_images" path="images" />
-    <cache-path name="my_cache" path="." />
-    <cache-path name="shared_backups" path="backups/" />
+    <external-files-path
+        name="my_images"
+        path="Pictures/" />
+
+    <files-path
+        name="internal_images"
+        path="images/" />
+
+    <cache-path
+        name="temporary_images"
+        path="temp_images/" />
+
+    <cache-path
+        name="shared_backups"
+        path="backups/" />
 </paths>
