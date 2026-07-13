@@ -40,13 +40,13 @@
     <string name="male">זכר</string>
     <string name="female">נקבה</string>
     <string name="backup_and_restore">גיבוי ושחזור נתונים</string>
-    <string name="backup_share">שיתוף גיבוי</string>
     <string name="backup_failed">גיבוי נכשל</string>
-    <string name="export_db">ייצוא מסד נתונים (Export\\Backup)</string>
+    <string name="save_backup_locally">שמירת גיבוי במכשיר</string>
+    <string name="share_backup">שיתוף גיבוי</string>
+    <string name="import_backup">ייבוא גיבוי</string>
+    <string name="backup_file_hint">יש לחפש קובץ שמתחיל בשם MyAACApp_Backup_‎ בתיקיית ההורדות או בשורת החיפוש.</string>
     <string name="export_success">מסד הנתונים יוצא בהצלחה</string>
     <string name="export_failed">ייצוא נכשל</string>
-    <string name="import_db">ייבוא מסד נתונים (Import)</string>
-    <string name="import_helper_text">טיפ: אם הגיבוי נשלח בוואטסאפ, חפשו בתיקיית ההורדות (Downloads) או הקלידו "myaac" בשורת החיפוש.</string>
     <string name="import_success">מסד הנתונים יובא בהצלחה</string>
     <string name="import_failed">ייבוא נכשל</string>
 

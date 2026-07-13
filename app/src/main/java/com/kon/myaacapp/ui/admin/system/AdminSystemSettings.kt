@@ -2,7 +2,12 @@ package com.kon.myaacapp.ui.admin.system
 
 import android.app.Activity
 import android.content.Intent
+import java.text.SimpleDateFormat
+import java.util.Date
+import java.util.Locale
 import android.widget.Toast
+import androidx.compose.material.icons.filled.Save
+
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.foundation.layout.Arrangement
@@ -66,28 +71,57 @@ fun AdminSystemSettings(
     val context = LocalContext.current
     var showResetConfirm by remember { mutableStateOf(false) }
 
-    val backupShareTitle = stringResource(R.string.backup_share)
+    val backupShareTitle = stringResource(R.string.share_backup)
     val backupFailedMsg = stringResource(R.string.backup_failed)
+
+    val backupFileName = remember {
+        val timestamp = SimpleDateFormat(
+            "yyyy-MM-dd_HH-mm",
+            Locale.US,
+        ).format(Date())
+
+        "MyAACApp_Backup_$timestamp.zip"
+    }
 
     val importLauncher = rememberLauncherForActivityResult(
         contract = ActivityResultContracts.OpenDocument(),
     ) { uri ->
-        uri?.let {
+        uri?.let { selectedUri ->
             viewModel.importDatabase(
-                uri = it,
+                uri = selectedUri,
                 contentResolver = context.contentResolver,
             )
         }
     }
 
+    val saveBackupLauncher = rememberLauncherForActivityResult(
+        contract = ActivityResultContracts.CreateDocument(
+            "application/zip"
+        ),
+    ) { uri ->
+        uri?.let { selectedUri ->
+            viewModel.exportDatabase(
+                uri = selectedUri,
+                contentResolver = context.contentResolver,
+            )
+        }
+    }
+
+    val onSaveBackupClick = remember(
+        saveBackupLauncher,
+        backupFileName,
+    ) {
+        {
+            saveBackupLauncher.launch(backupFileName)
+        }
+    }
+
     // OPTIMIZATION: Cache the MIME types array to prevent JVM reallocation on every tap/recomposition.
-    val mimeTypes = remember {
+    val backupMimeTypes = remember {
         arrayOf(
             "application/zip",
-            "application/octet-stream",
             "application/x-zip-compressed",
-            "multipart/x-zip",
-            "*/*"
+            "application/octet-stream",
         )
     }
 
@@ -158,7 +192,14 @@ fun AdminSystemSettings(
         }
     }
 
-    val onImportClick = remember(importLauncher, mimeTypes) { { importLauncher.launch(mimeTypes) } }
+    val onImportClick = remember(
+        importLauncher,
+        backupMimeTypes,
+    ) {
+        {
+            importLauncher.launch(backupMimeTypes)
+        }
+    }
 
     val onShowReset = remember { { showResetConfirm = true } }
     val onDismissReset = remember { { showResetConfirm = false } }
@@ -341,13 +382,49 @@ fun AdminSystemSettings(
                 Spacer(modifier = Modifier.height(12.dp))
 
                 Button(
+                    onClick = onSaveBackupClick,
+                    modifier = Modifier.fillMaxWidth(),
+                    shape = RoundedCornerShape(12.dp),
+                ) {
+                    Icon(
+                        imageVector = Icons.Default.Save,
+                        contentDescription = null,
+                    )
+
+                    Spacer(
+                        modifier = Modifier.width(8.dp)
+                    )
+
+                    Text(
+                        text = stringResource(
+                            R.string.save_backup_locally
+                        )
+                    )
+                }
+
+                Spacer(
+                    modifier = Modifier.height(8.dp)
+                )
+
+                OutlinedButton(
                     onClick = onExportClick,
                     modifier = Modifier.fillMaxWidth(),
-                    shape = androidx.compose.foundation.shape.RoundedCornerShape(12.dp)
+                    shape = RoundedCornerShape(12.dp),
                 ) {
-                    Icon(Icons.Default.Share, contentDescription = null)
-                    Spacer(Modifier.width(8.dp))
-                    Text(stringResource(R.string.export_db))
+                    Icon(
+                        imageVector = Icons.Default.Share,
+                        contentDescription = null,
+                    )
+
+                    Spacer(
+                        modifier = Modifier.width(8.dp)
+                    )
+
+                    Text(
+                        text = stringResource(
+                            R.string.share_backup
+                        )
+                    )
                 }
 
                 Spacer(modifier = Modifier.height(8.dp))
@@ -355,24 +432,41 @@ fun AdminSystemSettings(
                 OutlinedButton(
                     onClick = onImportClick,
                     modifier = Modifier.fillMaxWidth(),
-                    shape = androidx.compose.foundation.shape.RoundedCornerShape(12.dp)
+                    shape = RoundedCornerShape(12.dp),
                 ) {
-                    Icon(Icons.Default.Download, contentDescription = null)
-                    Spacer(Modifier.width(8.dp))
-                    Text(stringResource(R.string.import_db))
+                    Icon(
+                        imageVector = Icons.Default.Download,
+                        contentDescription = null,
+                    )
+
+                    Spacer(
+                        modifier = Modifier.width(8.dp)
+                    )
+
+                    Text(
+                        text = stringResource(
+                            R.string.import_backup
+                        )
+                    )
                 }
 
                 Text(
-                    text = stringResource(R.string.import_helper_text),
+                    text = stringResource(
+                        R.string.backup_file_hint
+                    ),
                     style = MaterialTheme.typography.bodySmall,
                     color = MaterialTheme.colorScheme.onSurfaceVariant,
                     textAlign = TextAlign.Center,
                     modifier = Modifier
                         .fillMaxWidth()
-                        .padding(horizontal = 8.dp, vertical = 4.dp)
+                        .padding(
+                            horizontal = 8.dp,
+                            vertical = 4.dp,
+                        ),
                 )
 
                 Spacer(modifier = Modifier.height(8.dp))
+
                 HorizontalDivider(
                     modifier = Modifier.padding(vertical = 4.dp),
                     thickness = 0.5.dp,

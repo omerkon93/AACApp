@@ -7,7 +7,6 @@ import android.content.ContentResolver
 import android.content.Context
 import android.net.Uri
 import android.util.Log
-import androidx.core.content.FileProvider
 import androidx.lifecycle.AndroidViewModel
 import androidx.lifecycle.viewModelScope
 import com.kon.myaacapp.core.locale.LanguageDownloadHelper
@@ -26,7 +25,10 @@ import com.kon.myaacapp.domain.model.TileType
 import com.kon.myaacapp.domain.model.UserProfile
 import com.kon.myaacapp.domain.service.AACTileService
 import com.kon.myaacapp.domain.service.AnalyticsManager
+import com.kon.myaacapp.domain.service.AppStartupCoordinator
+import com.kon.myaacapp.domain.service.BackupManager
 import com.kon.myaacapp.domain.service.Gender
+import com.kon.myaacapp.domain.service.QuickRecordingManager
 import com.kon.myaacapp.domain.service.SentenceManager
 import com.kon.myaacapp.service.audio.AudioRecordingService
 import com.kon.myaacapp.service.audio.TextToSpeechHelper
@@ -45,8 +47,6 @@ import kotlinx.coroutines.flow.map
 import kotlinx.coroutines.flow.onEach
 import kotlinx.coroutines.flow.stateIn
 import kotlinx.coroutines.launch
-import kotlinx.coroutines.withContext
-import java.io.File
 import java.util.UUID
 
 @OptIn(ExperimentalCoroutinesApi::class)
@@ -58,7 +58,9 @@ class AACViewModel(application: Application) : AndroidViewModel(application) {
     private val languageDownloadHelper: LanguageDownloadHelper
     private val analyticsManager: AnalyticsManager
     private val sentenceManager: SentenceManager
-
+    private val quickRecordingManager: QuickRecordingManager
+    private val backupManager: BackupManager
+    private val startupCoordinator: AppStartupCoordinator
 
     val tileService: AACTileService
     val audioService: AudioRecordingService
@@ -83,9 +85,31 @@ class AACViewModel(application: Application) : AndroidViewModel(application) {
 
         audioService = AudioRecordingService(application)
 
+        quickRecordingManager = QuickRecordingManager(
+            context = application,
+            repository = repository,
+            audioService = audioService,
+            scope = viewModelScope,
+        )
+
         backupService = BackupService(
             application,
             repository,
+        )
+
+        startupCoordinator = AppStartupCoordinator(
+            context = application,
+            backupService = backupService,
+            repository = repository,
+            profileRepository = profileRepository,
+        )
+
+        backupManager = BackupManager(
+            application = application,
+            backupService = backupService,
+            repository = repository,
+            profileRepository = profileRepository,
+            scope = viewModelScope,
         )
 
         sentenceManager = SentenceManager(
@@ -95,25 +119,8 @@ class AACViewModel(application: Application) : AndroidViewModel(application) {
             scope = viewModelScope,
         )
 
-        // THE MASTER BOOT SEQUENCE
-        viewModelScope.launch(Dispatchers.IO) {
-            val firstBootFlag = File(application.filesDir, "first_boot_complete.flag")
-
-            // 1. Extract the zip FIRST
-            if (!firstBootFlag.exists()) {
-                val success = backupService.importFromAssets("initial_data.zip")
-                if (success) {
-                    firstBootFlag.createNewFile()
-                }
-            }
-
-            // 2. NOW run the legacy migration. If the zip contained an old SQLite
-            // database with your manual tiles, they will be safely salvaged into JSONs now!
-            repository.completeLegacyMigration()
-
-            // 3. Load everything into memory and draw the UI
-            profileRepository.reload()
-            repository.reload()
+        viewModelScope.launch {
+            startupCoordinator.initialize()
         }
     }
 
@@ -296,57 +303,42 @@ class AACViewModel(application: Application) : AndroidViewModel(application) {
     }
 
     @Suppress("unused")
-    private val _recordingTileId = MutableStateFlow<String?>(null)
+    val recordingTileId: StateFlow<String?> =
+        quickRecordingManager.recordingTileId
 
     @Suppress("unused")
-    val recordingTileId: StateFlow<String?> = _recordingTileId.asStateFlow()
-
-    @Suppress("unused")
-    fun startQuickRecording(tileId: String) {
-        _recordingTileId.value = tileId
-        audioService.startRecording(tileId, languageCode.value)
+    fun startQuickRecording(
+        tileId: String,
+    ) {
+        quickRecordingManager.startRecording(
+            tileId = tileId,
+            languageCode = languageCode.value,
+        )
     }
 
     @Suppress("unused")
-    fun stopQuickRecording(tileId: String) {
-        viewModelScope.launch {
-            audioService.stopRecording()
-            _recordingTileId.value = null
-
-            withContext(Dispatchers.IO) {
-                val outputDir = File(getApplication<Application>().filesDir, "audio_tiles/${languageCode.value}")
-                val outputFile = File(outputDir, "audio_$tileId.wav")
-                if (outputFile.exists()) {
-                    updateTileAudioUri(tileId, outputFile.absolutePath)
-                }
-            }
-        }
+    fun stopQuickRecording(
+        tileId: String,
+    ) {
+        quickRecordingManager.stopRecording(
+            tileId = tileId,
+            languageCode = languageCode.value,
+        )
     }
 
     val selectedSentence: StateFlow<List<CombinedTile>> =
         sentenceManager.selectedSentence
 
-    private val _importExportStatus = MutableStateFlow<String?>(null)
-    val importExportStatus: StateFlow<String?> = _importExportStatus.asStateFlow()
+    val importExportStatus: StateFlow<String?> =
+        backupManager.status
 
-    fun resetToDefault(context: Context) {
-        viewModelScope.launch {
-            _importExportStatus.value = context.getString(R.string.resetting)
-            val success = withContext(Dispatchers.IO) { backupService.importFromAssets("initial_data.zip") }
-            if (success) {
-                // Ensure any databases in the zip are migrated
-                repository.completeLegacyMigration()
-                profileRepository.reload()
-
-                // Do NOT pass forceRepopulate = true. Respect the imported layout!
-                repository.reload()
-            }
-            _importExportStatus.value = if (success) {
-                context.getString(R.string.reset_success)
-            } else {
-                context.getString(R.string.reset_failed)
-            }
-        }
+    @Suppress("UNUSED_PARAMETER")
+    fun resetToDefault(
+        context: Context,
+    ) {
+        backupManager.resetToDefault()
+        sentenceManager.clear()
+        resetToHome()
     }
 
     fun selectTile(tile: CombinedTile, onNavigateToCategory: (String) -> Unit) {
@@ -510,43 +502,32 @@ class AACViewModel(application: Application) : AndroidViewModel(application) {
         }
     }
 
-    private fun updateTileAudioUri(tileId: String, audioUri: String?) {
-        viewModelScope.launch {
-            repository.getTileById(tileId, languageCode.value)?.let { tile ->
-                repository.updateTile(tile.copy(audioUri = audioUri))
-            }
-        }
-    }
-
     @Suppress("unused")
-    fun exportDatabase(uri: Uri, contentResolver: ContentResolver) {
-        viewModelScope.launch {
-            val success = withContext(Dispatchers.IO) { backupService.exportDatabase(contentResolver, uri) }
-            _importExportStatus.value = if (success) {
-                getApplication<Application>().getString(R.string.export_success)
-            } else {
-                getApplication<Application>().getString(R.string.export_failed)
-            }
-        }
+    fun exportDatabase(
+        uri: Uri,
+        contentResolver: ContentResolver,
+    ) {
+        backupManager.exportDatabase(
+            uri = uri,
+            contentResolver = contentResolver,
+        )
     }
 
-    fun importDatabase(uri: Uri, contentResolver: ContentResolver) {
-        viewModelScope.launch {
-            val success = withContext(Dispatchers.IO) { backupService.importDatabase(contentResolver, uri) }
-            if (success) {
-                profileRepository.reload()
-                repository.reload()
-            }
-            _importExportStatus.value = if (success) {
-                getApplication<Application>().getString(R.string.import_success)
-            } else {
-                getApplication<Application>().getString(R.string.import_failed)
-            }
-        }
+    fun importDatabase(
+        uri: Uri,
+        contentResolver: ContentResolver,
+    ) {
+        backupManager.importDatabase(
+            uri = uri,
+            contentResolver = contentResolver,
+        )
+
+        sentenceManager.clear()
+        resetToHome()
     }
 
     fun clearImportExportStatus() {
-        _importExportStatus.value = null
+        backupManager.clearStatus()
     }
 
     @Suppress("unused")
@@ -605,23 +586,40 @@ class AACViewModel(application: Application) : AndroidViewModel(application) {
     }
 
     @Suppress("unused")
-    fun resetStatistics(context: Context) {
+    fun resetStatistics(
+        context: Context,
+    ) {
         viewModelScope.launch {
             repository.clearAllStatistics()
-            _importExportStatus.value = context.getString(R.string.stats_reset_success)
+
+            backupManager.setStatus(
+                context.getString(
+                    R.string.stats_reset_success
+                )
+            )
         }
     }
 
     @Suppress("unused")
-    fun removeAllAudio(context: Context) {
+    fun removeAllAudio(
+        context: Context,
+    ) {
         viewModelScope.launch(Dispatchers.IO) {
             val tiles = repository.getAllTilesSync()
+
             tiles.forEach { tile ->
                 if (tile.audioUri != null) {
-                    updateTile(tile.copy(audioUri = null))
+                    updateTile(
+                        tile.copy(audioUri = null)
+                    )
                 }
             }
-            _importExportStatus.value = context.getString(R.string.audio_removed_success)
+
+            backupManager.setStatus(
+                context.getString(
+                    R.string.audio_removed_success
+                )
+            )
         }
     }
 
@@ -631,36 +629,13 @@ class AACViewModel(application: Application) : AndroidViewModel(application) {
         ttsHelper.shutdown()
     }
 
-    fun exportAndShareDatabase(context: Context, onReady: (Uri?) -> Unit) {
-        viewModelScope.launch(Dispatchers.IO) {
-            try {
-                val backupsDir = File(context.cacheDir, "backups")
-                if (!backupsDir.exists()) backupsDir.mkdirs()
-
-                backupsDir.listFiles()?.forEach { it.delete() }
-
-                val backupFile = File(backupsDir, "myaac_backup_${System.currentTimeMillis()}.zip")
-                val uri = Uri.fromFile(backupFile)
-
-                val success = backupService.exportDatabase(context.contentResolver, uri)
-
-                if (success) {
-                    val secureUri = FileProvider.getUriForFile(
-                        context,
-                        "${context.packageName}.fileprovider",
-                        backupFile
-                    )
-
-                    withContext(Dispatchers.Main) {
-                        onReady(secureUri)
-                    }
-                } else {
-                    withContext(Dispatchers.Main) { onReady(null) }
-                }
-            } catch (e: Exception) {
-                e.printStackTrace()
-                withContext(Dispatchers.Main) { onReady(null) }
-            }
-        }
+    @Suppress("UNUSED_PARAMETER")
+    fun exportAndShareDatabase(
+        context: Context,
+        onReady: (Uri?) -> Unit,
+    ) {
+        backupManager.exportAndShare(
+            onReady = onReady,
+        )
     }
 }
