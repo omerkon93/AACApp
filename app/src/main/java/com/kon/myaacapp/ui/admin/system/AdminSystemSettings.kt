@@ -64,7 +64,6 @@ fun AdminSystemSettings(
     val langCode by viewModel.languageCode.collectAsState()
     val importExportStatus by viewModel.importExportStatus.collectAsState()
     val context = LocalContext.current
-    val contentResolver = context.contentResolver
     var showResetConfirm by remember { mutableStateOf(false) }
 
     val backupShareTitle = stringResource(R.string.backup_share)
@@ -73,7 +72,12 @@ fun AdminSystemSettings(
     val importLauncher = rememberLauncherForActivityResult(
         contract = ActivityResultContracts.OpenDocument(),
     ) { uri ->
-        uri?.let { viewModel.importDatabase(it, contentResolver) }
+        uri?.let {
+            viewModel.importDatabase(
+                uri = it,
+                contentResolver = context.contentResolver,
+            )
+        }
     }
 
     // OPTIMIZATION: Cache the MIME types array to prevent JVM reallocation on every tap/recomposition.
@@ -103,23 +107,37 @@ fun AdminSystemSettings(
     val onMaleClick = remember(viewModel) { { viewModel.updateUserGender(Gender.MALE) } }
     val onFemaleClick = remember(viewModel) { { viewModel.updateUserGender(Gender.FEMALE) } }
 
-    // Memoize the language switch logic, safely capturing the context to recreate the activity
-    val onHebrewClick = remember(viewModel, context) {
-        {
-            viewModel.downloadAndSetLanguage("he") { success ->
-                if (success) {
-                    (context as? Activity)?.recreate()
+    val switchLanguage: (String) -> Unit = remember(
+        viewModel,
+        context,
+        langCode,
+    ) {
+        { requestedLanguage ->
+            if (requestedLanguage != langCode) {
+                viewModel.downloadAndSetLanguage(
+                    requestedLanguage
+                ) { success ->
+                    if (success) {
+                        (context as? Activity)?.recreate()
+                    }
                 }
             }
         }
     }
-    val onEnglishClick = remember(viewModel, context) {
+
+    val onHebrewClick: () -> Unit = remember(
+        switchLanguage
+    ) {
         {
-            viewModel.downloadAndSetLanguage("en") { success ->
-                if (success) {
-                    (context as? Activity)?.recreate()
-                }
-            }
+            switchLanguage("he")
+        }
+    }
+
+    val onEnglishClick: () -> Unit = remember(
+        switchLanguage
+    ) {
+        {
+            switchLanguage("en")
         }
     }
 
@@ -268,7 +286,10 @@ fun AdminSystemSettings(
                         enabled = downloadStatus is DownloadStatus.Idle || downloadStatus is DownloadStatus.Success || downloadStatus is DownloadStatus.Error
                     )
 
-                    if (downloadStatus !is DownloadStatus.Idle) {
+                    if (
+                        downloadStatus is DownloadStatus.Downloading ||
+                        downloadStatus is DownloadStatus.Installing
+                    ) {
                         Spacer(modifier = Modifier.width(8.dp))
                         CircularProgressIndicator(
                             modifier = Modifier.size(20.dp),

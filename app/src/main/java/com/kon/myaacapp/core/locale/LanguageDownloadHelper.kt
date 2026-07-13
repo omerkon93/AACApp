@@ -22,7 +22,8 @@ sealed class DownloadStatus {
 
 class LanguageDownloadHelper(context: Context) {
 
-    private val splitInstallManager: SplitInstallManager = SplitInstallManagerFactory.create(context)
+    private val splitInstallManager: SplitInstallManager =
+        SplitInstallManagerFactory.create(context)
 
     private val _downloadStatus = MutableStateFlow<DownloadStatus>(DownloadStatus.Idle)
     val downloadStatus: StateFlow<DownloadStatus> = _downloadStatus.asStateFlow()
@@ -93,23 +94,56 @@ class LanguageDownloadHelper(context: Context) {
                 splitInstallManager.installedLanguages.contains(languageCode)
     }
 
-    fun downloadLanguage(languageCode: String, onComplete: (Boolean) -> Unit) {
-        if (isLanguageInstalled(languageCode)) {
+    fun downloadLanguage(
+        languageCode: String,
+        onComplete: (Boolean) -> Unit,
+    ) {
+        val normalizedCode =
+            LocaleHelper.forSplitInstall(languageCode)
+
+        if (isLanguageInstalled(normalizedCode)) {
+            _downloadStatus.value = DownloadStatus.Success
             onComplete(true)
             return
         }
 
-        val normalizedCode = LocaleHelper.forSplitInstall(languageCode)
+        _downloadStatus.value = DownloadStatus.Downloading(0)
+
         val request = SplitInstallRequest.newBuilder()
-            .addLanguage(Locale.forLanguageTag(normalizedCode))
+            .addLanguage(
+                Locale.forLanguageTag(normalizedCode)
+            )
             .build()
 
         splitInstallManager.startInstall(request)
             .addOnSuccessListener { sessionId ->
                 onCompleteCallbacks[sessionId] = onComplete
+
+                /*
+                 * The INSTALLED event may arrive before the callback is added.
+                 * Check the current session state to close that race.
+                 */
+                splitInstallManager
+                    .getSessionState(sessionId)
+                    .addOnSuccessListener { state ->
+                        if (
+                            state.status() ==
+                            SplitInstallSessionStatus.INSTALLED
+                        ) {
+                            _downloadStatus.value =
+                                DownloadStatus.Success
+
+                            onCompleteCallbacks
+                                .remove(sessionId)
+                                ?.invoke(true)
+                        }
+                    }
             }
             .addOnFailureListener { exception ->
-                _downloadStatus.value = DownloadStatus.Error(exception.message ?: "Unknown error")
+                _downloadStatus.value = DownloadStatus.Error(
+                    exception.message ?: "Unknown error"
+                )
+
                 onComplete(false)
             }
     }

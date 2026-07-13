@@ -49,19 +49,6 @@ class AACRepository(
     private val diskMutex = Mutex()
     private val profileMutex = Mutex()
 
-    // FIX: Restored an immediate init block so definitions are parsed and loaded
-    // into memory instantly at app startup, preventing Compose UI from seeing an empty grid.
-    init {
-        profileRepository.scope.launch {
-            loadAllDefinitions()
-            val profile = activeProfile.value ?: activeProfile.first { it != null }
-            if (profile != null && (profile.layout.isEmpty())) {
-                val populatedProfile = populateInitialLayout(profile)
-                profileRepository.updateActiveProfile(populatedProfile)
-            }
-        }
-    }
-
     suspend fun reload(forceRepopulate: Boolean = false) {
         loadAllDefinitions()
 
@@ -86,58 +73,99 @@ class AACRepository(
     }
 
     suspend fun loadAllDefinitions() = withContext(Dispatchers.IO) {
-        val tilesDir = File(context.filesDir, "tiles")
-        val allMergedDefinitions = mutableListOf<TileDefinition>()
+        val tilesDir = File(
+            context.filesDir,
+            "tiles",
+        )
+
+        val fileDefinitions = mutableListOf<TileDefinition>()
 
         diskMutex.withLock {
-            if (tilesDir.exists()) {
-                val languageDirs = tilesDir.listFiles { file -> file.isDirectory } ?: emptyArray()
+            val languageDirs = tilesDir.listFiles { file ->
+                file.isDirectory
+            }.orEmpty()
 
-                for (langDir in languageDirs) {
-                    val defaultFile = File(langDir, "default_dictionary.json")
-                    val defaultTiles = loadDictionaryFile(defaultFile)
+            languageDirs.forEach { languageDirectory ->
+                val defaultDefinitions = loadDictionaryFile(
+                    File(
+                        languageDirectory,
+                        "default_dictionary.json",
+                    )
+                )
 
-                    val userFile = File(langDir, "export_user_defined.json")
-                    val userTiles = loadDictionaryFile(userFile)
+                val userDefinitions = loadDictionaryFile(
+                    File(
+                        languageDirectory,
+                        "export_user_defined.json",
+                    )
+                )
 
-                    val mergedLangTiles = mergeDictionaries(defaultTiles, userTiles)
-                    allMergedDefinitions.addAll(mergedLangTiles)
-                }
+                /*
+                 * User definitions override defaults only when both the tile ID
+                 * and language code match.
+                 */
+                fileDefinitions += mergeDictionaries(
+                    defaultTiles = defaultDefinitions,
+                    userTiles = userDefinitions,
+                )
             }
         }
 
         try {
-            val roomTiles = aacTileDao.getAllTilesSync()
-            val roomDefinitions = roomTiles.map { tile ->
-                TileDefinition(
-                    id = tile.id,
-                    label = tile.label,
-                    ttsText = tile.ttsText,
-                    labelFeminine = tile.labelFeminine,
-                    ttsTextFeminine = tile.ttsTextFeminine,
-                    emoji = tile.emoji,
-                    audioUri = tile.audioUri,
-                    imageUri = tile.imageUri,
-                    backgroundColorHex = tile.backgroundColorHex,
-                    partOfSpeech = tile.partOfSpeech,
-                    grammaticalGender = tile.grammaticalGender,
-                    isCategory = tile.isCategory,
-                    type = when {
-                        tile.isCategory -> TileType.FOLDER
-                        tile.linkedCategoryId != null -> TileType.CONNECTOR
-                        tile.isQuickFire -> TileType.QUICK_FIRE
-                        else -> TileType.BASIC
-                    },
-                    languageCode = tile.languageCode,
-                    defaultParentId = tile.parentId,
-                    defaultCellIndex = tile.cellIndex,
-                    defaultLinkedCategoryId = tile.linkedCategoryId
-                )
-            }
+            val roomDefinitions = aacTileDao
+                .getAllTilesSync()
+                .map { tile ->
+                    TileDefinition(
+                        id = tile.id,
+                        label = tile.label,
+                        ttsText = tile.ttsText,
+                        labelFeminine = tile.labelFeminine,
+                        ttsTextFeminine = tile.ttsTextFeminine,
+                        emoji = tile.emoji,
+                        audioUri = tile.audioUri,
+                        imageUri = tile.imageUri,
+                        backgroundColorHex =
+                            tile.backgroundColorHex,
+                        partOfSpeech = tile.partOfSpeech,
+                        grammaticalGender =
+                            tile.grammaticalGender,
+                        isCategory = tile.isCategory,
+                        type = when {
+                            tile.isCategory -> {
+                                TileType.FOLDER
+                            }
 
-            _baseDefinitions.value = mergeDictionaries(allMergedDefinitions, roomDefinitions)
-        } catch (e: Exception) {
-            e.printStackTrace()
+                            tile.linkedCategoryId != null -> {
+                                TileType.CONNECTOR
+                            }
+
+                            tile.isQuickFire -> {
+                                TileType.QUICK_FIRE
+                            }
+
+                            else -> {
+                                TileType.BASIC
+                            }
+                        },
+                        languageCode = tile.languageCode,
+                        defaultParentId = tile.parentId,
+                        defaultCellIndex = tile.cellIndex,
+                        defaultLinkedCategoryId =
+                            tile.linkedCategoryId,
+                    )
+                }
+
+            _baseDefinitions.value = mergeDictionaries(
+                defaultTiles = fileDefinitions,
+                userTiles = roomDefinitions,
+            )
+
+        } catch (error: Exception) {
+            Log.e(
+                "AACRepository",
+                "Failed to load tile definitions",
+                error,
+            )
         }
     }
 
@@ -174,26 +202,46 @@ class AACRepository(
 
     fun populateInitialLayout(
         profile: UserProfile,
+        languageCode: String? = null,
     ): UserProfile {
         val newLayout = profile.layout.toMutableMap()
-        baseDefinitions.value.forEach { def ->
-            if (def.defaultCellIndex != null) {
-                val key = getLayoutKey(def.defaultParentId, def.id)
-                if (!newLayout.containsKey(key)) {
-                    val state = TileLayoutState(
-                        tileId = def.id,
-                        parentId = def.defaultParentId,
-                        linkedCategoryId = def.defaultLinkedCategoryId,
-                        cellIndex = def.defaultCellIndex,
-                        isQuickFire = false,
-                        isHidden = false,
-                        clickCount = 0
-                    )
-                    newLayout[key] = state
-                }
+
+        val definitions = if (languageCode == null) {
+            baseDefinitions.value
+        } else {
+            baseDefinitions.value.filter { definition ->
+                definition.languageCode == languageCode
             }
         }
-        return profile.copy(layout = newLayout)
+
+        definitions.forEach { definition ->
+            val defaultCellIndex =
+                definition.defaultCellIndex ?: return@forEach
+
+            val key = getLayoutKey(
+                parentId = definition.defaultParentId,
+                tileId = definition.id,
+            )
+
+            if (!newLayout.containsKey(key)) {
+                newLayout[key] = TileLayoutState(
+                    tileId = definition.id,
+                    parentId = definition.defaultParentId,
+                    linkedCategoryId =
+                        definition.defaultLinkedCategoryId,
+                    cellIndex = defaultCellIndex,
+                    isQuickFire = false,
+                    isHidden = false,
+                    clickCount = 0,
+                )
+            }
+        }
+
+        return profile.copy(
+            activeLanguageCode =
+                languageCode ?: profile.activeLanguageCode,
+            layout = newLayout,
+        )
     }
 
     private fun lockInDefaultState(tileId: String, parentId: String?, state: TileLayoutState) {
@@ -208,6 +256,42 @@ class AACRepository(
                 }
             }
         }
+    }
+
+    suspend fun prepareLanguage(
+        languageCode: String,
+    ): Boolean {
+        loadAllDefinitions()
+
+        val languageDefinitions = baseDefinitions.value.filter {
+                definition ->
+            definition.languageCode == languageCode
+        }
+
+        if (languageDefinitions.isEmpty()) {
+            Log.e(
+                "AACRepository",
+                "No tile definitions found for language: " +
+                        languageCode
+            )
+
+            return false
+        }
+
+        val profile = activeProfile.value
+            ?: activeProfile.first { it != null }
+            ?: return false
+
+        val populatedProfile = populateInitialLayout(
+            profile = profile,
+            languageCode = languageCode,
+        )
+
+        profileRepository.updateActiveProfile(
+            populatedProfile
+        )
+
+        return true
     }
 
     suspend fun updateTileIndex(tileId: String, parentId: String?, newIndex: Int) {
@@ -339,7 +423,11 @@ class AACRepository(
         )
         lockInDefaultState(tile.id, tile.parentId, layoutState)
 
-        _baseDefinitions.value = _baseDefinitions.value.filter { it.id != definition.id } + definition
+        _baseDefinitions.value =
+            _baseDefinitions.value.filterNot { existing ->
+                existing.id == definition.id &&
+                        existing.languageCode == definition.languageCode
+            } + definition
     }
 
     private suspend fun saveDefinitionToDisk(definition: TileDefinition) =
@@ -396,7 +484,11 @@ class AACRepository(
             )
         }
 
-        _baseDefinitions.value = _baseDefinitions.value.filter { it.id != definition.id } + definition
+        _baseDefinitions.value =
+            _baseDefinitions.value.filterNot { existing ->
+                existing.id == definition.id &&
+                        existing.languageCode == definition.languageCode
+            } + definition
     }
 
     suspend fun deleteTile(tile: AACTile) {
@@ -426,7 +518,11 @@ class AACRepository(
             aacTileDao.deleteTile(tile)
         }
 
-        _baseDefinitions.value = _baseDefinitions.value.filter { it.id != tile.id }
+        _baseDefinitions.value =
+            _baseDefinitions.value.filterNot { definition ->
+                definition.id == tile.id &&
+                        definition.languageCode == tile.languageCode
+            }
     }
 
     private fun createDefinitionFromTile(tile: AACTile): TileDefinition {
@@ -518,24 +614,40 @@ class AACRepository(
         migrateLegacyPlacements()
 
         val roomTiles = aacTileDao.getAllTilesSync()
-        if (roomTiles.isNotEmpty()) {
-            roomTiles.forEach { roomTile ->
-                val isAlreadyLocal = baseDefinitions.value.any { it.id == roomTile.id }
-                if (!isAlreadyLocal) {
-                    val def = createDefinitionFromTile(roomTile)
-                    saveDefinitionToDisk(def)
-                }
+
+        if (roomTiles.isEmpty()) {
+            return@withContext
+        }
+
+        roomTiles.forEach { roomTile ->
+            /*
+             * IDs can be identical across languages, so both the tile ID and
+             * language code must match.
+             */
+            val isAlreadyLocal = baseDefinitions.value.any { definition ->
+                definition.id == roomTile.id &&
+                        definition.languageCode == roomTile.languageCode
             }
 
-            deleteAllTilesFromRoom()
-            loadAllDefinitions()
+            if (!isAlreadyLocal) {
+                val definition = createDefinitionFromTile(roomTile)
+                saveDefinitionToDisk(definition)
+            }
         }
+
+        deleteAllTilesFromRoom()
+        loadAllDefinitions()
     }
 
     fun mergeDictionaries(
         defaultTiles: List<TileDefinition>,
-        userTiles: List<TileDefinition>
+        userTiles: List<TileDefinition>,
     ): List<TileDefinition> {
-        return (defaultTiles + userTiles).associateBy { it.id }.values.toList()
+        return (defaultTiles + userTiles)
+            .associateBy { definition ->
+                definition.languageCode to definition.id
+            }
+            .values
+            .toList()
     }
 }

@@ -77,12 +77,6 @@ class AACViewModel(application: Application) : AndroidViewModel(application) {
         audioService = AudioRecordingService(application)
         backupService = BackupService(application, repository)
 
-        viewModelScope.launch {
-            profileRepository.activeProfile.collect { profile ->
-                Log.d("Debug_AAC", "Active Profile ID: ${profile?.profileId}")
-            }
-        }
-
         // THE MASTER BOOT SEQUENCE
         viewModelScope.launch(Dispatchers.IO) {
             val firstBootFlag = File(application.filesDir, "first_boot_complete.flag")
@@ -193,22 +187,67 @@ class AACViewModel(application: Application) : AndroidViewModel(application) {
 
     val languageDownloadStatus = languageDownloadHelper.downloadStatus
 
-    private suspend fun updateLanguageCode(lang: String) {
-        settingsRepository.updateLanguageCode(lang)
+    private suspend fun updateLanguageCode(
+        requestedLanguage: String,
+    ): Boolean {
+        val normalizedLanguage =
+            LocaleHelper.normalize(requestedLanguage)
+
+        /*
+         * Update the selected language first. The UI locale must not depend on
+         * whether the optional tile dictionary is currently available.
+         */
+        settingsRepository.updateLanguageCode(
+            normalizedLanguage
+        )
+
+        /*
+         * Reload definitions and create the language layout when definitions
+         * exist. An empty dictionary must not cancel the locale change.
+         */
+        val tilesPrepared = repository.prepareLanguage(
+            normalizedLanguage
+        )
+
+        if (!tilesPrepared) {
+            Log.w(
+                "AACViewModel",
+                "UI switched to $normalizedLanguage, " +
+                        "but no tile definitions were found."
+            )
+        }
+
         resetToHome()
+
+        return true
     }
 
-    fun downloadAndSetLanguage(lang: String, onComplete: (Boolean) -> Unit) {
-        viewModelScope.launch {
-            languageDownloadHelper.downloadLanguage(lang) { success ->
-                if (success) {
-                    viewModelScope.launch {
-                        updateLanguageCode(lang)
-                        onComplete(true)
-                    }
-                } else {
+    fun downloadAndSetLanguage(
+        requestedLanguage: String,
+        onComplete: (Boolean) -> Unit,
+    ) {
+        val normalizedLanguage =
+            LocaleHelper.normalize(requestedLanguage)
+
+        if (this.languageCode.value == normalizedLanguage) {
+            onComplete(true)
+            return
+        }
+
+        languageDownloadHelper.downloadLanguage(
+            normalizedLanguage
+        ) { downloadSucceeded ->
+            if (!downloadSucceeded) {
+                viewModelScope.launch {
                     onComplete(false)
                 }
+
+                return@downloadLanguage
+            }
+
+            viewModelScope.launch {
+                updateLanguageCode(normalizedLanguage)
+                onComplete(true)
             }
         }
     }
