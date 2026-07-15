@@ -52,16 +52,8 @@ class AACRepository(
     private val diskMutex = Mutex()
     private val profileMutex = Mutex()
 
-    suspend fun reload(forceRepopulate: Boolean = false) {
+    suspend fun reload() {
         loadAllDefinitions()
-
-        val profile = activeProfile.value ?: activeProfile.first { it != null }
-
-        if (profile != null) {
-            val targetProfile = if (forceRepopulate) profile.copy(layout = emptyMap()) else profile
-            val populatedProfile = populateInitialLayout(targetProfile)
-            profileRepository.updateActiveProfile(populatedProfile)
-        }
     }
 
     private fun loadDictionaryFile(file: File): List<TileDefinition> {
@@ -285,13 +277,15 @@ class AACRepository(
             ?: activeProfile.first { it != null }
             ?: return false
 
-        val populatedProfile = populateInitialLayout(
-            profile = profile,
-            languageCode = languageCode,
-        )
-
+        /*
+         * Hebrew and English definitions share the same logical tile IDs and
+         * therefore use the same profile layout. Only update the profile's active
+         * language; do not rebuild placements from definition defaults.
+         */
         profileRepository.updateActiveProfile(
-            populatedProfile
+            profile.copy(
+                activeLanguageCode = languageCode,
+            )
         )
 
         return true

@@ -7,7 +7,9 @@ import androidx.activity.compose.setContent
 import androidx.activity.enableEdgeToEdge
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.padding
+import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Scaffold
+import androidx.compose.material3.Surface
 import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
@@ -21,11 +23,11 @@ import androidx.navigation.compose.composable
 import androidx.navigation.compose.rememberNavController
 import com.google.android.play.core.splitcompat.SplitCompat
 import com.kon.myaacapp.AACViewModel
-import com.kon.myaacapp.ui.admin.AdminDashboardScreen
 import com.kon.myaacapp.core.locale.LocaleHelper
+import com.kon.myaacapp.data.repository.SettingsRepository
+import com.kon.myaacapp.ui.admin.AdminDashboardScreen
 import com.kon.myaacapp.ui.communication.MainCommunicationScreen
 import com.kon.myaacapp.ui.profile.ProfileManagerScreen
-import com.kon.myaacapp.data.repository.SettingsRepository
 import com.kon.myaacapp.ui.theme.MyAACAppTheme
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.flow.first
@@ -57,61 +59,69 @@ class MainActivity : ComponentActivity() {
             }
 
             MyAACAppTheme {
-                val navController = rememberNavController()
+                // 👉 ADD THIS SURFACE WRAPPER
+                Surface(
+                    modifier = Modifier.fillMaxSize(),
+                    color = MaterialTheme.colorScheme.background
+                ) {
+                    val navController = rememberNavController()
 
-                CompositionLocalProvider(LocalLayoutDirection provides layoutDir) {
-                    Scaffold(modifier = Modifier.fillMaxSize()) { innerPadding ->
-                        NavHost(
-                            navController = navController,
-                            startDestination = "grid",
-                            modifier = Modifier.padding(innerPadding)
-                        ) {
-                            composable("grid") {
-                                val onNavigateToCategory =
-                                    remember(viewModel) { { id: String -> viewModel.setCategory(id) } }
+                    CompositionLocalProvider(LocalLayoutDirection provides layoutDir) {
+                        Scaffold(modifier = Modifier.fillMaxSize()) { innerPadding ->
+                            NavHost(
+                                navController = navController,
+                                startDestination = "grid",
+                                modifier = Modifier.padding(innerPadding)
+                            ) {
+                                composable("grid") {
+                                    val onNavigateToCategory =
+                                        remember(viewModel) {
+                                            { id: String ->
+                                                viewModel.setCategory(
+                                                    id
+                                                )
+                                            }
+                                        }
 
-                                // FIX: Added '; Unit' to explicitly cast the lambda to () -> Unit
-                                // instead of () -> Boolean.
-                                val onBackClick =
-                                    remember(navController) { { navController.popBackStack(); Unit } }
-                                val onNavigateToAdmin =
-                                    remember(navController) { { navController.navigate("admin") } }
+                                    val onBackClick =
+                                        remember(navController) { { navController.popBackStack(); Unit } }
+                                    val onNavigateToAdmin =
+                                        remember(navController) { { navController.navigate("admin") } }
 
-                                MainCommunicationScreen(
-                                    viewModel = viewModel,
-                                    onNavigateToCategory = onNavigateToCategory,
-                                    onBackClick = onBackClick,
-                                    onNavigateToAdmin = onNavigateToAdmin
-                                )
-                            }
+                                    MainCommunicationScreen(
+                                        viewModel = viewModel,
+                                        onNavigateToCategory = onNavigateToCategory,
+                                        onBackClick = onBackClick,
+                                        onNavigateToAdmin = onNavigateToAdmin
+                                    )
+                                }
 
-                            composable("admin") {
-                                // FIX: Added '; Unit' here as well
-                                val onNavigateBack =
-                                    remember(navController) { { navController.popBackStack(); Unit } }
-                                val onNavigateToProfiles =
-                                    remember(navController) { { navController.navigate("profiles") } }
+                                composable("admin") {
+                                    val onNavigateBack =
+                                        remember(navController) { { navController.popBackStack(); Unit } }
+                                    val onNavigateToProfiles =
+                                        remember(navController) { { navController.navigate("profiles") } }
 
-                                AdminDashboardScreen(
-                                    viewModel = viewModel,
-                                    onNavigateBack = onNavigateBack,
-                                    onNavigateToProfiles = onNavigateToProfiles
-                                )
-                            }
+                                    AdminDashboardScreen(
+                                        viewModel = viewModel,
+                                        onNavigateBack = onNavigateBack,
+                                        onNavigateToProfiles = onNavigateToProfiles
+                                    )
+                                }
 
-                            composable("profiles") {
-                                // FIX: Added '; Unit' here as well
-                                val onNavigateBack =
-                                    remember(navController) { { navController.popBackStack(); Unit } }
+                                composable("profiles") {
+                                    val onNavigateBack =
+                                        remember(navController) { { navController.popBackStack(); Unit } }
 
-                                ProfileManagerScreen(
-                                    viewModel = viewModel,
-                                    onNavigateBack = onNavigateBack
-                                )
+                                    ProfileManagerScreen(
+                                        viewModel = viewModel,
+                                        onNavigateBack = onNavigateBack
+                                    )
+                                }
                             }
                         }
                     }
-                }
+                } // 👉 CLOSE THE SURFACE HERE
             }
         }
     }

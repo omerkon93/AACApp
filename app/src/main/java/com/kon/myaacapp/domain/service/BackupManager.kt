@@ -83,13 +83,34 @@ class BackupManager(
         scope.launch {
             val success = withContext(Dispatchers.IO) {
                 backupService.importDatabase(
-                    contentResolver,
-                    uri,
+                    contentResolver = contentResolver,
+                    uri = uri,
                 )
             }
 
             if (success) {
+                /*
+                 * Load the imported profiles first because profile JSON is the
+                 * authoritative source for repeated tile placements.
+                 */
                 profileRepository.reload()
+
+                /*
+                 * Salvage any legacy Room tiles and placements contained in an
+                 * older backup. This requires an active imported profile.
+                 */
+                repository.completeLegacyMigration()
+
+                /*
+                 * Migration may have modified a profile, so reload the final
+                 * persisted profile state.
+                 */
+                profileRepository.reload()
+
+                /*
+                 * Finally reload shared tile definitions. Normal repository
+                 * reload must not repopulate or alter profile layouts.
+                 */
                 repository.reload()
             }
 

@@ -75,6 +75,7 @@ import com.kon.myaacapp.R
 import com.kon.myaacapp.domain.model.CombinedTile
 import com.kon.myaacapp.domain.model.TileType
 import com.kon.myaacapp.domain.service.Gender
+import com.kon.myaacapp.ui.theme.FitzgeraldTileContent
 import com.kon.myaacapp.ui.theme.resolveFitzgeraldColor
 import java.io.File
 
@@ -231,16 +232,14 @@ fun SentenceBar(
     onSettingsClick: () -> Unit,
     modifier: Modifier = Modifier.Companion
 ) {
-    val rowModifier = remember {
-        Modifier
-            .background(Color(0xFFEEEEEE), RoundedCornerShape(16.dp))
-            .padding(8.dp)
-    }
-    val settingsButtonModifier = remember {
-        Modifier
-            .size(48.dp)
-            .background(Color.White, CircleShape)
-    }
+    val rowModifier = Modifier
+        .background(MaterialTheme.colorScheme.surfaceVariant, RoundedCornerShape(16.dp))
+        .padding(8.dp)
+
+    val settingsButtonModifier = Modifier
+        .size(48.dp)
+        .background(MaterialTheme.colorScheme.surface, CircleShape)
+
     val tileModifier = remember { Modifier.size(86.dp) }
 
     Row(
@@ -323,7 +322,8 @@ fun SentenceBar(
                             textAlign = TextAlign.Center,
                             maxLines = 1,
                             overflow = TextOverflow.Ellipsis,
-                            modifier = Modifier.fillMaxWidth()
+                            modifier = Modifier.fillMaxWidth(),
+                            color = FitzgeraldTileContent
                         )
                     }
                 }
@@ -339,7 +339,7 @@ fun SentenceBar(
             Icon(
                 imageVector = Icons.Default.Settings,
                 contentDescription = "Admin Settings",
-                tint = Color.Gray
+                tint = MaterialTheme.colorScheme.onSurface
             )
         }
     }
@@ -590,7 +590,8 @@ fun TileUI(
                     textAlign = TextAlign.Center,
                     maxLines = 1,
                     overflow = TextOverflow.Ellipsis,
-                    modifier = Modifier.fillMaxWidth()
+                    modifier = Modifier.fillMaxWidth(),
+                    color = FitzgeraldTileContent
                 )
             }
 
@@ -609,7 +610,8 @@ fun TileUI(
                         .align(Alignment.TopEnd)
                         .padding(4.dp)
                         .size(18.dp),
-                    tint = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.5f)
+                    // 👉 CHANGE THIS LINE BELOW TO MAKE IT DARKER 👈
+                    tint = FitzgeraldTileContent
                 )
             }
         }

@@ -12,14 +12,14 @@ import kotlinx.coroutines.flow.SharingStarted
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.flow.combine
+import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.flow.stateIn
 import kotlinx.coroutines.flow.update
-import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 import kotlinx.serialization.json.Json
-import java.util.zip.ZipInputStream
 import java.io.File
 import java.util.UUID
+import java.util.zip.ZipInputStream
 
 class ProfileRepository(
     private val context: Context,
@@ -68,21 +68,13 @@ class ProfileRepository(
         initialValue = null,
     )
 
-    init {
-        scope.launch(Dispatchers.IO) {
+    suspend fun reload() =
+        withContext(Dispatchers.IO) {
             ensureProfilesDirectory()
             loadProfilesSync()
             bootstrapDefaultProfileSync()
+            ensureValidActiveProfile()
         }
-    }
-
-    fun reload() {
-        scope.launch(Dispatchers.IO) {
-            ensureProfilesDirectory()
-            loadProfilesSync()
-            bootstrapDefaultProfileSync()
-        }
-    }
 
     private fun ensureProfilesDirectory() {
         if (!profilesDir.exists() && !profilesDir.mkdirs()) {
@@ -126,30 +118,91 @@ class ProfileRepository(
         _profiles.value = loadedProfiles
     }
 
-    private fun bootstrapDefaultProfileSync() {
+    private suspend fun bootstrapDefaultProfileSync() {
         if (_profiles.value.isNotEmpty()) {
             return
         }
 
-        val defaultProfile = UserProfile(
-            profileId = DEFAULT_PROFILE_ID,
-            profileName = context.getString(
-                R.string.default_profile_name
-            ),
-            activeLanguageCode = DEFAULT_LANGUAGE_CODE,
-        )
+        /*
+         * If no extracted profile was found, load the complete factory profile
+         * directly from initial_data.zip.
+         *
+         * This preserves every profile placement, including repeated shared
+         * tiles such as more, done, pita, cookie, yogurt, and open.
+         */
+        val factoryProfile = loadFactoryDefaultProfile()
+
+        val defaultProfile = if (factoryProfile != null) {
+            factoryProfile.copy(
+                profileId = DEFAULT_PROFILE_ID,
+                profileName = context.getString(
+                    R.string.default_profile_name
+                ),
+            )
+        } else {
+            /*
+             * Last-resort fallback. This should happen only when the factory
+             * profile is missing or invalid.
+             */
+            Log.e(
+                TAG,
+                "Factory profile unavailable; creating an empty fallback profile",
+            )
+
+            UserProfile(
+                profileId = DEFAULT_PROFILE_ID,
+                profileName = context.getString(
+                    R.string.default_profile_name
+                ),
+                activeLanguageCode = DEFAULT_LANGUAGE_CODE,
+                layout = emptyMap(),
+            )
+        }
 
         if (!saveProfileInternal(defaultProfile)) {
-            return
+            error("Failed to create the default profile")
         }
 
         _profiles.value = listOf(defaultProfile)
 
-        scope.launch {
-            settingsRepository.updateActiveProfileId(
-                DEFAULT_PROFILE_ID
-            )
+        settingsRepository.updateActiveProfileId(
+            DEFAULT_PROFILE_ID
+        )
+
+        Log.d(
+            TAG,
+            "Bootstrapped default profile with " +
+                    "${defaultProfile.layout.size} layout entries",
+        )
+    }
+
+    private suspend fun ensureValidActiveProfile() {
+        val availableProfiles = _profiles.value
+
+        if (availableProfiles.isEmpty()) {
+            return
         }
+
+        val storedProfileId =
+            settingsRepository.activeProfileIdFlow.first()
+
+        val storedProfileExists =
+            availableProfiles.any { profile ->
+                profile.profileId == storedProfileId
+            }
+
+        if (storedProfileExists) {
+            return
+        }
+
+        val fallbackProfile =
+            availableProfiles.find { profile ->
+                profile.profileId == DEFAULT_PROFILE_ID
+            } ?: availableProfiles.first()
+
+        settingsRepository.updateActiveProfileId(
+            fallbackProfile.profileId
+        )
     }
 
     suspend fun createProfile(

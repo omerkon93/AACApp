@@ -1,6 +1,7 @@
 package com.kon.myaacapp.ui.admin.grid
 
 import android.content.res.Configuration
+import com.kon.myaacapp.ui.theme.FitzgeraldTileContent
 import androidx.compose.animation.core.animateFloatAsState
 import androidx.compose.foundation.Image
 import androidx.compose.foundation.background
@@ -364,7 +365,8 @@ fun AdminTileUI(
                     textAlign = TextAlign.Center,
                     maxLines = 1,
                     overflow = TextOverflow.Ellipsis,
-                    modifier = Modifier.fillMaxWidth()
+                    modifier = Modifier.fillMaxWidth(),
+                    color = FitzgeraldTileContent
                 )
             }
 
@@ -383,7 +385,7 @@ fun AdminTileUI(
                         .align(Alignment.TopEnd)
                         .padding(6.dp)
                         .size(16.dp),
-                    tint = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.6f)
+                    tint = FitzgeraldTileContent
                 )
             }
 

@@ -6,6 +6,8 @@ import com.kon.myaacapp.data.repository.AACRepository
 import com.kon.myaacapp.data.repository.ProfileRepository
 import com.kon.myaacapp.service.backup.BackupService
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.flow.first
+import kotlinx.coroutines.flow.filterNotNull
 import kotlinx.coroutines.withContext
 import java.io.File
 
@@ -23,10 +25,53 @@ class AppStartupCoordinator(
             runCatching {
                 installInitialDataIfRequired()
 
+                /*
+                 * The imported profile JSON is authoritative for layout,
+                 * including repeated/shared tile placements.
+                 */
+                profileRepository.reload()
+
+                val loadedProfile =
+                    profileRepository.activeProfile
+                        .filterNotNull()
+                        .first()
+
+                Log.d(
+                    TAG,
+                    "Initial active profile: ${loadedProfile.profileId}, " +
+                            "layout entries: ${loadedProfile.layout.size}",
+                )
+
                 repository.completeLegacyMigration()
 
+
+                /*
+                 * Legacy migration may have updated the profile on disk.
+                 */
                 profileRepository.reload()
+
+
+                val finalProfile =
+                    profileRepository.activeProfile
+                        .filterNotNull()
+                        .first()
+
+                Log.d(
+                    TAG,
+                    "Final active profile: ${finalProfile.profileId}, " +
+                            "layout entries: ${finalProfile.layout.size}",
+                )
+
+                /*
+                 * Load shared definitions after the authoritative profile layout.
+                 */
                 repository.reload()
+
+                Log.d(
+                    TAG,
+                    "Definitions loaded: " +
+                            "${repository.baseDefinitions.value.size}",
+                )
 
                 true
             }.getOrElse { error ->
