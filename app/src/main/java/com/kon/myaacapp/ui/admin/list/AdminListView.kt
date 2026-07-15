@@ -1,5 +1,9 @@
 package com.kon.myaacapp.ui.admin.list
 
+import android.Manifest
+import android.content.pm.PackageManager
+import androidx.activity.compose.rememberLauncherForActivityResult
+import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
@@ -18,6 +22,7 @@ import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
@@ -25,7 +30,9 @@ import androidx.compose.material.icons.filled.Add
 import androidx.compose.material.icons.filled.Delete
 import androidx.compose.material.icons.filled.Edit
 import androidx.compose.material.icons.filled.FilterList
+import androidx.compose.material.icons.filled.Mic
 import androidx.compose.material.icons.filled.Search
+import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Button
 import androidx.compose.material3.ButtonDefaults
 import androidx.compose.material3.Card
@@ -44,6 +51,7 @@ import androidx.compose.material3.OutlinedTextFieldDefaults
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Switch
 import androidx.compose.material3.Text
+import androidx.compose.material3.TextButton
 import androidx.compose.material3.rememberModalBottomSheetState
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.collectAsState
@@ -51,6 +59,7 @@ import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.produceState
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
@@ -58,13 +67,16 @@ import androidx.compose.ui.draw.clip
 import androidx.compose.ui.draw.scale
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.layout.ContentScale
+import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.platform.LocalWindowInfo
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import androidx.core.content.ContextCompat
 import coil.compose.AsyncImage
 import com.kon.myaacapp.AACViewModel
 import com.kon.myaacapp.R
@@ -73,8 +85,8 @@ import com.kon.myaacapp.domain.model.CombinedTile
 import com.kon.myaacapp.domain.model.TileType
 import com.kon.myaacapp.domain.model.toLegacyAACTile
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
-
 
 enum class MediaFilter { MISSING_AUDIO, MISSING_TTS, MISSING_IMAGE }
 enum class UsageFilter { LOW_USAGE, HIDDEN }
@@ -87,6 +99,32 @@ fun AdminListView(
     onDeleteTile: (AACTile) -> Unit
 ) {
     val allTiles by viewModel.allTiles.collectAsState()
+    val languageCode by viewModel.languageCode.collectAsState()
+
+    // Coroutine Scope to launch suspend audio functions safely
+    val scope = rememberCoroutineScope()
+    val audioService = remember(viewModel) { viewModel.audioService }
+    val context = LocalContext.current
+
+    // Quick-Record States
+    var quickRecordTile by remember { mutableStateOf<CombinedTile?>(null) }
+    var isRecording by remember { mutableStateOf(false) }
+    var tempAudioPath by remember { mutableStateOf<String?>(null) }
+
+    val recordPermissionLauncher = rememberLauncherForActivityResult(
+        contract = ActivityResultContracts.RequestPermission()
+    ) { isGranted ->
+        if (isGranted) {
+            quickRecordTile?.let { tile ->
+                val newPath = audioService.startRecording(
+                    languageCode = languageCode,
+                    tileId = tile.definition.id
+                )
+                tempAudioPath = newPath
+                isRecording = true
+            }
+        }
+    }
 
     // UI States
     var searchQuery by remember { mutableStateOf("") }
@@ -94,9 +132,7 @@ fun AdminListView(
 
     // Filter Sets
     var selectedMediaFilters by remember { mutableStateOf(setOf<MediaFilter>()) }
-    var selectedTypes: Set<TileType> by remember {
-        mutableStateOf(emptySet())
-    }
+    var selectedTypes: Set<TileType> by remember { mutableStateOf(emptySet()) }
     var selectedUsageFilters by remember { mutableStateOf(setOf<UsageFilter>()) }
 
     val activeFilterCount = selectedMediaFilters.size + selectedTypes.size + selectedUsageFilters.size
@@ -105,8 +141,6 @@ fun AdminListView(
     var showFilterSheet by remember { mutableStateOf(false) }
     val sheetState = rememberModalBottomSheetState(skipPartiallyExpanded = true)
 
-    // OPTIMIZATION: produceState pushes the heavy filtering off the main UI thread onto the CPU-optimized
-    // Dispatchers.Default. This prevents keyboard lag when typing in the search bar.
     val filteredTiles by produceState(
         initialValue = allTiles,
         allTiles,
@@ -117,7 +151,6 @@ fun AdminListView(
         selectedUsageFilters
     ) {
         withContext(Dispatchers.Default) {
-            // Early exit if no filters are applied
             if (searchQuery.isBlank() && (!isFilterActive || activeFilterCount == 0)) {
                 value = allTiles
                 return@withContext
@@ -134,45 +167,35 @@ fun AdminListView(
             val needsHidden = selectedUsageFilters.contains(UsageFilter.HIDDEN)
             val needsLowUsage = selectedUsageFilters.contains(UsageFilter.LOW_USAGE)
 
-            // OPTIMIZATION: Single-pass O(N) evaluation instead of 7 sequential O(N) list copies.
             value = allTiles.filter { tile ->
-                // 1. Search Check
                 if (query.isNotBlank() &&
                     !tile.definition.label.lowercase().contains(query) &&
                     !tile.definition.ttsText.lowercase().contains(query)
-                ) {
-                    return@filter false
-                }
+                ) { return@filter false }
 
-                // 2. Media Filter Check
                 if (filterMedia) {
                     var mediaMatch = false
                     if (needsAudio && tile.definition.audioUri == null) mediaMatch = true
                     if (needsTts && tile.definition.ttsText.isBlank()) mediaMatch = true
-                    if (needsImage && tile.definition.imageUri == null && tile.definition.emoji == null) mediaMatch =
-                        true
+                    if (needsImage && tile.definition.imageUri == null && tile.definition.emoji == null) mediaMatch = true
                     if (!mediaMatch) return@filter false
                 }
 
-                // 3. Type Filter Check
                 if (filterTypes && !selectedTypes.contains(tile.definition.resolvedType)) {
                     return@filter false
                 }
 
-                // 4. Usage Filter Check
                 if (filterUsage) {
                     var usageMatch = false
                     if (needsHidden && tile.layoutState.isHidden) usageMatch = true
                     if (needsLowUsage && tile.layoutState.clickCount < 5) usageMatch = true
                     if (!usageMatch) return@filter false
                 }
-
-                true // Item passed all active filters
+                true
             }
         }
     }
 
-    // Memoize the master "Add" button click
     val onAddClick = remember(onEditTile) { { onEditTile(null) } }
 
     Box(modifier = Modifier.fillMaxSize()) {
@@ -195,12 +218,8 @@ fun AdminListView(
                         shape = RoundedCornerShape(16.dp),
                         singleLine = true,
                         colors = OutlinedTextFieldDefaults.colors(
-                            unfocusedContainerColor = MaterialTheme.colorScheme.surfaceVariant.copy(
-                                alpha = 0.5f
-                            ),
-                            focusedContainerColor = MaterialTheme.colorScheme.surfaceVariant.copy(
-                                alpha = 0.8f
-                            ),
+                            unfocusedContainerColor = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.5f),
+                            focusedContainerColor = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.8f),
                             unfocusedBorderColor = Color.Transparent,
                             focusedBorderColor = MaterialTheme.colorScheme.primary
                         )
@@ -220,7 +239,7 @@ fun AdminListView(
                                 containerColor = if (activeFilterCount > 0 && isFilterActive) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.primaryContainer,
                                 contentColor = if (activeFilterCount > 0 && isFilterActive) MaterialTheme.colorScheme.onPrimary else MaterialTheme.colorScheme.onPrimaryContainer
                             ),
-                            shape = androidx.compose.foundation.shape.RoundedCornerShape(100.dp)
+                            shape = RoundedCornerShape(100.dp)
                         ) {
                             Icon(
                                 Icons.Default.FilterList,
@@ -237,22 +256,13 @@ fun AdminListView(
                         }
 
                         Surface(
-                            shape = androidx.compose.foundation.shape.RoundedCornerShape(100.dp),
+                            shape = RoundedCornerShape(100.dp),
                             color = MaterialTheme.colorScheme.surfaceVariant,
-                            modifier = Modifier.clip(
-                                androidx.compose.foundation.shape.RoundedCornerShape(
-                                    100.dp
-                                )
-                            )
+                            modifier = Modifier.clip(RoundedCornerShape(100.dp))
                         ) {
                             Row(
                                 verticalAlignment = Alignment.CenterVertically,
-                                modifier = Modifier.padding(
-                                    start = 16.dp,
-                                    end = 8.dp,
-                                    top = 4.dp,
-                                    bottom = 4.dp
-                                )
+                                modifier = Modifier.padding(start = 16.dp, end = 8.dp, top = 4.dp, bottom = 4.dp)
                             ) {
                                 Text(
                                     stringResource(R.string.filter_active),
@@ -272,33 +282,22 @@ fun AdminListView(
 
             LazyColumn(
                 modifier = Modifier.weight(1f),
-                contentPadding = PaddingValues(
-                    start = 16.dp,
-                    end = 16.dp,
-                    top = 8.dp,
-                    bottom = 80.dp
-                ),
+                contentPadding = PaddingValues(start = 16.dp, end = 16.dp, top = 8.dp, bottom = 80.dp),
                 verticalArrangement = Arrangement.spacedBy(8.dp)
             ) {
                 items(
                     items = filteredTiles,
                     key = { it.definition.id }
                 ) { tile ->
-                    // OPTIMIZATION: Memoize row-specific actions based on the unique tile ID.
-                    // This prevents LazyColumn from recreating lambdas and destroying "Strong Skipping Mode".
-                    val editAction = remember(
-                        tile.definition.id,
-                        onEditTile
-                    ) { { onEditTile(tile.toLegacyAACTile()) } }
-                    val deleteAction = remember(
-                        tile.definition.id,
-                        onDeleteTile
-                    ) { { onDeleteTile(tile.toLegacyAACTile()) } }
+                    val editAction = remember(tile.definition.id, onEditTile) { { onEditTile(tile.toLegacyAACTile()) } }
+                    val deleteAction = remember(tile.definition.id, onDeleteTile) { { onDeleteTile(tile.toLegacyAACTile()) } }
+                    val recordAction = remember(tile.definition.id) { { quickRecordTile = tile } }
 
                     AdminListRowItem(
                         tile = tile,
                         onEdit = editAction,
-                        onDelete = deleteAction
+                        onDelete = deleteAction,
+                        onQuickRecord = recordAction
                     )
                 }
             }
@@ -311,11 +310,7 @@ fun AdminListView(
                 .align(Alignment.BottomStart)
                 .padding(16.dp)
         ) {
-            Icon(
-                Icons.Default.Add,
-                contentDescription = stringResource(R.string.add),
-                tint = Color.White
-            )
+            Icon(Icons.Default.Add, contentDescription = stringResource(R.string.add), tint = Color.White)
         }
     }
 
@@ -325,8 +320,6 @@ fun AdminListView(
             sheetState = sheetState,
             containerColor = MaterialTheme.colorScheme.surface
         ) {
-            // OPTIMIZATION: Fixes the deprecation warning. Safely maps physical container pixels to DP
-            // accounting for split-screen and multi-window scenarios perfectly.
             val density = LocalDensity.current
             val windowInfo = LocalWindowInfo.current
             val maxScrollHeight = remember(density, windowInfo) {
@@ -353,7 +346,6 @@ fun AdminListView(
                         .verticalScroll(rememberScrollState()),
                     verticalArrangement = Arrangement.spacedBy(16.dp)
                 ) {
-                    // SECTION 1: MEDIA STATUS
                     Column {
                         Text(
                             stringResource(R.string.filter_section_media),
@@ -386,7 +378,6 @@ fun AdminListView(
 
                     HorizontalDivider(color = MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.5f))
 
-                    // SECTION 2: TILE TYPE
                     Column {
                         Text(
                             stringResource(R.string.filter_section_type),
@@ -413,7 +404,6 @@ fun AdminListView(
 
                     HorizontalDivider(color = MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.5f))
 
-                    // SECTION 3: TILE USAGE
                     Column {
                         Text(
                             stringResource(R.string.filter_section_usage),
@@ -438,7 +428,6 @@ fun AdminListView(
                     }
                 }
 
-                // Sticky Footer Buttons
                 Row(
                     modifier = Modifier
                         .fillMaxWidth()
@@ -465,17 +454,133 @@ fun AdminListView(
             }
         }
     }
+
+    if (quickRecordTile != null) {
+        val tileToUpdate = quickRecordTile!!
+        AlertDialog(
+            onDismissRequest = {
+                if (isRecording) {
+                    scope.launch { audioService.stopRecording() }
+                    isRecording = false
+                }
+                quickRecordTile = null
+                tempAudioPath = null
+            },
+            title = {
+                Text(
+                    text = "הקלטה מהירה עבור: ${tileToUpdate.definition.label}",
+                    textAlign = TextAlign.Center,
+                    modifier = Modifier.fillMaxWidth(),
+                    fontWeight = FontWeight.Bold
+                )
+            },
+            text = {
+                Column(
+                    horizontalAlignment = Alignment.CenterHorizontally,
+                    verticalArrangement = Arrangement.spacedBy(16.dp),
+                    modifier = Modifier.fillMaxWidth()
+                ) {
+                    Text(
+                        text = if (isRecording) "מקליט כעת... לחץ לעצירה" else "לחץ על המיקרופון כדי להתחיל להקליט",
+                        style = MaterialTheme.typography.bodyMedium,
+                        textAlign = TextAlign.Center
+                    )
+
+                    IconButton(
+                        onClick = {
+                            if (!isRecording) {
+                                // 👉 1. Check if we have microphone permission
+                                val hasPermission = ContextCompat.checkSelfPermission(
+                                    context,
+                                    Manifest.permission.RECORD_AUDIO
+                                ) == PackageManager.PERMISSION_GRANTED
+
+                                if (hasPermission) {
+                                    // 👉 2. We have permission, start recording
+                                    val newPath = audioService.startRecording(
+                                        languageCode = languageCode,
+                                        tileId = tileToUpdate.definition.id
+                                    )
+                                    tempAudioPath = newPath
+                                    isRecording = true
+                                } else {
+                                    // 👉 3. No permission yet, ask the user
+                                    recordPermissionLauncher.launch(Manifest.permission.RECORD_AUDIO)
+                                }
+                            } else {
+                                scope.launch { audioService.stopRecording() }
+                                isRecording = false
+                            }
+                        },
+                        modifier = Modifier
+                            .size(72.dp)
+                            .background(
+                                if (isRecording) MaterialTheme.colorScheme.errorContainer else MaterialTheme.colorScheme.primaryContainer,
+                                CircleShape
+                            )
+                    ) {
+                        Icon(
+                            imageVector = if (isRecording) Icons.Default.Delete else Icons.Default.Mic,
+                            contentDescription = if (isRecording) "עצור הקלטה" else "התחל להקליט",
+                            tint = if (isRecording) MaterialTheme.colorScheme.error else MaterialTheme.colorScheme.primary,
+                            modifier = Modifier.size(36.dp)
+                        )
+                    }
+
+                    if (tempAudioPath != null && !isRecording) {
+                        Button(
+                            onClick = { viewModel.playPreviewAudio(tileToUpdate.definition.ttsText, tempAudioPath) },
+                            colors = ButtonDefaults.buttonColors(containerColor = MaterialTheme.colorScheme.secondaryContainer)
+                        ) {
+                            Text("השמע בדיקה", color = MaterialTheme.colorScheme.onSecondaryContainer)
+                        }
+                    }
+                }
+            },
+            confirmButton = {
+                Button(
+                    onClick = {
+                        tempAudioPath?.let { path ->
+                            viewModel.updateTile(
+                                tile = tileToUpdate.toLegacyAACTile().copy(
+                                    audioUri = path
+                                )
+                            )
+                        }
+                        quickRecordTile = null
+                        tempAudioPath = null
+                    },
+                    enabled = tempAudioPath != null && !isRecording
+                ) {
+                    Text("שמור הקלטה")
+                }
+            },
+            dismissButton = {
+                TextButton(
+                    onClick = {
+                        if (isRecording) {
+                            scope.launch { audioService.stopRecording() }
+                            isRecording = false
+                        }
+                        quickRecordTile = null
+                        tempAudioPath = null
+                    }
+                ) {
+                    Text("ביטול")
+                }
+            }
+        )
+    }
 }
 
 @Composable
 fun FilterCheckboxRow(label: String, isChecked: Boolean, onCheckedChange: (Boolean) -> Unit) {
-    // Memoize the row click to prevent lambda reallocation on checkbox toggles
     val onRowClick = remember(isChecked, onCheckedChange) { { onCheckedChange(!isChecked) } }
 
     Row(
         modifier = Modifier
             .fillMaxWidth()
-            .clip(androidx.compose.foundation.shape.RoundedCornerShape(8.dp))
+            .clip(RoundedCornerShape(8.dp))
             .clickable(onClick = onRowClick)
             .padding(vertical = 8.dp, horizontal = 8.dp),
         verticalAlignment = Alignment.CenterVertically
@@ -490,11 +595,12 @@ fun FilterCheckboxRow(label: String, isChecked: Boolean, onCheckedChange: (Boole
 fun AdminListRowItem(
     tile: CombinedTile,
     onEdit: () -> Unit,
-    onDelete: () -> Unit
+    onDelete: () -> Unit,
+    onQuickRecord: () -> Unit
 ) {
     Card(
         modifier = Modifier.fillMaxWidth(),
-        shape = androidx.compose.foundation.shape.RoundedCornerShape(12.dp),
+        shape = RoundedCornerShape(12.dp),
         colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surfaceContainerLowest),
         border = BorderStroke(1.dp, MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.5f)),
         elevation = CardDefaults.cardElevation(defaultElevation = 1.dp)
@@ -517,6 +623,13 @@ fun AdminListRowItem(
                     Icons.Default.Edit,
                     contentDescription = "Edit",
                     tint = MaterialTheme.colorScheme.onSurfaceVariant
+                )
+            }
+            IconButton(onClick = onQuickRecord) {
+                Icon(
+                    imageVector = Icons.Default.Mic,
+                    contentDescription = "Quick Record",
+                    tint = MaterialTheme.colorScheme.primary
                 )
             }
 
@@ -546,7 +659,7 @@ fun AdminListRowItem(
             Box(
                 modifier = Modifier
                     .size(56.dp)
-                    .clip(androidx.compose.foundation.shape.RoundedCornerShape(8.dp))
+                    .clip(RoundedCornerShape(8.dp))
                     .background(MaterialTheme.colorScheme.surfaceVariant),
                 contentAlignment = Alignment.Center
             ) {
