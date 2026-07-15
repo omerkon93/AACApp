@@ -230,7 +230,7 @@ fun SentenceBar(
     sentence: List<CombinedTile>,
     userGender: Gender,
     onSettingsClick: () -> Unit,
-    modifier: Modifier = Modifier.Companion
+    modifier: Modifier = Modifier
 ) {
     val rowModifier = Modifier
         .background(MaterialTheme.colorScheme.surfaceVariant, RoundedCornerShape(16.dp))
@@ -352,7 +352,7 @@ fun ActionBar(
     onBackspace: () -> Unit,
     onBack: () -> Unit,
     canGoBack: Boolean,
-    modifier: Modifier = Modifier.Companion
+    modifier: Modifier = Modifier
 ) {
     Row(
         modifier = modifier,
@@ -404,7 +404,7 @@ fun ActionButton(
     iconTint: Color,
     onClick: () -> Unit,
     enabled: Boolean,
-    modifier: Modifier = Modifier.Companion
+    modifier: Modifier = Modifier
 ) {
     Button(
         onClick = onClick,
@@ -610,7 +610,6 @@ fun TileUI(
                         .align(Alignment.TopEnd)
                         .padding(4.dp)
                         .size(18.dp),
-                    // 👉 CHANGE THIS LINE BELOW TO MAKE IT DARKER 👈
                     tint = FitzgeraldTileContent
                 )
             }
