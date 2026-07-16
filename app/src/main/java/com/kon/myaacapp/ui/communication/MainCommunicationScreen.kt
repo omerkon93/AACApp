@@ -6,6 +6,7 @@ import androidx.activity.compose.BackHandler
 import androidx.compose.foundation.Image
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
+import androidx.compose.material.icons.filled.Home
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
@@ -85,6 +86,7 @@ fun MainCommunicationScreen(
     onNavigateToCategory: (String) -> Unit,
     onBackClick: () -> Unit,
     onNavigateToAdmin: () -> Unit,
+    onHomeClick: () -> Unit // <-- Added parameter
 ) {
     val tiles by viewModel.currentTiles.collectAsState()
     val sentence by viewModel.selectedSentence.collectAsState()
@@ -96,8 +98,6 @@ fun MainCommunicationScreen(
         viewModel.navigateBack()
     }
 
-    // OPTIMIZATION: Memoize lambdas to prevent MainCommunicationScreenContent from recomposing
-    // merely because a new function object was allocated.
     val onSpeak = remember(viewModel) { { viewModel.speakSentence() } }
     val onClear = remember(viewModel) { { viewModel.clearSentence() } }
     val onBackspace = remember(viewModel) { { viewModel.backspaceSentence() } }
@@ -125,8 +125,148 @@ fun MainCommunicationScreen(
         onBackspace = onBackspace,
         onTileClick = onTileClick,
         onBackClick = handleBackClick,
-        onNavigateToAdmin = onNavigateToAdmin
+        onNavigateToAdmin = onNavigateToAdmin,
+        onHomeClick = onHomeClick // <-- Pass it down
     )
+}
+
+@Composable
+fun MainCommunicationScreenContent(
+    tiles: List<CombinedTile>,
+    sentence: List<CombinedTile>,
+    currentParentId: String?,
+    userGender: Gender,
+    langCode: String,
+    onSpeak: () -> Unit,
+    onClear: () -> Unit,
+    onBackspace: () -> Unit,
+    onTileClick: (CombinedTile) -> Unit,
+    onBackClick: () -> Unit,
+    onNavigateToAdmin: () -> Unit,
+    onHomeClick: () -> Unit // <-- Added parameter
+) {
+    var showPinDialog by remember { mutableStateOf(false) }
+
+    if (showPinDialog) {
+        AdminPinDialog(
+            onDismiss = { showPinDialog = false },
+            onConfirm = {
+                showPinDialog = false
+                onNavigateToAdmin()
+            }
+        )
+    }
+
+    // Changed to fillMaxSize() without padding at the very bottom
+    // so the home bar can sit flush against the bottom edge.
+    Column(
+        modifier = Modifier.fillMaxSize()
+    ) {
+        // Wrap the top content in a Column with padding
+        Column(
+            modifier = Modifier
+                .weight(1f) // Takes up all space above the bottom bar
+                .padding(8.dp)
+        ) {
+            SentenceBar(
+                sentence = sentence,
+                userGender = userGender,
+                onSettingsClick = { showPinDialog = true },
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .height(100.dp)
+                    .padding(bottom = 8.dp)
+            )
+
+            ActionBar(
+                onSpeak = onSpeak,
+                onClear = onClear,
+                onBackspace = onBackspace,
+                onBack = onBackClick,
+                canGoBack = currentParentId != null,
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .padding(bottom = 8.dp)
+            )
+
+            val orientation = LocalConfiguration.current.orientation
+            val columns = if (orientation == Configuration.ORIENTATION_LANDSCAPE) 6 else 3
+            val aspectRatio = if (orientation == Configuration.ORIENTATION_LANDSCAPE) 1.2f else 1.0f
+
+            val maxTileIndex = tiles.maxOfOrNull { it.layoutState.cellIndex } ?: 0
+            val minCells = if (orientation == Configuration.ORIENTATION_LANDSCAPE) 24 else 12
+            val totalCellsToRender = maxOf(minCells, maxTileIndex + 1)
+
+            val tileMap = remember(tiles) { tiles.associateBy { it.layoutState.cellIndex } }
+
+            LazyVerticalGrid(
+                columns = GridCells.Fixed(columns),
+                modifier = Modifier.fillMaxSize(),
+                contentPadding = PaddingValues(bottom = 8.dp),
+                horizontalArrangement = Arrangement.spacedBy(8.dp),
+                verticalArrangement = Arrangement.spacedBy(8.dp)
+            ) {
+                items(
+                    count = totalCellsToRender,
+                    key = { index -> tileMap[index]?.definition?.id ?: "empty_cell_$index" }
+                ) { index ->
+                    val tile = tileMap[index]
+
+                    if (tile != null) {
+                        AACTileItem(
+                            tile = tile,
+                            userGender = userGender,
+                            orientation = orientation,
+                            onClick = { onTileClick(tile) }
+                        )
+                    } else {
+                        Spacer(
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .aspectRatio(aspectRatio)
+                        )
+                    }
+                }
+            }
+        }
+
+        // Add the new bottom bar here
+        BottomHomeBar(onHomeClick = onHomeClick)
+    }
+}
+
+@Composable
+fun BottomHomeBar(
+    onHomeClick: () -> Unit,
+    modifier: Modifier = Modifier
+) {
+    Box(
+        modifier = modifier
+            .fillMaxWidth()
+            .background(
+                color = Color(0xFF2D2F33), // Dark gray matching the screenshot
+                shape = RoundedCornerShape(topStart = 16.dp, topEnd = 16.dp)
+            )
+            .padding(vertical = 12.dp),
+        contentAlignment = Alignment.Center
+    ) {
+        Button(
+            onClick = onHomeClick,
+            colors = ButtonDefaults.buttonColors(containerColor = Color.White),
+            shape = RoundedCornerShape(12.dp),
+            contentPadding = PaddingValues(0.dp),
+            modifier = Modifier
+                .width(80.dp)
+                .height(48.dp)
+        ) {
+            Icon(
+                imageVector = Icons.Default.Home,
+                contentDescription = "Home",
+                tint = Color.Black,
+                modifier = Modifier.size(32.dp)
+            )
+        }
+    }
 }
 
 @Composable

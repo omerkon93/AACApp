@@ -74,25 +74,29 @@ class MainActivity : ComponentActivity() {
                                 modifier = Modifier.padding(innerPadding)
                             ) {
                                 composable("grid") {
-                                    val onNavigateToCategory =
-                                        remember(viewModel) {
-                                            { id: String ->
-                                                viewModel.setCategory(
-                                                    id
-                                                )
-                                            }
-                                        }
+                                    val onNavigateToCategory: (String) -> Unit = remember(viewModel) {
+                                        { id -> viewModel.setCategory(id) }
+                                    }
 
-                                    val onBackClick =
-                                        remember(navController) { { navController.popBackStack(); Unit } }
-                                    val onNavigateToAdmin =
-                                        remember(navController) { { navController.navigate("admin") } }
+                                    val onBackClick: () -> Unit = remember(navController) {
+                                        { navController.popBackStack() }
+                                    }
+
+                                    val onNavigateToAdmin: () -> Unit = remember(navController) {
+                                        { navController.navigate("admin") }
+                                    }
+
+                                    // 👉 1. Use resetToHome() which already exists in your ViewModel!
+                                    val onHomeClick: () -> Unit = remember(viewModel) {
+                                        { viewModel.resetToHome() }
+                                    }
 
                                     MainCommunicationScreen(
                                         viewModel = viewModel,
                                         onNavigateToCategory = onNavigateToCategory,
                                         onBackClick = onBackClick,
-                                        onNavigateToAdmin = onNavigateToAdmin
+                                        onNavigateToAdmin = onNavigateToAdmin,
+                                        onHomeClick = onHomeClick // 👉 2. Pass it exactly like this
                                     )
                                 }
 
@@ -121,7 +125,7 @@ class MainActivity : ComponentActivity() {
                             }
                         }
                     }
-                } // 👉 CLOSE THE SURFACE HERE
+                }
             }
         }
     }
