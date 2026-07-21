@@ -20,7 +20,27 @@ import java.io.IOException
 // Kept at the top level as per DataStore best practices to guarantee a single instance
 val Context.dataStore: DataStore<Preferences> by preferencesDataStore(name = "settings")
 
-class SettingsRepository(private val context: Context) {
+class SettingsRepository(
+    private val context: Context
+) {
+    private companion object {
+        const val FACTORY_GRID_COLUMNS = 3
+        const val FACTORY_GRID_ROWS = 5
+
+        const val FACTORY_GRID_TILE_SCALE = 1.35f
+        const val FACTORY_GRID_TILE_CONTAINER_SCALE = 0.95f
+
+        const val FACTORY_BAR_TILE_IMAGE_SCALE = 1.0f
+        const val FACTORY_BAR_TILE_TITLE_SCALE = 1.0f
+
+        const val FACTORY_ACTION_BUTTON_SCALE = 1.0f
+
+        const val FACTORY_SHOW_SENTENCE_BAR = false
+        const val FACTORY_SHOW_BACK_BUTTON = true
+        const val FACTORY_SHOW_BACKSPACE_BUTTON = true
+        const val FACTORY_SHOW_SPEAK_BUTTON = true
+        const val FACTORY_HOME_IN_ACTION_BAR = true
+    }
 
     private object PreferencesKeys {
         val SPEAK_ON_TILE_PRESS = booleanPreferencesKey("speak_on_tile_press")
@@ -30,7 +50,6 @@ class SettingsRepository(private val context: Context) {
 
         // 👉 NEW LAYOUT SETTINGS KEYS
         val GRID_TILE_SCALE = floatPreferencesKey("grid_tile_scale")
-
         val GRID_TILE_CONTAINER_SCALE = floatPreferencesKey("grid_tile_container_scale")
         val BAR_TILE_IMAGE_SCALE = floatPreferencesKey("bar_tile_image_scale")
         val BAR_TILE_TITLE_SCALE = floatPreferencesKey("bar_tile_title_scale")
@@ -40,10 +59,45 @@ class SettingsRepository(private val context: Context) {
         val SHOW_BACKSPACE_BUTTON = booleanPreferencesKey("show_backspace_button")
         val SHOW_SPEAK_BUTTON = booleanPreferencesKey("show_speak_button")
         val HOME_IN_ACTION_BAR = booleanPreferencesKey("home_in_action_bar")
-
         val GRID_COLUMNS = intPreferencesKey("grid_columns")
-
         val GRID_ROWS = intPreferencesKey("grid_rows")
+
+        // Saved user-default layout settings
+        val DEFAULT_GRID_COLUMNS =
+            intPreferencesKey("default_grid_columns")
+
+        val DEFAULT_GRID_ROWS =
+            intPreferencesKey("default_grid_rows")
+
+        val DEFAULT_GRID_TILE_SCALE =
+            floatPreferencesKey("default_grid_tile_scale")
+
+        val DEFAULT_GRID_TILE_CONTAINER_SCALE =
+            floatPreferencesKey("default_grid_tile_container_scale")
+
+        val DEFAULT_BAR_TILE_IMAGE_SCALE =
+            floatPreferencesKey("default_bar_tile_image_scale")
+
+        val DEFAULT_BAR_TILE_TITLE_SCALE =
+            floatPreferencesKey("default_bar_tile_title_scale")
+
+        val DEFAULT_ACTION_BUTTON_SCALE =
+            floatPreferencesKey("default_action_button_scale")
+
+        val DEFAULT_SHOW_SENTENCE_BAR =
+            booleanPreferencesKey("default_show_sentence_bar")
+
+        val DEFAULT_SHOW_BACK_BUTTON =
+            booleanPreferencesKey("default_show_back_button")
+
+        val DEFAULT_SHOW_BACKSPACE_BUTTON =
+            booleanPreferencesKey("default_show_backspace_button")
+
+        val DEFAULT_SHOW_SPEAK_BUTTON =
+            booleanPreferencesKey("default_show_speak_button")
+
+        val DEFAULT_HOME_IN_ACTION_BAR =
+            booleanPreferencesKey("default_home_in_action_bar")
     }
 
     // OPTIMIZATION: Unified upstream flow.
@@ -94,15 +148,32 @@ class SettingsRepository(private val context: Context) {
         .distinctUntilChanged()
 
     // 👉 NEW LAYOUT SETTINGS FLOWS
-    val gridTileScaleFlow: Flow<Float> = basePreferencesFlow
-        .map { preferences ->
-            preferences[PreferencesKeys.GRID_TILE_SCALE] ?: 1.0f
-        }
-        .distinctUntilChanged()
 
     val gridTileContainerScaleFlow: Flow<Float> = basePreferencesFlow
         .map { preferences ->
-            preferences[PreferencesKeys.GRID_TILE_CONTAINER_SCALE] ?: 1.0f
+            preferences[PreferencesKeys.GRID_TILE_CONTAINER_SCALE]
+                ?: FACTORY_GRID_TILE_CONTAINER_SCALE
+        }
+        .distinctUntilChanged()
+
+    val gridTileScaleFlow: Flow<Float> = basePreferencesFlow
+        .map { preferences ->
+            preferences[PreferencesKeys.GRID_TILE_SCALE]
+                ?: FACTORY_GRID_TILE_SCALE
+        }
+        .distinctUntilChanged()
+
+    val actionButtonScaleFlow: Flow<Float> = basePreferencesFlow
+        .map { preferences ->
+            preferences[PreferencesKeys.ACTION_BUTTON_SCALE]
+                ?: FACTORY_ACTION_BUTTON_SCALE
+        }
+        .distinctUntilChanged()
+
+    val showSentenceBarFlow: Flow<Boolean> = basePreferencesFlow
+        .map { preferences ->
+            preferences[PreferencesKeys.SHOW_SENTENCE_BAR]
+                ?: FACTORY_SHOW_SENTENCE_BAR
         }
         .distinctUntilChanged()
 
@@ -115,18 +186,6 @@ class SettingsRepository(private val context: Context) {
     val barTileTitleScaleFlow: Flow<Float> = basePreferencesFlow
         .map { preferences ->
             preferences[PreferencesKeys.BAR_TILE_TITLE_SCALE] ?: 1.0f
-        }
-        .distinctUntilChanged()
-
-    val actionButtonScaleFlow: Flow<Float> = basePreferencesFlow
-        .map { preferences ->
-            preferences[PreferencesKeys.ACTION_BUTTON_SCALE] ?: 1.0f
-        }
-        .distinctUntilChanged()
-
-    val showSentenceBarFlow: Flow<Boolean> = basePreferencesFlow
-        .map { preferences ->
-            preferences[PreferencesKeys.SHOW_SENTENCE_BAR] ?: true
         }
         .distinctUntilChanged()
 
@@ -237,6 +296,111 @@ class SettingsRepository(private val context: Context) {
     suspend fun updateGridRows(rows: Int) {
         context.dataStore.edit { preferences ->
             preferences[PreferencesKeys.GRID_ROWS] = rows
+        }
+    }
+
+    suspend fun saveCurrentLayoutAsDefault() {
+        context.dataStore.edit { preferences ->
+            preferences[PreferencesKeys.DEFAULT_GRID_COLUMNS] =
+                preferences[PreferencesKeys.GRID_COLUMNS]
+                    ?: FACTORY_GRID_COLUMNS
+
+            preferences[PreferencesKeys.DEFAULT_GRID_ROWS] =
+                preferences[PreferencesKeys.GRID_ROWS]
+                    ?: FACTORY_GRID_ROWS
+
+            preferences[PreferencesKeys.DEFAULT_GRID_TILE_SCALE] =
+                preferences[PreferencesKeys.GRID_TILE_SCALE]
+                    ?: FACTORY_GRID_TILE_SCALE
+
+            preferences[PreferencesKeys.DEFAULT_GRID_TILE_CONTAINER_SCALE] =
+                preferences[PreferencesKeys.GRID_TILE_CONTAINER_SCALE]
+                    ?: FACTORY_GRID_TILE_CONTAINER_SCALE
+
+            preferences[PreferencesKeys.DEFAULT_BAR_TILE_IMAGE_SCALE] =
+                preferences[PreferencesKeys.BAR_TILE_IMAGE_SCALE]
+                    ?: FACTORY_BAR_TILE_IMAGE_SCALE
+
+            preferences[PreferencesKeys.DEFAULT_BAR_TILE_TITLE_SCALE] =
+                preferences[PreferencesKeys.BAR_TILE_TITLE_SCALE]
+                    ?: FACTORY_BAR_TILE_TITLE_SCALE
+
+            preferences[PreferencesKeys.DEFAULT_ACTION_BUTTON_SCALE] =
+                preferences[PreferencesKeys.ACTION_BUTTON_SCALE]
+                    ?: FACTORY_ACTION_BUTTON_SCALE
+
+            preferences[PreferencesKeys.DEFAULT_SHOW_SENTENCE_BAR] =
+                preferences[PreferencesKeys.SHOW_SENTENCE_BAR]
+                    ?: FACTORY_SHOW_SENTENCE_BAR
+
+            preferences[PreferencesKeys.DEFAULT_SHOW_BACK_BUTTON] =
+                preferences[PreferencesKeys.SHOW_BACK_BUTTON]
+                    ?: FACTORY_SHOW_BACK_BUTTON
+
+            preferences[PreferencesKeys.DEFAULT_SHOW_BACKSPACE_BUTTON] =
+                preferences[PreferencesKeys.SHOW_BACKSPACE_BUTTON]
+                    ?: FACTORY_SHOW_BACKSPACE_BUTTON
+
+            preferences[PreferencesKeys.DEFAULT_SHOW_SPEAK_BUTTON] =
+                preferences[PreferencesKeys.SHOW_SPEAK_BUTTON]
+                    ?: FACTORY_SHOW_SPEAK_BUTTON
+
+            preferences[PreferencesKeys.DEFAULT_HOME_IN_ACTION_BAR] =
+                preferences[PreferencesKeys.HOME_IN_ACTION_BAR]
+                    ?: FACTORY_HOME_IN_ACTION_BAR
+        }
+    }
+
+    suspend fun restoreDefaultLayoutSettings() {
+        context.dataStore.edit { preferences ->
+            preferences[PreferencesKeys.GRID_COLUMNS] =
+                preferences[PreferencesKeys.DEFAULT_GRID_COLUMNS]
+                    ?: FACTORY_GRID_COLUMNS
+
+            preferences[PreferencesKeys.GRID_ROWS] =
+                preferences[PreferencesKeys.DEFAULT_GRID_ROWS]
+                    ?: FACTORY_GRID_ROWS
+
+            preferences[PreferencesKeys.GRID_TILE_SCALE] =
+                preferences[PreferencesKeys.DEFAULT_GRID_TILE_SCALE]
+                    ?: FACTORY_GRID_TILE_SCALE
+
+            preferences[PreferencesKeys.GRID_TILE_CONTAINER_SCALE] =
+                preferences[
+                    PreferencesKeys.DEFAULT_GRID_TILE_CONTAINER_SCALE
+                ] ?: FACTORY_GRID_TILE_CONTAINER_SCALE
+
+            preferences[PreferencesKeys.BAR_TILE_IMAGE_SCALE] =
+                preferences[PreferencesKeys.DEFAULT_BAR_TILE_IMAGE_SCALE]
+                    ?: FACTORY_BAR_TILE_IMAGE_SCALE
+
+            preferences[PreferencesKeys.BAR_TILE_TITLE_SCALE] =
+                preferences[PreferencesKeys.DEFAULT_BAR_TILE_TITLE_SCALE]
+                    ?: FACTORY_BAR_TILE_TITLE_SCALE
+
+            preferences[PreferencesKeys.ACTION_BUTTON_SCALE] =
+                preferences[PreferencesKeys.DEFAULT_ACTION_BUTTON_SCALE]
+                    ?: FACTORY_ACTION_BUTTON_SCALE
+
+            preferences[PreferencesKeys.SHOW_SENTENCE_BAR] =
+                preferences[PreferencesKeys.DEFAULT_SHOW_SENTENCE_BAR]
+                    ?: FACTORY_SHOW_SENTENCE_BAR
+
+            preferences[PreferencesKeys.SHOW_BACK_BUTTON] =
+                preferences[PreferencesKeys.DEFAULT_SHOW_BACK_BUTTON]
+                    ?: FACTORY_SHOW_BACK_BUTTON
+
+            preferences[PreferencesKeys.SHOW_BACKSPACE_BUTTON] =
+                preferences[PreferencesKeys.DEFAULT_SHOW_BACKSPACE_BUTTON]
+                    ?: FACTORY_SHOW_BACKSPACE_BUTTON
+
+            preferences[PreferencesKeys.SHOW_SPEAK_BUTTON] =
+                preferences[PreferencesKeys.DEFAULT_SHOW_SPEAK_BUTTON]
+                    ?: FACTORY_SHOW_SPEAK_BUTTON
+
+            preferences[PreferencesKeys.HOME_IN_ACTION_BAR] =
+                preferences[PreferencesKeys.DEFAULT_HOME_IN_ACTION_BAR]
+                    ?: FACTORY_HOME_IN_ACTION_BAR
         }
     }
 }

@@ -25,6 +25,7 @@ import androidx.compose.material3.CardDefaults
 import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
+import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.Slider
 import androidx.compose.material3.Switch
 import androidx.compose.material3.Text
@@ -175,6 +176,31 @@ fun AdminLayoutSettingsScreen(viewModel: AACViewModel) {
             checked = homeInActionBar,
             onCheckedChange = { viewModel.updateHomeInActionBar(it) }
         )
+
+        HorizontalDivider()
+
+        Column(
+            modifier = Modifier.fillMaxWidth(),
+            verticalArrangement = Arrangement.spacedBy(12.dp)
+        ) {
+            Button(
+                onClick = {
+                    viewModel.saveCurrentLayoutAsDefault()
+                },
+                modifier = Modifier.fillMaxWidth()
+            ) {
+                Text("שמור הגדרות כברירת מחדל")
+            }
+
+            OutlinedButton(
+                onClick = {
+                    viewModel.restoreDefaultLayoutSettings()
+                },
+                modifier = Modifier.fillMaxWidth()
+            ) {
+                Text("שחזר הגדרות ברירת מחדל")
+            }
+        }
 
         Spacer(modifier = Modifier.height(32.dp))
     }

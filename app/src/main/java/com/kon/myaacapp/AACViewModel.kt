@@ -268,6 +268,18 @@ class AACViewModel(application: Application) : AndroidViewModel(application) {
         viewModelScope.launch { settingsRepository.updateShowSentenceBar(show) }
     }
 
+    fun saveCurrentLayoutAsDefault() {
+        viewModelScope.launch {
+            settingsRepository.saveCurrentLayoutAsDefault()
+        }
+    }
+
+    fun restoreDefaultLayoutSettings() {
+        viewModelScope.launch {
+            settingsRepository.restoreDefaultLayoutSettings()
+        }
+    }
+
     fun updateShowBackButton(show: Boolean) = viewModelScope.launch { settingsRepository.updateShowBackButton(show) }
 
     fun updateShowBackspaceButton(show: Boolean) = viewModelScope.launch { settingsRepository.updateShowBackspaceButton(show) }
