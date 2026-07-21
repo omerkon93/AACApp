@@ -204,4 +204,24 @@
     <string name="profile_mode_default_description">שימוש בלוח התקשורת המקורי של האפליקציה.</string>
     <string name="profile_mode_blank">התחלה מלוח ריק</string>
     <string name="profile_mode_blank_description">יצירת לוח ריק והוספת אריחים באופן ידני.</string>
+
+    <!-- Layout Settings -->
+    <string name="admin_tab_layout">תצוגה</string>
+    <string name="layout_settings_title">הגדרות תצוגה</string>
+    <string name="setting_grid_tile_size">גודל כפתורים במסך הראשי</string>
+    <string name="setting_bar_image_size">גודל תמונה בסרגל התקשורת</string>
+    <string name="setting_bar_text_size">גודל טקסט בסרגל התקשורת</string>
+    <string name="setting_action_button_size">גודל כפתורי פעולה (בית, חזור, נקה)</string>
+    <string name="setting_show_sentence_bar">הצג סרגל משפטים</string>
+    <string name="setting_show_sentence_bar_desc">הצגה או הסתרה של שורת המשפטים והפעולות העליונה</string>
+    <string name="setting_show_back">הצג כפתור חזור</string>
+    <string name="setting_show_back_desc">כפתור לחזרה לתיקיה הקודמת</string>
+    <string name="setting_show_backspace">הצג כפתור מחיקה</string>
+    <string name="setting_show_backspace_desc">מחיקת המילה האחרונה מהמשפט</string>
+    <string name="setting_show_speak">הצג כפתור הקראה</string>
+    <string name="setting_show_speak_desc">הקראת המשפט השלם בקול</string>
+    <string name="setting_home_in_action_bar">כפתור בית בשורת הפעולות</string>
+    <string name="setting_home_in_action_bar_desc">העברת כפתור הבית מהתחתית לשורת הפעולות</string>
+    <string name="setting_grid_columns">מספר עמודות במסך הראשי</string>
+    <string name="setting_grid_rows">מספר שורות במסך הראשי</string>
 </resources>

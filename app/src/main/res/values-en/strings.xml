@@ -204,4 +204,24 @@
     <string name="profile_mode_default_description">Use the factory-default communication board.</string>
     <string name="profile_mode_blank">Start blank</string>
     <string name="profile_mode_blank_description">Create an empty board and add tiles manually.</string>
+
+    <!-- Layout Settings -->
+    <string name="admin_tab_layout">Layout</string>
+    <string name="layout_settings_title">Layout Settings</string>
+    <string name="setting_grid_tile_size">Main Screen Button Size</string>
+    <string name="setting_bar_image_size">Communication Bar Image Size</string>
+    <string name="setting_bar_text_size">Communication Bar Text Size</string>
+    <string name="setting_action_button_size">Action Buttons Size (Home, Back, Clear)</string>
+    <string name="setting_show_sentence_bar">Show Sentence Bar</string>
+    <string name="setting_show_sentence_bar_desc">Show or hide the top sentence and action bar</string>
+    <string name="setting_show_back">Show Return Button</string>
+    <string name="setting_show_back_desc">Button to return to previous folder</string>
+    <string name="setting_show_backspace">Show Backspace Button</string>
+    <string name="setting_show_backspace_desc">Delete the last word in the sentence</string>
+    <string name="setting_show_speak">Show Read Button</string>
+    <string name="setting_show_speak_desc">Read the entire sentence aloud</string>
+    <string name="setting_home_in_action_bar">Home Button in Action Bar</string>
+    <string name="setting_home_in_action_bar_desc">Move the Home button from the bottom bar into the action row</string>
+    <string name="setting_grid_columns">Grid Columns (Portrait)</string>
+    <string name="setting_grid_rows">Grid Rows (Portrait)</string>
 </resources>

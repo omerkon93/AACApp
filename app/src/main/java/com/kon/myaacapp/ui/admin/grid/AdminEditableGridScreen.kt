@@ -1,7 +1,6 @@
 package com.kon.myaacapp.ui.admin.grid
 
 import android.content.res.Configuration
-import com.kon.myaacapp.ui.theme.FitzgeraldTileContent
 import androidx.compose.animation.core.animateFloatAsState
 import androidx.compose.foundation.Image
 import androidx.compose.foundation.background
@@ -10,11 +9,12 @@ import androidx.compose.foundation.clickable
 import androidx.compose.foundation.gestures.detectDragGesturesAfterLongPress
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.BoxWithConstraints
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.PaddingValues
-import androidx.compose.foundation.layout.aspectRatio
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.lazy.grid.GridCells
@@ -59,6 +59,7 @@ import com.kon.myaacapp.data.local.entity.AACTile
 import com.kon.myaacapp.domain.model.CombinedTile
 import com.kon.myaacapp.domain.model.TileType
 import com.kon.myaacapp.domain.model.toLegacyAACTile
+import com.kon.myaacapp.ui.theme.FitzgeraldTileContent
 import com.kon.myaacapp.ui.theme.resolveFitzgeraldColor
 import java.io.File
 
@@ -69,11 +70,16 @@ fun AdminEditableGridScreen(
     onCreateTile: (Int) -> Unit
 ) {
     val tiles by viewModel.currentTiles.collectAsState()
+
+    val gridColumns by viewModel.gridColumns.collectAsState()
+    val gridRows by viewModel.gridRows.collectAsState()
+    val gridTileScale by viewModel.gridTileScale.collectAsState()
+
     val orientation = LocalConfiguration.current.orientation
-    val columns = if (orientation == Configuration.ORIENTATION_LANDSCAPE) 6 else 3
-    val minRows = 4
+    val columns = if (orientation == Configuration.ORIENTATION_LANDSCAPE) gridColumns * 2 else gridColumns
+
     val maxIndex = tiles.maxOfOrNull { it.layoutState.cellIndex } ?: -1
-    val rows = maxOf(minRows, (maxIndex / columns) + 1)
+    val rows = maxOf(gridRows, (maxIndex / columns) + 1)
     val maxCells = columns * rows
 
     var draggedIndex by remember { mutableStateOf<Int?>(null) }
@@ -82,86 +88,47 @@ fun AdminEditableGridScreen(
     val gridState = rememberLazyGridState()
 
     val tileMap: Map<Int, CombinedTile> = remember(tiles) {
-        tiles.associateBy { tile ->
-            tile.cellIndex
-        }
+        tiles.associateBy { tile -> tile.cellIndex }
     }
 
-    val tileAspectRatio = remember(orientation) {
-        if (orientation == Configuration.ORIENTATION_LANDSCAPE) {
-            1.2f
-        } else {
-            1.0f
-        }
-    }
+    BoxWithConstraints(modifier = Modifier.fillMaxSize()) {
+        val spacingDp = 8.dp
+        val totalVerticalSpacing = spacingDp * (gridRows - 1)
+        val cellHeight = maxOf(0.dp, (maxHeight - totalVerticalSpacing) / gridRows)
 
-    Box(
-        modifier = Modifier.fillMaxSize()
-    ) {
         LazyVerticalGrid(
             state = gridState,
             columns = GridCells.Fixed(columns),
             modifier = Modifier
                 .fillMaxSize()
                 .pointerInput(gridState) {
-                    fun getIndexFromTouch(
-                        touchX: Float,
-                        touchY: Float,
-                    ): Int? {
-                        val matchedItem =
-                            gridState.layoutInfo.visibleItemsInfo.find {
-                                    itemInfo ->
-                                val left =
-                                    itemInfo.offset.x.toFloat()
-
-                                val right =
-                                    left + itemInfo.size.width
-
-                                val top =
-                                    itemInfo.offset.y.toFloat()
-
-                                val bottom =
-                                    top + itemInfo.size.height
-
-                                touchX in left..right &&
-                                        touchY in top..bottom
-                            }
-
+                    fun getIndexFromTouch(touchX: Float, touchY: Float): Int? {
+                        val matchedItem = gridState.layoutInfo.visibleItemsInfo.find { itemInfo ->
+                            val left = itemInfo.offset.x.toFloat()
+                            val right = left + itemInfo.size.width
+                            val top = itemInfo.offset.y.toFloat()
+                            val bottom = top + itemInfo.size.height
+                            touchX in left..right && touchY in top..bottom
+                        }
                         return matchedItem?.index
                     }
 
                     detectDragGesturesAfterLongPress(
                         onDragStart = { offset ->
-                            draggedIndex = getIndexFromTouch(
-                                offset.x,
-                                offset.y,
-                            )
-
+                            draggedIndex = getIndexFromTouch(offset.x, offset.y)
                             hoveredIndex = draggedIndex
                         },
                         onDrag = { change, _ ->
                             change.consume()
-
-                            hoveredIndex = getIndexFromTouch(
-                                change.position.x,
-                                change.position.y,
-                            )
+                            hoveredIndex = getIndexFromTouch(change.position.x, change.position.y)
                         },
                         onDragEnd = {
                             val fromIndex = draggedIndex
                             val toIndex = hoveredIndex
 
-                            if (
-                                fromIndex != null &&
-                                toIndex != null &&
-                                fromIndex != toIndex
-                            ) {
-                                viewModel.swapTilePositions(
-                                    fromIndex = fromIndex,
-                                    toIndex = toIndex,
-                                )
+                            if (fromIndex != null && toIndex != null && fromIndex != toIndex) {
+                                viewModel.swapTilePositions(fromIndex = fromIndex, toIndex = toIndex)
                             }
-
                             draggedIndex = null
                             hoveredIndex = null
                         },
@@ -172,10 +139,8 @@ fun AdminEditableGridScreen(
                     )
                 },
             contentPadding = PaddingValues(8.dp),
-            horizontalArrangement =
-                Arrangement.spacedBy(8.dp),
-            verticalArrangement =
-                Arrangement.spacedBy(8.dp),
+            horizontalArrangement = Arrangement.spacedBy(8.dp),
+            verticalArrangement = Arrangement.spacedBy(8.dp),
         ) {
             items(
                 count = maxCells,
@@ -185,74 +150,43 @@ fun AdminEditableGridScreen(
                 val isDragged = index == draggedIndex
                 val isHovered = index == hoveredIndex
 
-                val scale by animateFloatAsState(
-                    targetValue = if (isDragged) 0.9f else 1f,
-                    label = "tileScale",
-                )
+                val scale by animateFloatAsState(targetValue = if (isDragged) 0.9f else 1f, label = "tileScale")
+                val alpha by animateFloatAsState(targetValue = if (isDragged) 0.6f else 1f, label = "tileAlpha")
 
-                val alpha by animateFloatAsState(
-                    targetValue = if (isDragged) 0.6f else 1f,
-                    label = "tileAlpha",
-                )
+                val onEmptyClick = remember(index, onCreateTile) { { onCreateTile(index) } }
 
-                val onEmptyClick = remember(
-                    index,
-                    onCreateTile,
-                ) {
-                    {
-                        onCreateTile(index)
-                    }
-                }
-
-                val onTileEdit: () -> Unit = remember(
-                    tile,
-                    onEditTile,
-                ) {
-                    if (tile != null) {
-                        {
-                            onEditTile(
-                                tile.toLegacyAACTile()
-                            )
-                        }
-                    } else {
-                        {
-                            // Empty cell: no edit action.
-                        }
-                    }
+                val onTileEdit: () -> Unit = remember(tile, onEditTile) {
+                    if (tile != null) { { onEditTile(tile.toLegacyAACTile()) } }
+                    else { { } }
                 }
 
                 Box(
                     modifier = Modifier
+                        .height(cellHeight)
+                        .fillMaxWidth()
                         .graphicsLayer {
                             scaleX = scale
                             scaleY = scale
                             this.alpha = alpha
                         }
                         .border(
-                            width = if (isHovered) {
-                                3.dp
-                            } else {
-                                0.dp
-                            },
-                            color = if (isHovered) {
-                                Color.Blue
-                            } else {
-                                Color.Transparent
-                            },
+                            width = if (isHovered) 3.dp else 0.dp,
+                            color = if (isHovered) Color.Blue else Color.Transparent,
                             shape = RoundedCornerShape(8.dp),
                         ),
                 ) {
                     if (tile != null) {
                         AdminTileItem(
                             tile = tile,
-                            aspectRatio = tileAspectRatio,
+                            scale = gridTileScale,
                             onClick = {},
                             onEdit = onTileEdit,
+                            modifier = Modifier.fillMaxSize()
                         )
                     } else {
                         EmptySlot(
-                            aspectRatio = tileAspectRatio,
                             onClick = onEmptyClick,
+                            modifier = Modifier.fillMaxSize()
                         )
                     }
                 }
@@ -264,9 +198,10 @@ fun AdminEditableGridScreen(
 @Composable
 fun AdminTileItem(
     tile: CombinedTile,
-    aspectRatio: Float,
+    scale: Float,
     onClick: () -> Unit,
-    onEdit: () -> Unit
+    onEdit: () -> Unit,
+    modifier: Modifier = Modifier
 ) {
     val backgroundColor =
         remember(tile.definition.backgroundColorHex, tile.definition.partOfSpeech) {
@@ -286,11 +221,12 @@ fun AdminTileItem(
         emoji = tile.definition.emoji,
         imageUri = tile.definition.imageUri,
         backgroundColor = backgroundColor,
-        aspectRatio = aspectRatio,
         tileType = tile.definition.resolvedType,
+        scale = scale,
         onClick = onClick,
         onEdit = onEdit,
-        isHidden = tile.layoutState.isHidden
+        isHidden = tile.layoutState.isHidden,
+        modifier = modifier
     )
 }
 
@@ -300,8 +236,8 @@ fun AdminTileUI(
     emoji: String?,
     imageUri: String?,
     backgroundColor: Color,
-    aspectRatio: Float,
     tileType: TileType,
+    scale: Float,
     onClick: () -> Unit,
     onEdit: () -> Unit,
     modifier: Modifier = Modifier,
@@ -319,15 +255,14 @@ fun AdminTileUI(
 
     Card(
         modifier = modifier
-            .fillMaxWidth()
-            .aspectRatio(aspectRatio)
+            .fillMaxSize()
             .clickable(onClick = onClick)
             .border(
                 width = if (isFolder) 3.dp else 0.dp,
                 color = if (isFolder) Color.DarkGray else Color.Transparent,
-                shape = androidx.compose.foundation.shape.RoundedCornerShape(8.dp)
+                shape = RoundedCornerShape(8.dp)
             ),
-        shape = androidx.compose.foundation.shape.RoundedCornerShape(8.dp),
+        shape = RoundedCornerShape(8.dp),
         colors = CardDefaults.cardColors(containerColor = if (isHidden) backgroundColor.copy(alpha = 0.5f) else backgroundColor),
         elevation = CardDefaults.cardElevation(2.dp)
     ) {
@@ -354,13 +289,13 @@ fun AdminTileUI(
                             contentScale = ContentScale.Fit
                         )
                     } else if (emoji != null) {
-                        Text(text = emoji, fontSize = 56.sp)
+                        Text(text = emoji, fontSize = (56f * scale).sp)
                     }
                 }
 
                 Text(
                     text = label,
-                    fontSize = labelSize,
+                    fontSize = (labelSize.value * scale).sp,
                     fontWeight = FontWeight.Bold,
                     textAlign = TextAlign.Center,
                     maxLines = 1,
@@ -384,7 +319,7 @@ fun AdminTileUI(
                     modifier = Modifier
                         .align(Alignment.TopEnd)
                         .padding(6.dp)
-                        .size(16.dp),
+                        .size((16f * scale).dp),
                     tint = FitzgeraldTileContent
                 )
             }
@@ -397,7 +332,7 @@ fun AdminTileUI(
                     .size(32.dp)
                     .background(
                         Color.Black.copy(alpha = 0.4f),
-                        androidx.compose.foundation.shape.RoundedCornerShape(6.dp)
+                        RoundedCornerShape(6.dp)
                     )
             ) {
                 Icon(
@@ -429,20 +364,19 @@ fun AdminTileUI(
 
 @Composable
 fun EmptySlot(
-    aspectRatio: Float,
+    modifier: Modifier = Modifier,
     onClick: () -> Unit
 ) {
     Box(
-        modifier = Modifier
-            .fillMaxWidth()
-            .aspectRatio(aspectRatio)
-            .clip(androidx.compose.foundation.shape.RoundedCornerShape(8.dp))
+        modifier = modifier
+            .fillMaxSize()
+            .clip(RoundedCornerShape(8.dp))
             .background(MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.5f))
             .clickable(onClick = onClick)
             .border(
                 1.dp,
                 MaterialTheme.colorScheme.outline.copy(alpha = 0.3f),
-                androidx.compose.foundation.shape.RoundedCornerShape(8.dp)
+                RoundedCornerShape(8.dp)
             ),
         contentAlignment = Alignment.Center
     ) {

@@ -5,6 +5,7 @@ import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
+import androidx.compose.foundation.layout.aspectRatio
 import androidx.compose.foundation.layout.fillMaxHeight
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
@@ -70,19 +71,8 @@ fun TileEditDialog(
     initialCellIndex: Int? = null,
     onDismiss: () -> Unit,
 ) {
-    /*
-     * Keying editor state by tile ID makes the state reset when the caller
-     * replaces the currently edited tile without destroying this composition.
-     *
-     * rememberSaveable also preserves primitive/String state across activity
-     * recreation, such as an orientation change.
-     */
     val editorKey = existingTile?.id ?: "new-tile"
 
-    /*
-     * Collect the StateFlow through the Android lifecycle instead of reading
-     * currentParentId.value directly during composition.
-     */
     val currentParentId by viewModel.currentParentId
         .collectAsStateWithLifecycle()
 
@@ -200,26 +190,15 @@ fun TileEditDialog(
         mutableStateOf(false)
     }
 
-    /*
-     * Request a new parent-specific Flow only when parentId changes.
-     */
     val tilesFlow = remember(viewModel, parentId) {
         viewModel.getTilesByParentId(parentId)
     }
 
-    /*
-     * The explicit CombinedTile type prevents emptyList() and delegate
-     * type-inference failures.
-     */
     val tilesInParent: List<CombinedTile> by
     tilesFlow.collectAsStateWithLifecycle(
         initialValue = emptyList()
     )
 
-    /*
-     * These appear to be StateFlows, so their current values provide the initial
-     * values automatically.
-     */
     val categories by viewModel.allCategories
         .collectAsStateWithLifecycle()
 
@@ -251,9 +230,6 @@ fun TileEditDialog(
 
     val orientation = LocalConfiguration.current.orientation
 
-    /*
-     * These preview values are derived only from the state they need.
-     */
     val tileColor = remember(partOfSpeech) {
         resolveFitzgeraldColor(partOfSpeech)
     }
@@ -297,10 +273,6 @@ fun TileEditDialog(
                 )
 
                 if (showOverwriteDialog) {
-                    /*
-                     * The board capacity is only 15, so an O(n) search has a negligible
-                     * maximum cost and avoids allocating a separate lookup map.
-                     */
                     val occupiedTile: CombinedTile? = remember(
                         tilesInParent,
                         pendingCellIndex,
@@ -368,10 +340,6 @@ fun TileEditDialog(
                         .weight(1f)
                         .padding(horizontal = 24.dp),
                 ) {
-                    /*
-                     * Stable keys preserve LazyColumn item identity and make
-                     * movement/state retention more predictable.
-                     */
                     item(key = "description") {
                         Text(
                             text = stringResource(
@@ -398,11 +366,6 @@ fun TileEditDialog(
                     }
 
                     item(key = "visuals") {
-                        /*
-                         * Camera/gallery/image persistence belongs in
-                         * VisualsSection. Keeping it there prevents duplicate
-                         * launchers and keeps recomposition scope smaller.
-                         */
                         VisualsSection(
                             emoji = emoji,
                             onEmojiChange = { newEmoji ->
@@ -420,10 +383,6 @@ fun TileEditDialog(
                     }
 
                     item(key = "audio") {
-                        /*
-                         * Permission, recording timer, recorder cleanup, and
-                         * MediaPlayer lifecycle belong in AudioSection.
-                         */
                         AudioSection(
                             audioUri = audioUri,
                             onAudioUriChange = { newAudioUri ->
@@ -441,10 +400,6 @@ fun TileEditDialog(
                             onTileTypeChange = { newTileType ->
                                 tileType = newTileType
 
-                                /*
-                                 * Clear stale connector state when the selected
-                                 * type no longer supports a linked category.
-                                 */
                                 if (
                                     newTileType != TileType.FOLDER &&
                                     newTileType != TileType.CONNECTOR
@@ -453,21 +408,11 @@ fun TileEditDialog(
                                 }
                             },
                             categories = categories,
-
-                            /*
-                             * AdvancedSection must accept AACTile?.
-                             * See the required signature correction below.
-                             */
                             existingTile = existingTile,
                             parentId = parentId,
                             onParentIdChange = { newParentId ->
                                 parentId = newParentId
 
-                                /*
-                                 * A cell position belongs to its parent grid.
-                                 * Clearing it prevents accidentally retaining a
-                                 * now-invalid occupied position.
-                                 */
                                 if (
                                     newParentId !=
                                     existingTile?.parentId
@@ -546,10 +491,6 @@ fun TileEditDialog(
                         }
                     },
                     onSave = {
-                        /*
-                         * Guard again inside the callback because enabled state
-                         * alone is not a transactional duplicate-submit guard.
-                         */
                         if (!canSave || isSubmitting) {
                             return@TileEditorFooter
                         }
@@ -652,14 +593,6 @@ fun TileEditDialog(
                             )
                         }
 
-                        /*
-                         * This preserves the original behavior, where the
-                         * dialog closes immediately after requesting a save.
-                         *
-                         * For stronger reliability, ViewModel save functions
-                         * should expose completion/failure state and dismissal
-                         * should happen only after a successful transaction.
-                         */
                         onDismiss()
                     },
                 )
@@ -741,13 +674,15 @@ private fun TileEditorPreview(
                 null
             },
             backgroundColor = backgroundColor,
-            aspectRatio = aspectRatio,
+            // 👉 Removed the aspectRatio property and added it directly to the modifier!
             tileType = tileType,
             isHidden = isHidden,
             onClick = {
                 onPlayPreview(ttsText, audioUri)
             },
-            modifier = Modifier.width(200.dp),
+            modifier = Modifier
+                .width(200.dp)
+                .aspectRatio(aspectRatio),
             labelFontSize = 24.sp,
         )
     }

@@ -206,6 +206,77 @@ class AACViewModel(application: Application) : AndroidViewModel(application) {
         .onEach { lang -> ttsHelper.setLanguage(lang) }
         .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), "he")
 
+    // 👉 NEW LAYOUT SETTINGS STATE FLOWS
+    val gridTileScale: StateFlow<Float> = settingsRepository.gridTileScaleFlow
+        .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), 1.0f)
+
+    val barTileImageScale: StateFlow<Float> = settingsRepository.barTileImageScaleFlow
+        .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), 1.0f)
+
+    val barTileTitleScale: StateFlow<Float> = settingsRepository.barTileTitleScaleFlow
+        .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), 1.0f)
+
+    val actionButtonScale: StateFlow<Float> = settingsRepository.actionButtonScaleFlow
+        .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), 1.0f)
+
+    val showSentenceBar: StateFlow<Boolean> = settingsRepository.showSentenceBarFlow
+        .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), true)
+
+    val showBackButton: StateFlow<Boolean> = settingsRepository.showBackButtonFlow
+        .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), true)
+
+    val showBackspaceButton: StateFlow<Boolean> = settingsRepository.showBackspaceButtonFlow
+        .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), true)
+
+    val showSpeakButton: StateFlow<Boolean> = settingsRepository.showSpeakButtonFlow
+        .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), true)
+
+    val homeInActionBar: StateFlow<Boolean> = settingsRepository.homeInActionBarFlow
+        .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), false)
+
+    val gridColumns: StateFlow<Int> = settingsRepository.gridColumnsFlow
+        .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), 3)
+
+    val gridRows: StateFlow<Int> = settingsRepository.gridRowsFlow
+        .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), 4)
+
+    // 👉 NEW LAYOUT SETTINGS UPDATE FUNCTIONS
+    fun updateGridTileScale(scale: Float) {
+        viewModelScope.launch { settingsRepository.updateGridTileScale(scale) }
+    }
+
+    fun updateBarTileImageScale(scale: Float) {
+        viewModelScope.launch { settingsRepository.updateBarTileImageScale(scale) }
+    }
+
+    fun updateBarTileTitleScale(scale: Float) {
+        viewModelScope.launch { settingsRepository.updateBarTileTitleScale(scale) }
+    }
+
+    fun updateActionButtonScale(scale: Float) {
+        viewModelScope.launch { settingsRepository.updateActionButtonScale(scale) }
+    }
+
+    fun updateShowSentenceBar(show: Boolean) {
+        viewModelScope.launch { settingsRepository.updateShowSentenceBar(show) }
+    }
+
+    fun updateShowBackButton(show: Boolean) = viewModelScope.launch { settingsRepository.updateShowBackButton(show) }
+
+    fun updateShowBackspaceButton(show: Boolean) = viewModelScope.launch { settingsRepository.updateShowBackspaceButton(show) }
+
+    fun updateShowSpeakButton(show: Boolean) = viewModelScope.launch { settingsRepository.updateShowSpeakButton(show) }
+
+    fun updateHomeInActionBar(show: Boolean) = viewModelScope.launch { settingsRepository.updateHomeInActionBar(show) }
+
+    fun updateGridColumns(columns: Int) {
+        viewModelScope.launch { settingsRepository.updateGridColumns(columns) }
+    }
+
+    fun updateGridRows(rows: Int) {
+        viewModelScope.launch { settingsRepository.updateGridRows(rows) }
+    }
+
     val userGender: StateFlow<Gender> = tileService.userGender
 
     fun getTilesByParentId(parentId: String?): Flow<List<CombinedTile>> {

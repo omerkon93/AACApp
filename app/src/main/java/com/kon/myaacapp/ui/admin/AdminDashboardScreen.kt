@@ -39,13 +39,15 @@ import com.kon.myaacapp.ui.admin.components.TileActionDialog
 import com.kon.myaacapp.ui.admin.components.TilePickerDialog
 import com.kon.myaacapp.ui.admin.grid.AdminEditableGridScreen
 import com.kon.myaacapp.ui.admin.list.AdminListView
+import com.kon.myaacapp.ui.admin.layout.AdminLayoutSettingsScreen
 import com.kon.myaacapp.ui.admin.navigation.AdminBottomNavigation
 import com.kon.myaacapp.ui.admin.statistics.AdminStatisticsScreen
 import com.kon.myaacapp.ui.admin.system.AdminSystemSettings
 import com.kon.myaacapp.ui.editor.TileEditDialog
 
+// 👉 1. Added LAYOUT to enum
 enum class AdminTab {
-    HOME, SETTINGS, STATISTICS, SYSTEM
+    HOME, SETTINGS, LAYOUT, STATISTICS, SYSTEM
 }
 
 @OptIn(ExperimentalMaterial3Api::class)
@@ -67,15 +69,8 @@ fun AdminDashboardScreen(
     val currentParentId by viewModel.currentParentId.collectAsState()
     val layoutDir = if (langCode == "he") LayoutDirection.Rtl else LayoutDirection.Ltr
 
-    // OPTIMIZATION: Cache Insets to prevent object allocation thrashing on every recomposition
     val zeroInsets = remember { WindowInsets(0.dp) }
 
-    // OPTIMIZATION: Memoize all state-mutating lambdas passed to child screens.
-    // Because state variables backed by `mutableStateOf` expose stable getters/setters,
-    // these lambdas will never capture stale data, while providing a permanent stable
-    // memory reference to child UI components to guarantee O(1) skipping.
-
-    // Grid Events
     val onEditTileGrid = remember { { tile: AACTile? -> tileForAction = tile } }
     val onCreateTileGrid = remember {
         { cellIndex: Int ->
@@ -85,7 +80,6 @@ fun AdminDashboardScreen(
         }
     }
 
-    // List Events
     val onEditTileList = remember {
         { tile: AACTile? ->
             editingTile = tile
@@ -95,7 +89,6 @@ fun AdminDashboardScreen(
     }
     val onDeleteTileList = remember { { tile: AACTile -> tileToDelete = tile } }
 
-    // TopBar Events
     val onResetHome = remember { { viewModel.resetToHome() } }
     val onNavBack = remember { { viewModel.navigateBack() } }
 
@@ -106,11 +99,9 @@ fun AdminDashboardScreen(
                     title = {
                         Text(
                             text = when (selectedTab) {
-                                AdminTab.HOME -> if (currentParentId == null) stringResource(R.string.edit_main_screen) else stringResource(
-                                    R.string.edit_category
-                                )
-
+                                AdminTab.HOME -> if (currentParentId == null) stringResource(R.string.edit_main_screen) else stringResource(R.string.edit_category)
                                 AdminTab.SETTINGS -> stringResource(R.string.admin_tab_settings)
+                                AdminTab.LAYOUT -> "תצוגה" // Replace with stringResource(R.string.admin_tab_layout) if you add it to strings.xml
                                 AdminTab.STATISTICS -> stringResource(R.string.admin_tab_statistics)
                                 AdminTab.SYSTEM -> stringResource(R.string.admin_tab_system)
                             },
@@ -120,25 +111,16 @@ fun AdminDashboardScreen(
                     },
                     navigationIcon = {
                         IconButton(onClick = onNavigateBack) {
-                            Icon(
-                                Icons.AutoMirrored.Filled.ArrowBack,
-                                contentDescription = stringResource(R.string.back)
-                            )
+                            Icon(Icons.AutoMirrored.Filled.ArrowBack, contentDescription = stringResource(R.string.back))
                         }
                     },
                     actions = {
                         if (selectedTab == AdminTab.HOME && currentParentId != null) {
                             IconButton(onClick = onResetHome) {
-                                Icon(
-                                    Icons.Default.Home,
-                                    contentDescription = stringResource(R.string.home)
-                                )
+                                Icon(Icons.Default.Home, contentDescription = stringResource(R.string.home))
                             }
                             IconButton(onClick = onNavBack) {
-                                Icon(
-                                    Icons.Default.ArrowUpward,
-                                    contentDescription = stringResource(R.string.up)
-                                )
+                                Icon(Icons.Default.ArrowUpward, contentDescription = stringResource(R.string.up))
                             }
                         }
                     },
@@ -148,8 +130,6 @@ fun AdminDashboardScreen(
             bottomBar = {
                 AdminBottomNavigation(
                     selectedTab = selectedTab,
-                    // Standard inline is fine here because AdminBottomNavigation was optimized
-                    // in your previous step to manage its own internal lambda memory.
                     onTabSelected = { selectedTab = it }
                 )
             }
@@ -172,6 +152,11 @@ fun AdminDashboardScreen(
                         )
                     }
 
+                    // 👉 2. Load layout settings tab
+                    AdminTab.LAYOUT -> {
+                        AdminLayoutSettingsScreen(viewModel = viewModel)
+                    }
+
                     AdminTab.STATISTICS -> {
                         AdminStatisticsScreen(viewModel = viewModel)
                     }
@@ -187,121 +172,18 @@ fun AdminDashboardScreen(
         }
     }
 
-    // Dialog Event Memoization
     if (showTilePicker) {
         TilePickerDialog(
             viewModel = viewModel,
-            onDismiss = {
-                showTilePicker = false
-            },
+            onDismiss = { showTilePicker = false },
             onTileSelected = { tile ->
                 showTilePicker = false
-
                 if (tile == null) {
                     showTileDialog = true
                 } else {
-                    viewModel.attachTileToCategory(
-                        tile.id,
-                        currentParentId,
-                        initialCellIndex,
-                    )
-
+                    viewModel.attachTileToCategory(tile.id, currentParentId, initialCellIndex)
                     initialCellIndex = null
                 }
-            },
-        )
-    }
-
-    tileToDelete?.let { tile ->
-        AlertDialog(
-            onDismissRequest = {
-                tileToDelete = null
-            },
-            title = {
-                Text(
-                    text = stringResource(
-                        R.string.delete_tile_title
-                    )
-                )
-            },
-            text = {
-                Text(
-                    text = stringResource(
-                        R.string.delete_tile_confirm_msg,
-                        tile.label,
-                    )
-                )
-            },
-            confirmButton = {
-                Button(
-                    onClick = {
-                        viewModel.deleteTile(tile)
-                        tileToDelete = null
-                    },
-                    colors = ButtonDefaults.buttonColors(
-                        containerColor =
-                            MaterialTheme.colorScheme.error
-                    ),
-                ) {
-                    Text(
-                        text = stringResource(R.string.delete)
-                    )
-                }
-            },
-            dismissButton = {
-                TextButton(
-                    onClick = {
-                        tileToDelete = null
-                    }
-                ) {
-                    Text(
-                        text = stringResource(R.string.cancel)
-                    )
-                }
-            },
-        )
-    }
-
-    if (showTileDialog) {
-        TileEditDialog(
-            viewModel = viewModel,
-            existingTile = editingTile,
-            initialCellIndex = initialCellIndex,
-            onDismiss = {
-                showTileDialog = false
-                editingTile = null
-                initialCellIndex = null
-            },
-        )
-    }
-
-    tileForAction?.let { selectedTile ->
-        TileActionDialog(
-            tile = selectedTile,
-            onDismiss = {
-                tileForAction = null
-            },
-            onEdit = {
-                editingTile = selectedTile
-                initialCellIndex = selectedTile.cellIndex
-                tileForAction = null
-                showTileDialog = true
-            },
-            onRemove = {
-                viewModel.removeTileFromCategory(
-                    selectedTile.id,
-                    currentParentId,
-                )
-
-                tileForAction = null
-            },
-            onOpen = if (selectedTile.isCategory) {
-                {
-                    viewModel.setCategory(selectedTile.id)
-                    tileForAction = null
-                }
-            } else {
-                null
             },
         )
     }
@@ -311,14 +193,7 @@ fun AdminDashboardScreen(
         AlertDialog(
             onDismissRequest = dismissDelete,
             title = { Text(stringResource(R.string.delete_tile_title)) },
-            text = {
-                Text(
-                    stringResource(
-                        R.string.delete_tile_confirm_msg,
-                        tileToDelete?.label ?: ""
-                    )
-                )
-            },
+            text = { Text(stringResource(R.string.delete_tile_confirm_msg, tileToDelete?.label ?: "")) },
             confirmButton = {
                 Button(
                     onClick = {
@@ -331,9 +206,7 @@ fun AdminDashboardScreen(
                 }
             },
             dismissButton = {
-                TextButton(onClick = dismissDelete) {
-                    Text(stringResource(R.string.cancel))
-                }
+                TextButton(onClick = dismissDelete) { Text(stringResource(R.string.cancel)) }
             }
         )
     }
@@ -374,12 +247,8 @@ fun AdminDashboardScreen(
             },
             onRemove = {
                 tileForAction?.id?.let { id ->
-                    viewModel.removeTileFromCategory(
-                        id,
-                        currentParentId,
-                    )
+                    viewModel.removeTileFromCategory(id, currentParentId)
                 }
-
                 tileForAction = null
             },
             onOpen = onOpenAction

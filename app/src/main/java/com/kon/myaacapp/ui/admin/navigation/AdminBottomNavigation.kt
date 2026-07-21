@@ -5,6 +5,7 @@ import androidx.compose.foundation.layout.height
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Analytics
 import androidx.compose.material.icons.filled.Build
+import androidx.compose.material.icons.filled.Dashboard
 import androidx.compose.material.icons.filled.Home
 import androidx.compose.material.icons.filled.Settings
 import androidx.compose.material3.Icon
@@ -35,6 +36,10 @@ fun AdminBottomNavigation(
     // recomposing tabs that haven't changed their 'selected' state.
     val onHomeClick = remember(onTabSelected) { { onTabSelected(AdminTab.HOME) } }
     val onSettingsClick = remember(onTabSelected) { { onTabSelected(AdminTab.SETTINGS) } }
+
+    // 👉 1. Added the lambda for the new Layout tab
+    val onLayoutClick = remember(onTabSelected) { { onTabSelected(AdminTab.LAYOUT) } }
+
     val onStatisticsClick = remember(onTabSelected) { { onTabSelected(AdminTab.STATISTICS) } }
     val onSystemClick = remember(onTabSelected) { { onTabSelected(AdminTab.SYSTEM) } }
 
@@ -54,6 +59,15 @@ fun AdminBottomNavigation(
             icon = { Icon(Icons.Default.Settings, contentDescription = null) },
             label = { Text(stringResource(R.string.bottom_nav_tiles)) }
         )
+
+        // 👉 2. Added the Layout tab to the bar
+        NavigationBarItem(
+            selected = selectedTab == AdminTab.LAYOUT,
+            onClick = onLayoutClick,
+            icon = { Icon(Icons.Default.Dashboard, contentDescription = null) },
+            label = { Text(stringResource(R.string.admin_tab_layout)) }
+        )
+
         NavigationBarItem(
             selected = selectedTab == AdminTab.STATISTICS,
             onClick = onStatisticsClick,

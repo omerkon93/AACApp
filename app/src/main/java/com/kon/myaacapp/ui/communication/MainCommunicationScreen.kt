@@ -1,20 +1,18 @@
 package com.kon.myaacapp.ui.communication
 
-import android.annotation.SuppressLint
 import android.content.res.Configuration
 import androidx.activity.compose.BackHandler
 import androidx.compose.foundation.Image
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
-import androidx.compose.material.icons.filled.Home
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.BoxWithConstraints
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
-import androidx.compose.foundation.layout.aspectRatio
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
@@ -36,6 +34,7 @@ import androidx.compose.material.icons.automirrored.filled.VolumeUp
 import androidx.compose.material.icons.filled.Delete
 import androidx.compose.material.icons.filled.FlashOn
 import androidx.compose.material.icons.filled.Folder
+import androidx.compose.material.icons.filled.Home
 import androidx.compose.material.icons.filled.Settings
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Button
@@ -86,13 +85,26 @@ fun MainCommunicationScreen(
     onNavigateToCategory: (String) -> Unit,
     onBackClick: () -> Unit,
     onNavigateToAdmin: () -> Unit,
-    onHomeClick: () -> Unit // <-- Added parameter
+    onHomeClick: () -> Unit
 ) {
     val tiles by viewModel.currentTiles.collectAsState()
     val sentence by viewModel.selectedSentence.collectAsState()
     val currentParentId by viewModel.currentParentId.collectAsState()
     val userGender by viewModel.userGender.collectAsState()
     val langCode by viewModel.languageCode.collectAsState()
+
+    val gridColumns by viewModel.gridColumns.collectAsState()
+    val gridRows by viewModel.gridRows.collectAsState()
+    val gridTileScale by viewModel.gridTileScale.collectAsState()
+    val barTileImageScale by viewModel.barTileImageScale.collectAsState()
+    val barTileTitleScale by viewModel.barTileTitleScale.collectAsState()
+    val actionButtonScale by viewModel.actionButtonScale.collectAsState()
+    val showSentenceBar by viewModel.showSentenceBar.collectAsState()
+
+    val showBackButton by viewModel.showBackButton.collectAsState()
+    val showBackspaceButton by viewModel.showBackspaceButton.collectAsState()
+    val showSpeakButton by viewModel.showSpeakButton.collectAsState()
+    val homeInActionBar by viewModel.homeInActionBar.collectAsState()
 
     BackHandler(enabled = currentParentId != null) {
         viewModel.navigateBack()
@@ -126,7 +138,18 @@ fun MainCommunicationScreen(
         onTileClick = onTileClick,
         onBackClick = handleBackClick,
         onNavigateToAdmin = onNavigateToAdmin,
-        onHomeClick = onHomeClick // <-- Pass it down
+        onHomeClick = onHomeClick,
+        gridColumns = gridColumns,
+        gridRows = gridRows,
+        gridTileScale = gridTileScale,
+        barTileImageScale = barTileImageScale,
+        barTileTitleScale = barTileTitleScale,
+        actionButtonScale = actionButtonScale,
+        showSentenceBar = showSentenceBar,
+        showBackButton = showBackButton,
+        showBackspaceButton = showBackspaceButton,
+        showSpeakButton = showSpeakButton,
+        homeInActionBar = homeInActionBar
     )
 }
 
@@ -143,7 +166,18 @@ fun MainCommunicationScreenContent(
     onTileClick: (CombinedTile) -> Unit,
     onBackClick: () -> Unit,
     onNavigateToAdmin: () -> Unit,
-    onHomeClick: () -> Unit // <-- Added parameter
+    onHomeClick: () -> Unit,
+    gridColumns: Int,
+    gridRows: Int,
+    gridTileScale: Float,
+    barTileImageScale: Float,
+    barTileTitleScale: Float,
+    actionButtonScale: Float,
+    showSentenceBar: Boolean,
+    showBackButton: Boolean,
+    showBackspaceButton: Boolean,
+    showSpeakButton: Boolean,
+    homeInActionBar: Boolean
 ) {
     var showPinDialog by remember { mutableStateOf(false) }
 
@@ -157,94 +191,114 @@ fun MainCommunicationScreenContent(
         )
     }
 
-    // Changed to fillMaxSize() without padding at the very bottom
-    // so the home bar can sit flush against the bottom edge.
     Column(
         modifier = Modifier.fillMaxSize()
     ) {
-        // Wrap the top content in a Column with padding
         Column(
             modifier = Modifier
-                .weight(1f) // Takes up all space above the bottom bar
+                .weight(1f)
                 .padding(8.dp)
         ) {
-            SentenceBar(
-                sentence = sentence,
-                userGender = userGender,
-                onSettingsClick = { showPinDialog = true },
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .height(100.dp)
-                    .padding(bottom = 8.dp)
-            )
+            if (showSentenceBar) {
+                SentenceBar(
+                    sentence = sentence,
+                    userGender = userGender,
+                    onSettingsClick = { showPinDialog = true },
+                    imageScale = barTileImageScale,
+                    titleScale = barTileTitleScale,
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .padding(bottom = 8.dp)
+                )
+            }
 
             ActionBar(
                 onSpeak = onSpeak,
                 onClear = onClear,
                 onBackspace = onBackspace,
                 onBack = onBackClick,
+                onSettingsClick = { showPinDialog = true },
+                onHomeClick = onHomeClick,
+                showSettingsFallback = !showSentenceBar,
                 canGoBack = currentParentId != null,
+                scale = actionButtonScale,
+                showClearButton = showSentenceBar,
+                showBackButton = showBackButton,
+                showBackspaceButton = showSentenceBar && showBackspaceButton,
+                showSpeakButton = showSentenceBar && showSpeakButton,
+                homeInActionBar = homeInActionBar,
                 modifier = Modifier
                     .fillMaxWidth()
                     .padding(bottom = 8.dp)
             )
 
             val orientation = LocalConfiguration.current.orientation
-            val columns = if (orientation == Configuration.ORIENTATION_LANDSCAPE) 6 else 3
-            val aspectRatio = if (orientation == Configuration.ORIENTATION_LANDSCAPE) 1.2f else 1.0f
+            val columns = if (orientation == Configuration.ORIENTATION_LANDSCAPE) gridColumns * 2 else gridColumns
 
             val maxTileIndex = tiles.maxOfOrNull { it.layoutState.cellIndex } ?: 0
-            val minCells = if (orientation == Configuration.ORIENTATION_LANDSCAPE) 24 else 12
-            val totalCellsToRender = maxOf(minCells, maxTileIndex + 1)
+            val actualRows = maxOf(gridRows, (maxTileIndex / columns) + 1)
+            val totalCellsToRender = actualRows * columns
 
             val tileMap = remember(tiles) { tiles.associateBy { it.layoutState.cellIndex } }
 
-            LazyVerticalGrid(
-                columns = GridCells.Fixed(columns),
-                modifier = Modifier.fillMaxSize(),
-                contentPadding = PaddingValues(bottom = 8.dp),
-                horizontalArrangement = Arrangement.spacedBy(8.dp),
-                verticalArrangement = Arrangement.spacedBy(8.dp)
-            ) {
-                items(
-                    count = totalCellsToRender,
-                    key = { index -> tileMap[index]?.definition?.id ?: "empty_cell_$index" }
-                ) { index ->
-                    val tile = tileMap[index]
+            // 👉 BoxWithConstraints forces perfectly squished tiles to fit constraints
+            BoxWithConstraints(modifier = Modifier.fillMaxSize().weight(1f)) {
+                val spacingDp = 8.dp
+                val totalVerticalSpacing = spacingDp * (gridRows - 1)
+                val cellHeight = maxOf(0.dp, (maxHeight - totalVerticalSpacing) / gridRows)
 
-                    if (tile != null) {
-                        AACTileItem(
-                            tile = tile,
-                            userGender = userGender,
-                            orientation = orientation,
-                            onClick = { onTileClick(tile) }
-                        )
-                    } else {
-                        Spacer(
-                            modifier = Modifier
-                                .fillMaxWidth()
-                                .aspectRatio(aspectRatio)
-                        )
+                LazyVerticalGrid(
+                    columns = GridCells.Fixed(columns),
+                    modifier = Modifier.fillMaxSize(),
+                    contentPadding = PaddingValues(bottom = 8.dp),
+                    horizontalArrangement = Arrangement.spacedBy(8.dp),
+                    verticalArrangement = Arrangement.spacedBy(8.dp)
+                ) {
+                    items(
+                        count = totalCellsToRender,
+                        key = { index -> tileMap[index]?.definition?.id ?: "empty_cell_$index" }
+                    ) { index ->
+                        val tile = tileMap[index]
+
+                        // Forced Height Container guarantees row count!
+                        Box(modifier = Modifier.fillMaxWidth().height(cellHeight)) {
+                            if (tile != null) {
+                                AACTileItem(
+                                    tile = tile,
+                                    userGender = userGender,
+                                    scale = gridTileScale,
+                                    onClick = { onTileClick(tile) },
+                                    modifier = Modifier.fillMaxSize() // Expands to fit Box bounds
+                                )
+                            } else {
+                                Spacer(modifier = Modifier.fillMaxSize())
+                            }
+                        }
                     }
                 }
             }
         }
 
-        // Add the new bottom bar here
-        BottomHomeBar(onHomeClick = onHomeClick)
+        if (!homeInActionBar) {
+            BottomHomeBar(
+                onHomeClick = onHomeClick,
+                scale = actionButtonScale
+            )
+        }
     }
 }
 
 @Composable
 fun BottomHomeBar(
     onHomeClick: () -> Unit,
+    scale: Float,
     modifier: Modifier = Modifier
 ) {
     Box(
         modifier = modifier
             .fillMaxWidth()
             .background(
-                color = Color(0xFF2D2F33), // Dark gray matching the screenshot
+                color = Color(0xFF2D2F33),
                 shape = RoundedCornerShape(topStart = 16.dp, topEnd = 16.dp)
             )
             .padding(vertical = 12.dp),
@@ -256,111 +310,15 @@ fun BottomHomeBar(
             shape = RoundedCornerShape(12.dp),
             contentPadding = PaddingValues(0.dp),
             modifier = Modifier
-                .width(80.dp)
-                .height(48.dp)
+                .width((80 * scale).dp)
+                .height((48 * scale).dp)
         ) {
             Icon(
                 imageVector = Icons.Default.Home,
                 contentDescription = "Home",
                 tint = Color.Black,
-                modifier = Modifier.size(32.dp)
+                modifier = Modifier.size((32 * scale).dp)
             )
-        }
-    }
-}
-
-@Composable
-fun MainCommunicationScreenContent(
-    tiles: List<CombinedTile>,
-    sentence: List<CombinedTile>,
-    currentParentId: String?,
-    userGender: Gender,
-    langCode: String,
-    onSpeak: () -> Unit,
-    onClear: () -> Unit,
-    onBackspace: () -> Unit,
-    onTileClick: (CombinedTile) -> Unit,
-    onBackClick: () -> Unit,
-    onNavigateToAdmin: () -> Unit
-) {
-    var showPinDialog by remember { mutableStateOf(false) }
-
-    if (showPinDialog) {
-        AdminPinDialog(
-            onDismiss = { showPinDialog = false },
-            onConfirm = {
-                showPinDialog = false
-                onNavigateToAdmin()
-            }
-        )
-    }
-
-    Column(
-        modifier = Modifier
-            .fillMaxSize()
-            .padding(8.dp)
-    ) {
-        SentenceBar(
-            sentence = sentence,
-            userGender = userGender,
-            onSettingsClick = { showPinDialog = true },
-            modifier = Modifier
-                .fillMaxWidth()
-                .height(100.dp)
-                .padding(bottom = 8.dp)
-        )
-
-        ActionBar(
-            onSpeak = onSpeak,
-            onClear = onClear,
-            onBackspace = onBackspace,
-            onBack = onBackClick,
-            canGoBack = currentParentId != null,
-            modifier = Modifier
-                .fillMaxWidth()
-                .padding(bottom = 8.dp)
-        )
-
-        val orientation = LocalConfiguration.current.orientation
-        val columns = if (orientation == Configuration.ORIENTATION_LANDSCAPE) 6 else 3
-        val aspectRatio = if (orientation == Configuration.ORIENTATION_LANDSCAPE) 1.2f else 1.0f
-
-        val maxTileIndex = tiles.maxOfOrNull { it.layoutState.cellIndex } ?: 0
-        val minCells = if (orientation == Configuration.ORIENTATION_LANDSCAPE) 24 else 12
-        val totalCellsToRender = maxOf(minCells, maxTileIndex + 1)
-
-        // OPTIMIZATION: Transform tiles to a Map to drop lookup time from O(N^2) to O(1)
-        val tileMap = remember(tiles) { tiles.associateBy { it.layoutState.cellIndex } }
-
-        LazyVerticalGrid(
-            columns = GridCells.Fixed(columns),
-            modifier = Modifier.weight(1f),
-            contentPadding = PaddingValues(bottom = 8.dp),
-            horizontalArrangement = Arrangement.spacedBy(8.dp),
-            verticalArrangement = Arrangement.spacedBy(8.dp)
-        ) {
-            items(
-                count = totalCellsToRender,
-                // OPTIMIZATION: Provide a structural key. Compose will only redraw cells that actually changed.
-                key = { index -> tileMap[index]?.definition?.id ?: "empty_cell_$index" }
-            ) { index ->
-                val tile = tileMap[index]
-
-                if (tile != null) {
-                    AACTileItem(
-                        tile = tile,
-                        userGender = userGender,
-                        orientation = orientation,
-                        onClick = { onTileClick(tile) }
-                    )
-                } else {
-                    Spacer(
-                        modifier = Modifier
-                            .fillMaxWidth()
-                            .aspectRatio(aspectRatio)
-                    )
-                }
-            }
         }
     }
 }
@@ -370,6 +328,8 @@ fun SentenceBar(
     sentence: List<CombinedTile>,
     userGender: Gender,
     onSettingsClick: () -> Unit,
+    imageScale: Float,
+    titleScale: Float,
     modifier: Modifier = Modifier
 ) {
     val rowModifier = Modifier
@@ -380,7 +340,7 @@ fun SentenceBar(
         .size(48.dp)
         .background(MaterialTheme.colorScheme.surface, CircleShape)
 
-    val tileModifier = remember { Modifier.size(86.dp) }
+    val tileModifier = remember(imageScale) { Modifier.size((86 * imageScale).dp) }
 
     Row(
         modifier = modifier.then(rowModifier),
@@ -421,12 +381,11 @@ fun SentenceBar(
                     }
                 }
 
-                // Extract to local val to fix Kotlin compiler String nullability inference
                 val emojiText = tile.definition.emoji
 
                 Card(
                     modifier = tileModifier,
-                    shape = androidx.compose.foundation.shape.RoundedCornerShape(8.dp),
+                    shape = RoundedCornerShape(8.dp),
                     colors = CardDefaults.cardColors(containerColor = backgroundColor),
                     elevation = CardDefaults.cardElevation(defaultElevation = 1.dp)
                 ) {
@@ -451,13 +410,13 @@ fun SentenceBar(
                                     contentScale = ContentScale.Fit
                                 )
                             } else if (emojiText != null) {
-                                Text(text = emojiText, fontSize = 24.sp)
+                                Text(text = emojiText, fontSize = (24 * imageScale).sp)
                             }
                         }
 
                         Text(
                             text = displayLabel,
-                            fontSize = 9.sp,
+                            fontSize = (9 * titleScale).sp,
                             fontWeight = FontWeight.Bold,
                             textAlign = TextAlign.Center,
                             maxLines = 1,
@@ -491,7 +450,16 @@ fun ActionBar(
     onClear: () -> Unit,
     onBackspace: () -> Unit,
     onBack: () -> Unit,
+    onSettingsClick: () -> Unit,
+    onHomeClick: () -> Unit,
+    showSettingsFallback: Boolean,
     canGoBack: Boolean,
+    scale: Float,
+    showClearButton: Boolean,
+    showBackButton: Boolean,
+    showBackspaceButton: Boolean,
+    showSpeakButton: Boolean,
+    homeInActionBar: Boolean,
     modifier: Modifier = Modifier
 ) {
     Row(
@@ -499,41 +467,77 @@ fun ActionBar(
         horizontalArrangement = Arrangement.spacedBy(8.dp),
         verticalAlignment = Alignment.CenterVertically
     ) {
-        ActionButton(
-            icon = Icons.AutoMirrored.Filled.ArrowBack,
-            backgroundColor = Color(0xFFE0E0E0),
-            iconTint = Color.DarkGray,
-            onClick = onBack,
-            enabled = canGoBack,
-            modifier = Modifier.weight(1f)
-        )
+        if (showBackButton) {
+            ActionButton(
+                icon = Icons.AutoMirrored.Filled.ArrowBack,
+                backgroundColor = Color(0xFFE0E0E0),
+                iconTint = Color.DarkGray,
+                onClick = onBack,
+                enabled = canGoBack,
+                scale = scale,
+                modifier = Modifier.weight(1f)
+            )
+        }
 
-        ActionButton(
-            icon = Icons.Default.Delete,
-            backgroundColor = Color(0xFFFFCDD2),
-            iconTint = Color.Red,
-            onClick = onClear,
-            enabled = true,
-            modifier = Modifier.weight(1f)
-        )
+        if (showClearButton) {
+            ActionButton(
+                icon = Icons.Default.Delete,
+                backgroundColor = Color(0xFFFFCDD2),
+                iconTint = Color.Red,
+                onClick = onClear,
+                enabled = true,
+                scale = scale,
+                modifier = Modifier.weight(1f)
+            )
+        }
 
-        ActionButton(
-            icon = Icons.AutoMirrored.Filled.Backspace,
-            backgroundColor = Color(0xFFF8BBD0),
-            iconTint = Color(0xFFC2185B),
-            onClick = onBackspace,
-            enabled = true,
-            modifier = Modifier.weight(1f)
-        )
+        if (showBackspaceButton) {
+            ActionButton(
+                icon = Icons.AutoMirrored.Filled.Backspace,
+                backgroundColor = Color(0xFFF8BBD0),
+                iconTint = Color(0xFFC2185B),
+                onClick = onBackspace,
+                enabled = true,
+                scale = scale,
+                modifier = Modifier.weight(1f)
+            )
+        }
 
-        ActionButton(
-            icon = Icons.AutoMirrored.Filled.VolumeUp,
-            backgroundColor = Color(0xFF64B5F6),
-            iconTint = Color.White,
-            onClick = onSpeak,
-            enabled = true,
-            modifier = Modifier.weight(2f)
-        )
+        if (showSpeakButton) {
+            ActionButton(
+                icon = Icons.AutoMirrored.Filled.VolumeUp,
+                backgroundColor = Color(0xFF64B5F6),
+                iconTint = Color.White,
+                onClick = onSpeak,
+                enabled = true,
+                scale = scale,
+                modifier = Modifier.weight(2f)
+            )
+        }
+
+        if (homeInActionBar) {
+            ActionButton(
+                icon = Icons.Default.Home,
+                backgroundColor = Color(0xFFE0E0E0),
+                iconTint = Color.DarkGray,
+                onClick = onHomeClick,
+                enabled = true,
+                scale = scale,
+                modifier = Modifier.weight(1f)
+            )
+        }
+
+        if (showSettingsFallback) {
+            ActionButton(
+                icon = Icons.Default.Settings,
+                backgroundColor = Color(0xFF454950),
+                iconTint = Color.White,
+                onClick = onSettingsClick,
+                enabled = true,
+                scale = scale,
+                modifier = Modifier.weight(1f)
+            )
+        }
     }
 }
 
@@ -544,24 +548,25 @@ fun ActionButton(
     iconTint: Color,
     onClick: () -> Unit,
     enabled: Boolean,
+    scale: Float,
     modifier: Modifier = Modifier
 ) {
     Button(
         onClick = onClick,
         enabled = enabled,
-        modifier = modifier.height(64.dp),
+        modifier = modifier.height((64 * scale).dp),
         colors = ButtonDefaults.buttonColors(
             containerColor = backgroundColor,
             disabledContainerColor = backgroundColor.copy(alpha = 0.4f)
         ),
-        shape = androidx.compose.foundation.shape.RoundedCornerShape(12.dp),
+        shape = RoundedCornerShape(12.dp),
         contentPadding = PaddingValues(0.dp)
     ) {
         Icon(
             imageVector = icon,
             contentDescription = null,
             tint = if (enabled) iconTint else iconTint.copy(alpha = 0.4f),
-            modifier = Modifier.size(32.dp)
+            modifier = Modifier.size((32 * scale).dp)
         )
     }
 }
@@ -622,7 +627,13 @@ fun AdminPinDialog(onDismiss: () -> Unit, onConfirm: () -> Unit) {
 }
 
 @Composable
-fun AACTileItem(tile: CombinedTile, userGender: Gender, orientation: Int, onClick: () -> Unit) {
+fun AACTileItem(
+    tile: CombinedTile,
+    userGender: Gender,
+    scale: Float,
+    modifier: Modifier = Modifier,
+    onClick: () -> Unit
+) {
     val backgroundColor =
         remember(tile.definition.backgroundColorHex, tile.definition.partOfSpeech) {
             if (tile.definition.backgroundColorHex != null) {
@@ -642,16 +653,15 @@ fun AACTileItem(tile: CombinedTile, userGender: Gender, orientation: Int, onClic
         tile.definition.label
     }
 
-    val aspectRatio = if (orientation == Configuration.ORIENTATION_LANDSCAPE) 1.2f else 1.0f
-
     TileUI(
         label = displayLabel,
         imageUri = tile.definition.imageUri,
         emoji = tile.definition.emoji,
         backgroundColor = backgroundColor,
-        aspectRatio = aspectRatio,
         tileType = tile.definition.resolvedType,
         isHidden = tile.layoutState.isHidden,
+        scale = scale,
+        modifier = modifier,
         onClick = onClick
     )
 }
@@ -662,19 +672,17 @@ fun TileUI(
     imageUri: String?,
     emoji: String?,
     backgroundColor: Color,
-    aspectRatio: Float,
     tileType: TileType,
     isHidden: Boolean = false,
+    scale: Float = 1.0f,
+    modifier: Modifier = Modifier,
     onClick: () -> Unit,
-    @SuppressLint("ModifierParameter") modifier: Modifier = Modifier.Companion,
     labelFontSize: TextUnit = 14.sp
 ) {
     if (isHidden) return
 
     val isFolder = tileType == TileType.FOLDER
 
-    // OPTIMIZATION: Memoize the I/O disk check (File.exists) so it doesn't trigger
-    // on the UI thread during rapid recompositions or grid scrolling.
     val imageModel = remember(imageUri) {
         imageUri?.let {
             val file = File(it)
@@ -684,15 +692,13 @@ fun TileUI(
 
     Card(
         modifier = modifier
-            .fillMaxWidth()
-            .aspectRatio(aspectRatio)
             .clickable(onClick = onClick)
             .border(
                 width = if (isFolder) 3.dp else 0.dp,
                 color = if (isFolder) Color.DarkGray else Color.Transparent,
-                shape = androidx.compose.foundation.shape.RoundedCornerShape(8.dp)
+                shape = RoundedCornerShape(8.dp)
             ),
-        shape = androidx.compose.foundation.shape.RoundedCornerShape(8.dp),
+        shape = RoundedCornerShape(8.dp),
         colors = CardDefaults.cardColors(containerColor = backgroundColor),
         elevation = CardDefaults.cardElevation(2.dp)
     ) {
@@ -719,13 +725,13 @@ fun TileUI(
                             contentScale = ContentScale.Fit
                         )
                     } else if (emoji != null) {
-                        Text(text = emoji, fontSize = 56.sp)
+                        Text(text = emoji, fontSize = (56f * scale).sp)
                     }
                 }
 
                 Text(
                     text = label,
-                    fontSize = labelFontSize,
+                    fontSize = (labelFontSize.value * scale).sp,
                     fontWeight = FontWeight.Bold,
                     textAlign = TextAlign.Center,
                     maxLines = 1,
@@ -749,7 +755,7 @@ fun TileUI(
                     modifier = Modifier
                         .align(Alignment.TopEnd)
                         .padding(4.dp)
-                        .size(18.dp),
+                        .size((18f * scale).dp),
                     tint = FitzgeraldTileContent
                 )
             }
