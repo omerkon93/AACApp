@@ -225,4 +225,6 @@
     <string name="setting_home_in_action_bar_desc">Move the Home button from the bottom bar into the action row</string>
     <string name="setting_grid_columns">Grid Columns (Portrait)</string>
     <string name="setting_grid_rows">Grid Rows (Portrait)</string>
+    <string name="save_layout_as_default">Save layout settings as default</string>
+    <string name="restore_default_layout_settings">Restore default layout settings</string>
 </resources>

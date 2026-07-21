@@ -189,7 +189,9 @@ fun AdminLayoutSettingsScreen(viewModel: AACViewModel) {
                 },
                 modifier = Modifier.fillMaxWidth()
             ) {
-                Text("שמור הגדרות כברירת מחדל")
+                Text(
+                    text = stringResource(R.string.save_layout_as_default)
+                )
             }
 
             OutlinedButton(
@@ -198,7 +200,9 @@ fun AdminLayoutSettingsScreen(viewModel: AACViewModel) {
                 },
                 modifier = Modifier.fillMaxWidth()
             ) {
-                Text("שחזר הגדרות ברירת מחדל")
+                Text(
+                    text = stringResource(R.string.restore_default_layout_settings)
+                )
             }
         }
 
