@@ -208,7 +208,8 @@
     <!-- Layout Settings -->
     <string name="admin_tab_layout">תצוגה</string>
     <string name="layout_settings_title">הגדרות תצוגה</string>
-    <string name="setting_grid_tile_size">גודל כפתורים במסך הראשי</string>
+    <string name="setting_grid_tile_container_size">גודל הכפתור עצמו (מסגרת)</string>
+    <string name="setting_grid_tile_content_size">גודל התוכן בכפתור (סמל וטקסט)</string>
     <string name="setting_bar_image_size">גודל תמונה בסרגל התקשורת</string>
     <string name="setting_bar_text_size">גודל טקסט בסרגל התקשורת</string>
     <string name="setting_action_button_size">גודל כפתורי פעולה (בית, חזור, נקה)</string>

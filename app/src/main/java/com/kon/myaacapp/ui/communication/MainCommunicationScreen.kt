@@ -96,6 +96,7 @@ fun MainCommunicationScreen(
     val gridColumns by viewModel.gridColumns.collectAsState()
     val gridRows by viewModel.gridRows.collectAsState()
     val gridTileScale by viewModel.gridTileScale.collectAsState()
+    val gridTileContainerScale by viewModel.gridTileContainerScale.collectAsState() // 👉 Added container scale
     val barTileImageScale by viewModel.barTileImageScale.collectAsState()
     val barTileTitleScale by viewModel.barTileTitleScale.collectAsState()
     val actionButtonScale by viewModel.actionButtonScale.collectAsState()
@@ -142,6 +143,7 @@ fun MainCommunicationScreen(
         gridColumns = gridColumns,
         gridRows = gridRows,
         gridTileScale = gridTileScale,
+        gridTileContainerScale = gridTileContainerScale, // 👉 Pass container scale down
         barTileImageScale = barTileImageScale,
         barTileTitleScale = barTileTitleScale,
         actionButtonScale = actionButtonScale,
@@ -170,6 +172,7 @@ fun MainCommunicationScreenContent(
     gridColumns: Int,
     gridRows: Int,
     gridTileScale: Float,
+    gridTileContainerScale: Float,
     barTileImageScale: Float,
     barTileTitleScale: Float,
     actionButtonScale: Float,
@@ -233,45 +236,77 @@ fun MainCommunicationScreenContent(
             )
 
             val orientation = LocalConfiguration.current.orientation
-            val columns = if (orientation == Configuration.ORIENTATION_LANDSCAPE) gridColumns * 2 else gridColumns
 
-            val maxTileIndex = tiles.maxOfOrNull { it.layoutState.cellIndex } ?: 0
-            val actualRows = maxOf(gridRows, (maxTileIndex / columns) + 1)
-            val totalCellsToRender = actualRows * columns
+            val columns = if (
+                orientation == Configuration.ORIENTATION_LANDSCAPE
+            ) {
+                gridColumns * 2
+            } else {
+                gridColumns
+            }
 
-            val tileMap = remember(tiles) { tiles.associateBy { it.layoutState.cellIndex } }
+            val totalCellsToRender = gridRows * columns
 
-            // 👉 BoxWithConstraints forces perfectly squished tiles to fit constraints
-            BoxWithConstraints(modifier = Modifier.fillMaxSize().weight(1f)) {
-                val spacingDp = 8.dp
-                val totalVerticalSpacing = spacingDp * (gridRows - 1)
-                val cellHeight = maxOf(0.dp, (maxHeight - totalVerticalSpacing) / gridRows)
+            val tileMap: Map<Int, CombinedTile> = remember(tiles) {
+                tiles.associateBy { tile ->
+                    tile.layoutState.cellIndex
+                }
+            }
+
+            BoxWithConstraints(
+                modifier = Modifier
+                    .weight(1f)
+                    .fillMaxSize()
+            ) {
+                val spacing = 8.dp
+
+                val totalVerticalSpacing =
+                    spacing * (gridRows - 1).coerceAtLeast(0)
+
+                val cellHeight = maxOf(
+                    0.dp,
+                    (maxHeight - totalVerticalSpacing) / gridRows
+                )
 
                 LazyVerticalGrid(
                     columns = GridCells.Fixed(columns),
                     modifier = Modifier.fillMaxSize(),
-                    contentPadding = PaddingValues(bottom = 8.dp),
-                    horizontalArrangement = Arrangement.spacedBy(8.dp),
-                    verticalArrangement = Arrangement.spacedBy(8.dp)
+                    contentPadding = PaddingValues(0.dp),
+                    horizontalArrangement = Arrangement.spacedBy(spacing),
+                    verticalArrangement = Arrangement.spacedBy(spacing),
+                    userScrollEnabled = false
                 ) {
                     items(
                         count = totalCellsToRender,
-                        key = { index -> tileMap[index]?.definition?.id ?: "empty_cell_$index" }
+                        key = { index ->
+                            tileMap[index]?.definition?.id
+                                ?: "empty_cell_$index"
+                        }
                     ) { index ->
-                        val tile = tileMap[index]
+                        val tile: CombinedTile? = tileMap[index]
 
-                        // Forced Height Container guarantees row count!
-                        Box(modifier = Modifier.fillMaxWidth().height(cellHeight)) {
+                        Box(
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .height(cellHeight),
+                            contentAlignment = Alignment.Center
+                        ) {
                             if (tile != null) {
                                 AACTileItem(
                                     tile = tile,
                                     userGender = userGender,
                                     scale = gridTileScale,
-                                    onClick = { onTileClick(tile) },
-                                    modifier = Modifier.fillMaxSize() // Expands to fit Box bounds
+                                    modifier = Modifier.fillMaxSize(
+                                        fraction = gridTileContainerScale
+                                    ),
+                                    onClick = {
+                                        onTileClick(tile)
+                                    }
                                 )
                             } else {
-                                Spacer(modifier = Modifier.fillMaxSize())
+                                Spacer(
+                                    modifier = Modifier.fillMaxSize()
+                                )
                             }
                         }
                     }

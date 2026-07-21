@@ -210,6 +210,9 @@ class AACViewModel(application: Application) : AndroidViewModel(application) {
     val gridTileScale: StateFlow<Float> = settingsRepository.gridTileScaleFlow
         .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), 1.0f)
 
+    val gridTileContainerScale: StateFlow<Float> = settingsRepository.gridTileContainerScaleFlow
+        .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), 1.0f)
+
     val barTileImageScale: StateFlow<Float> = settingsRepository.barTileImageScaleFlow
         .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), 1.0f)
 
@@ -243,6 +246,10 @@ class AACViewModel(application: Application) : AndroidViewModel(application) {
     // 👉 NEW LAYOUT SETTINGS UPDATE FUNCTIONS
     fun updateGridTileScale(scale: Float) {
         viewModelScope.launch { settingsRepository.updateGridTileScale(scale) }
+    }
+
+    fun updateGridTileContainerScale(scale: Float) {
+        viewModelScope.launch { settingsRepository.updateGridTileContainerScale(scale) }
     }
 
     fun updateBarTileImageScale(scale: Float) {

@@ -208,7 +208,8 @@
     <!-- Layout Settings -->
     <string name="admin_tab_layout">Layout</string>
     <string name="layout_settings_title">Layout Settings</string>
-    <string name="setting_grid_tile_size">Main Screen Button Size</string>
+    <string name="setting_grid_tile_container_size">Main Screen Tile Container Size</string>
+    <string name="setting_grid_tile_content_size">Main Screen Tile Content Size</string>
     <string name="setting_bar_image_size">Communication Bar Image Size</string>
     <string name="setting_bar_text_size">Communication Bar Text Size</string>
     <string name="setting_action_button_size">Action Buttons Size (Home, Back, Clear)</string>

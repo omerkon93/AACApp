@@ -35,19 +35,24 @@ import androidx.compose.ui.unit.dp
 import com.kon.myaacapp.AACViewModel
 import com.kon.myaacapp.R
 import com.kon.myaacapp.data.local.entity.AACTile
+import com.kon.myaacapp.domain.model.CombinedTile
+import com.kon.myaacapp.domain.model.TileType
 import com.kon.myaacapp.ui.admin.components.TileActionDialog
 import com.kon.myaacapp.ui.admin.components.TilePickerDialog
 import com.kon.myaacapp.ui.admin.grid.AdminEditableGridScreen
-import com.kon.myaacapp.ui.admin.list.AdminListView
 import com.kon.myaacapp.ui.admin.layout.AdminLayoutSettingsScreen
+import com.kon.myaacapp.ui.admin.list.AdminListView
 import com.kon.myaacapp.ui.admin.navigation.AdminBottomNavigation
 import com.kon.myaacapp.ui.admin.statistics.AdminStatisticsScreen
 import com.kon.myaacapp.ui.admin.system.AdminSystemSettings
 import com.kon.myaacapp.ui.editor.TileEditDialog
 
-// 👉 1. Added LAYOUT to enum
 enum class AdminTab {
-    HOME, SETTINGS, LAYOUT, STATISTICS, SYSTEM
+    HOME,
+    SETTINGS,
+    LAYOUT,
+    STATISTICS,
+    SYSTEM
 }
 
 @OptIn(ExperimentalMaterial3Api::class)
@@ -57,70 +62,172 @@ fun AdminDashboardScreen(
     onNavigateBack: () -> Unit,
     onNavigateToProfiles: () -> Unit
 ) {
-    var selectedTab by rememberSaveable { mutableStateOf(AdminTab.HOME) }
-    var showTileDialog by remember { mutableStateOf(false) }
-    var editingTile by remember { mutableStateOf<AACTile?>(null) }
-    var tileToDelete by remember { mutableStateOf<AACTile?>(null) }
-    var initialCellIndex by remember { mutableStateOf<Int?>(null) }
-    var showTilePicker by remember { mutableStateOf(false) }
-    var tileForAction by remember { mutableStateOf<AACTile?>(null) }
+    var selectedTab by rememberSaveable {
+        mutableStateOf(AdminTab.HOME)
+    }
+
+    /*
+     * Legacy editor/list state.
+     *
+     * These remain AACTile until AdminListView and TileEditDialog
+     * are migrated to the new domain models.
+     */
+    var showTileDialog by remember {
+        mutableStateOf(false)
+    }
+
+    var editingTile by remember {
+        mutableStateOf<AACTile?>(null)
+    }
+
+    var tileToDelete by remember {
+        mutableStateOf<AACTile?>(null)
+    }
+
+    /*
+     * New grid/action state.
+     *
+     * AdminEditableGridScreen returns CombinedTile directly.
+     */
+    var tileForAction by remember {
+        mutableStateOf<CombinedTile?>(null)
+    }
+
+    var initialCellIndex by remember {
+        mutableStateOf<Int?>(null)
+    }
+
+    var showTilePicker by remember {
+        mutableStateOf(false)
+    }
 
     val langCode by viewModel.languageCode.collectAsState()
     val currentParentId by viewModel.currentParentId.collectAsState()
-    val layoutDir = if (langCode == "he") LayoutDirection.Rtl else LayoutDirection.Ltr
 
-    val zeroInsets = remember { WindowInsets(0.dp) }
+    val layoutDir = if (langCode == "he") {
+        LayoutDirection.Rtl
+    } else {
+        LayoutDirection.Ltr
+    }
 
-    val onEditTileGrid = remember { { tile: AACTile? -> tileForAction = tile } }
-    val onCreateTileGrid = remember {
-        { cellIndex: Int ->
+    val zeroInsets = remember {
+        WindowInsets(0.dp)
+    }
+
+    val onEditTileGrid: (CombinedTile) -> Unit = remember {
+        { tile ->
+            tileForAction = tile
+        }
+    }
+
+    val onCreateTileGrid: (Int) -> Unit = remember {
+        { cellIndex ->
             editingTile = null
             initialCellIndex = cellIndex
             showTilePicker = true
         }
     }
 
-    val onEditTileList = remember {
-        { tile: AACTile? ->
+    val onEditTileList: (AACTile?) -> Unit = remember {
+        { tile ->
             editingTile = tile
             initialCellIndex = tile?.cellIndex
             showTileDialog = true
         }
     }
-    val onDeleteTileList = remember { { tile: AACTile -> tileToDelete = tile } }
 
-    val onResetHome = remember { { viewModel.resetToHome() } }
-    val onNavBack = remember { { viewModel.navigateBack() } }
+    val onDeleteTileList: (AACTile) -> Unit = remember {
+        { tile ->
+            tileToDelete = tile
+        }
+    }
 
-    CompositionLocalProvider(LocalLayoutDirection provides layoutDir) {
+    val onResetHome: () -> Unit = remember(viewModel) {
+        {
+            viewModel.resetToHome()
+        }
+    }
+
+    val onNavBack: () -> Unit = remember(viewModel) {
+        {
+            viewModel.navigateBack()
+        }
+    }
+
+    CompositionLocalProvider(
+        LocalLayoutDirection provides layoutDir
+    ) {
         Scaffold(
             topBar = {
                 CenterAlignedTopAppBar(
                     title = {
                         Text(
                             text = when (selectedTab) {
-                                AdminTab.HOME -> if (currentParentId == null) stringResource(R.string.edit_main_screen) else stringResource(R.string.edit_category)
-                                AdminTab.SETTINGS -> stringResource(R.string.admin_tab_settings)
-                                AdminTab.LAYOUT -> "תצוגה" // Replace with stringResource(R.string.admin_tab_layout) if you add it to strings.xml
-                                AdminTab.STATISTICS -> stringResource(R.string.admin_tab_statistics)
-                                AdminTab.SYSTEM -> stringResource(R.string.admin_tab_system)
+                                AdminTab.HOME -> {
+                                    if (currentParentId == null) {
+                                        stringResource(R.string.edit_main_screen)
+                                    } else {
+                                        stringResource(R.string.edit_category)
+                                    }
+                                }
+
+                                AdminTab.SETTINGS -> {
+                                    stringResource(R.string.admin_tab_settings)
+                                }
+
+                                AdminTab.LAYOUT -> {
+                                    "תצוגה"
+                                }
+
+                                AdminTab.STATISTICS -> {
+                                    stringResource(R.string.admin_tab_statistics)
+                                }
+
+                                AdminTab.SYSTEM -> {
+                                    stringResource(R.string.admin_tab_system)
+                                }
                             },
                             style = MaterialTheme.typography.titleMedium,
                             fontWeight = FontWeight.Bold
                         )
                     },
                     navigationIcon = {
-                        IconButton(onClick = onNavigateBack) {
-                            Icon(Icons.AutoMirrored.Filled.ArrowBack, contentDescription = stringResource(R.string.back))
+                        IconButton(
+                            onClick = onNavigateBack
+                        ) {
+                            Icon(
+                                imageVector = Icons.AutoMirrored.Filled.ArrowBack,
+                                contentDescription = stringResource(
+                                    R.string.back
+                                )
+                            )
                         }
                     },
                     actions = {
-                        if (selectedTab == AdminTab.HOME && currentParentId != null) {
-                            IconButton(onClick = onResetHome) {
-                                Icon(Icons.Default.Home, contentDescription = stringResource(R.string.home))
+                        if (
+                            selectedTab == AdminTab.HOME &&
+                            currentParentId != null
+                        ) {
+                            IconButton(
+                                onClick = onResetHome
+                            ) {
+                                Icon(
+                                    imageVector = Icons.Default.Home,
+                                    contentDescription = stringResource(
+                                        R.string.home
+                                    )
+                                )
                             }
-                            IconButton(onClick = onNavBack) {
-                                Icon(Icons.Default.ArrowUpward, contentDescription = stringResource(R.string.up))
+
+                            IconButton(
+                                onClick = onNavBack
+                            ) {
+                                Icon(
+                                    imageVector = Icons.Default.ArrowUpward,
+                                    contentDescription = stringResource(
+                                        R.string.up
+                                    )
+                                )
                             }
                         }
                     },
@@ -130,11 +237,15 @@ fun AdminDashboardScreen(
             bottomBar = {
                 AdminBottomNavigation(
                     selectedTab = selectedTab,
-                    onTabSelected = { selectedTab = it }
+                    onTabSelected = { tab ->
+                        selectedTab = tab
+                    }
                 )
             }
         ) { padding ->
-            Box(modifier = Modifier.padding(padding)) {
+            Box(
+                modifier = Modifier.padding(padding)
+            ) {
                 when (selectedTab) {
                     AdminTab.HOME -> {
                         AdminEditableGridScreen(
@@ -152,13 +263,16 @@ fun AdminDashboardScreen(
                         )
                     }
 
-                    // 👉 2. Load layout settings tab
                     AdminTab.LAYOUT -> {
-                        AdminLayoutSettingsScreen(viewModel = viewModel)
+                        AdminLayoutSettingsScreen(
+                            viewModel = viewModel
+                        )
                     }
 
                     AdminTab.STATISTICS -> {
-                        AdminStatisticsScreen(viewModel = viewModel)
+                        AdminStatisticsScreen(
+                            viewModel = viewModel
+                        )
                     }
 
                     AdminTab.SYSTEM -> {
@@ -175,38 +289,74 @@ fun AdminDashboardScreen(
     if (showTilePicker) {
         TilePickerDialog(
             viewModel = viewModel,
-            onDismiss = { showTilePicker = false },
+            onDismiss = {
+                showTilePicker = false
+                initialCellIndex = null
+            },
             onTileSelected = { tile ->
                 showTilePicker = false
+
                 if (tile == null) {
+                    editingTile = null
                     showTileDialog = true
                 } else {
-                    viewModel.attachTileToCategory(tile.id, currentParentId, initialCellIndex)
+                    viewModel.attachTileToCategory(
+                        tileId = tile.id,
+                        parentId = currentParentId,
+                        cellIndex = initialCellIndex
+                    )
+
                     initialCellIndex = null
                 }
-            },
+            }
         )
     }
 
-    if (tileToDelete != null) {
-        val dismissDelete = remember { { tileToDelete = null } }
+    tileToDelete?.let { deleteTile ->
         AlertDialog(
-            onDismissRequest = dismissDelete,
-            title = { Text(stringResource(R.string.delete_tile_title)) },
-            text = { Text(stringResource(R.string.delete_tile_confirm_msg, tileToDelete?.label ?: "")) },
+            onDismissRequest = {
+                tileToDelete = null
+            },
+            title = {
+                Text(
+                    text = stringResource(
+                        R.string.delete_tile_title
+                    )
+                )
+            },
+            text = {
+                Text(
+                    text = stringResource(
+                        R.string.delete_tile_confirm_msg,
+                        deleteTile.label
+                    )
+                )
+            },
             confirmButton = {
                 Button(
                     onClick = {
-                        tileToDelete?.let { viewModel.deleteTile(it) }
+                        viewModel.deleteTile(deleteTile)
                         tileToDelete = null
                     },
-                    colors = ButtonDefaults.buttonColors(containerColor = MaterialTheme.colorScheme.error)
+                    colors = ButtonDefaults.buttonColors(
+                        containerColor = MaterialTheme.colorScheme.error
+                    )
                 ) {
-                    Text(stringResource(R.string.delete))
+                    Text(
+                        text = stringResource(R.string.delete)
+                    )
                 }
             },
             dismissButton = {
-                TextButton(onClick = dismissDelete) { Text(stringResource(R.string.cancel)) }
+                TextButton(
+                    onClick = {
+                        tileToDelete = null
+                    }
+                ) {
+                    Text(
+                        text = stringResource(R.string.cancel)
+                    )
+                }
             }
         )
     }
@@ -220,35 +370,42 @@ fun AdminDashboardScreen(
                 showTileDialog = false
                 editingTile = null
                 initialCellIndex = null
-            },
+            }
         )
     }
 
-    if (tileForAction != null) {
-        val onOpenAction: (() -> Unit)? = remember(tileForAction) {
-            if (tileForAction?.isCategory == true) {
+    tileForAction?.let { actionTile ->
+        val definition = actionTile.definition
+
+        val onOpenAction: (() -> Unit)? = remember(actionTile) {
+            if (definition.resolvedType == TileType.FOLDER) {
                 {
-                    viewModel.setCategory(tileForAction?.id)
+                    viewModel.setCategory(definition.id)
                     tileForAction = null
                 }
-            } else null
+            } else {
+                null
+            }
         }
 
         TileActionDialog(
-            tile = tileForAction!!,
-            onDismiss = remember { { tileForAction = null } },
-            onEdit = remember {
-                {
-                    editingTile = tileForAction
-                    initialCellIndex = tileForAction?.cellIndex
-                    tileForAction = null
-                    showTileDialog = true
-                }
+            tile = actionTile,
+            onDismiss = {
+                tileForAction = null
+            },
+            onEdit = {
+                /*
+                 * TileEditDialog still needs migration before CombinedTile
+                 * can be passed directly into the editor.
+                 */
+                tileForAction = null
             },
             onRemove = {
-                tileForAction?.id?.let { id ->
-                    viewModel.removeTileFromCategory(id, currentParentId)
-                }
+                viewModel.removeTileFromCategory(
+                    definition.id,
+                    currentParentId
+                )
+
                 tileForAction = null
             },
             onOpen = onOpenAction

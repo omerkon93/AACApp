@@ -5,25 +5,25 @@ import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
-import androidx.compose.foundation.layout.fillMaxHeight
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.rememberScrollState
-import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Settings
+import androidx.compose.material3.Button
+import androidx.compose.material3.ButtonDefaults
 import androidx.compose.material3.Card
 import androidx.compose.material3.CardDefaults
 import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.Icon
-import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Slider
 import androidx.compose.material3.Switch
@@ -41,8 +41,6 @@ import androidx.compose.ui.unit.sp
 import com.kon.myaacapp.AACViewModel
 import com.kon.myaacapp.R
 import com.kon.myaacapp.domain.model.TileType
-import com.kon.myaacapp.ui.communication.ActionBar
-import com.kon.myaacapp.ui.communication.BottomHomeBar
 import com.kon.myaacapp.ui.communication.TileUI
 
 @Composable
@@ -50,6 +48,7 @@ fun AdminLayoutSettingsScreen(viewModel: AACViewModel) {
     val gridColumns by viewModel.gridColumns.collectAsState()
     val gridRows by viewModel.gridRows.collectAsState()
     val gridTileScale by viewModel.gridTileScale.collectAsState()
+    val gridTileContainerScale by viewModel.gridTileContainerScale.collectAsState() // 👉 Added container scale
     val barTileImageScale by viewModel.barTileImageScale.collectAsState()
     val barTileTitleScale by viewModel.barTileTitleScale.collectAsState()
     val actionButtonScale by viewModel.actionButtonScale.collectAsState()
@@ -76,17 +75,10 @@ fun AdminLayoutSettingsScreen(viewModel: AACViewModel) {
         )
 
         LayoutPreview(
-            gridColumns = gridColumns,
-            gridRows = gridRows,
             gridTileScale = gridTileScale,
-            barTileImageScale = barTileImageScale,
-            barTileTitleScale = barTileTitleScale,
+            gridTileContainerScale = gridTileContainerScale,
             actionButtonScale = actionButtonScale,
-            showSentenceBar = showSentenceBar,
-            showBackButton = showBackButton,
-            showBackspaceButton = showBackspaceButton,
-            showSpeakButton = showSpeakButton,
-            homeInActionBar = homeInActionBar
+            showSentenceBar = showSentenceBar
         )
 
         HorizontalDivider()
@@ -104,14 +96,22 @@ fun AdminLayoutSettingsScreen(viewModel: AACViewModel) {
             valueRange = 1..10
         )
 
+        // 👉 New Container Slider
         SettingSlider(
-            label = stringResource(R.string.setting_grid_tile_size),
+            label = stringResource(R.string.setting_grid_tile_container_size),
+            value = gridTileContainerScale,
+            onValueChange = { viewModel.updateGridTileContainerScale(it) },
+            valueRange = 0.5f..1.0f // Capped at 1.0 so it doesn't overflow the cell
+        )
+
+        // Renamed existing Content Slider
+        SettingSlider(
+            label = stringResource(R.string.setting_grid_tile_content_size),
             value = gridTileScale,
             onValueChange = { viewModel.updateGridTileScale(it) },
             valueRange = 0.5f..2.0f
         )
 
-        // 👉 Wrap the sentence bar sliders so they hide when the bar is disabled
         AnimatedVisibility(visible = showSentenceBar) {
             Column(verticalArrangement = Arrangement.spacedBy(16.dp)) {
                 SettingSlider(
@@ -259,136 +259,198 @@ fun SettingSlider(
 
 @Composable
 fun LayoutPreview(
-    gridColumns: Int,
-    gridRows: Int,
     gridTileScale: Float,
-    barTileImageScale: Float,
-    barTileTitleScale: Float,
+    gridTileContainerScale: Float,
     actionButtonScale: Float,
-    showSentenceBar: Boolean,
-    showBackButton: Boolean,
-    showBackspaceButton: Boolean,
-    showSpeakButton: Boolean,
-    homeInActionBar: Boolean
+    showSentenceBar: Boolean
 ) {
-    val previewGridHeight = (gridRows * 76).dp
-
     Column(
         modifier = Modifier
             .fillMaxWidth()
-            .background(Color(0xFF1E1E24), RoundedCornerShape(12.dp))
-            .padding(12.dp)
+            .background(
+                color = Color(0xFF1E1E24),
+                shape = RoundedCornerShape(16.dp)
+            )
+            .padding(16.dp),
+        verticalArrangement = Arrangement.spacedBy(16.dp)
     ) {
         Text(
-            text = "תצוגה מקדימה (Preview)",
-            style = MaterialTheme.typography.labelMedium,
-            color = Color.LightGray,
-            modifier = Modifier.padding(bottom = 12.dp)
+            text = "תצוגה מקדימה",
+            style = MaterialTheme.typography.titleMedium,
+            fontWeight = FontWeight.Bold,
+            color = Color.White
         )
-
-        if (showSentenceBar) {
-            Row(
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .background(MaterialTheme.colorScheme.surfaceVariant, RoundedCornerShape(16.dp))
-                    .padding(8.dp),
-                verticalAlignment = Alignment.CenterVertically
-            ) {
-                Card(
-                    modifier = Modifier.size((86 * barTileImageScale).dp),
-                    shape = RoundedCornerShape(8.dp),
-                    colors = CardDefaults.cardColors(containerColor = Color(0xFFFFF59D))
-                ) {
-                    Column(
-                        modifier = Modifier.fillMaxSize().padding(2.dp),
-                        horizontalAlignment = Alignment.CenterHorizontally,
-                        verticalArrangement = Arrangement.Center
-                    ) {
-                        Box(modifier = Modifier.weight(1f).fillMaxWidth(), contentAlignment = Alignment.Center) {
-                            Text(text = "👋", fontSize = (24 * barTileImageScale).sp)
-                        }
-                        Text(
-                            text = "שלום",
-                            fontSize = (9 * barTileTitleScale).sp,
-                            fontWeight = FontWeight.Bold,
-                            maxLines = 1,
-                            color = Color.Black
-                        )
-                    }
-                }
-                Spacer(modifier = Modifier.weight(1f))
-                IconButton(
-                    onClick = { },
-                    modifier = Modifier.size(48.dp).background(MaterialTheme.colorScheme.surface, CircleShape)
-                ) {
-                    Icon(Icons.Default.Settings, contentDescription = null, tint = MaterialTheme.colorScheme.onSurface)
-                }
-            }
-            Spacer(modifier = Modifier.height(8.dp))
-        }
-
-        ActionBar(
-            onSpeak = {}, onClear = {}, onBackspace = {}, onBack = {}, onSettingsClick = {}, onHomeClick = {},
-            showSettingsFallback = !showSentenceBar, canGoBack = true, scale = actionButtonScale,
-            showClearButton = showSentenceBar,
-            showBackButton = showBackButton,
-            showBackspaceButton = showSentenceBar && showBackspaceButton,
-            showSpeakButton = showSentenceBar && showSpeakButton,
-            homeInActionBar = homeInActionBar,
-            modifier = Modifier.fillMaxWidth()
-        )
-
-        Spacer(modifier = Modifier.height(8.dp))
 
         Column(
-            modifier = Modifier
-                .fillMaxWidth()
-                .height(previewGridHeight),
-            verticalArrangement = Arrangement.spacedBy(8.dp)
+            modifier = Modifier.fillMaxWidth(),
+            verticalArrangement = Arrangement.spacedBy(6.dp)
         ) {
-            val mockData = listOf(
-                Triple("כן", "👍", Color(0xFFF48FB1)),
-                Triple("לא", "👎", Color(0xFFF48FB1)),
-                Triple("תיקיה", "📁", Color(0xFFFFCC80)),
-                Triple("עוד", "➕", Color(0xFF90CAF9)),
-                Triple("תודה", "🙏", Color(0xFFF48FB1)),
-                Triple("כואב", "🤕", Color(0xFF90CAF9)),
-                Triple("לעזור", "🤝", Color(0xFFA5D6A7)),
-                Triple("סיימתי", "✅", Color(0xFFF48FB1))
+            Text(
+                text = "סרגל משפטים",
+                style = MaterialTheme.typography.labelMedium,
+                color = Color.LightGray
             )
 
-            for (r in 0 until gridRows) {
+            if (showSentenceBar) {
                 Row(
-                    modifier = Modifier.weight(1f).fillMaxWidth(),
-                    horizontalArrangement = Arrangement.spacedBy(8.dp)
-                ) {
-                    for (c in 0 until gridColumns) {
-                        val dataIndex = (r * gridColumns + c) % mockData.size
-                        val data = mockData[dataIndex]
-                        val type = if (data.first == "תיקיה") TileType.FOLDER else TileType.BASIC
-
-                        TileUI(
-                            label = data.first,
-                            imageUri = null,
-                            emoji = data.second,
-                            backgroundColor = data.third,
-                            tileType = type,
-                            scale = gridTileScale,
-                            onClick = {},
-                            modifier = Modifier.weight(1f).fillMaxHeight()
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .height(64.dp)
+                        .background(
+                            color = Color(0xFF34343C),
+                            shape = RoundedCornerShape(12.dp)
                         )
+                        .padding(8.dp),
+                    horizontalArrangement = Arrangement.spacedBy(8.dp),
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
+                    Card(
+                        modifier = Modifier.size(48.dp),
+                        shape = RoundedCornerShape(8.dp),
+                        colors = CardDefaults.cardColors(
+                            containerColor = Color(0xFF90CAF9)
+                        )
+                    ) {
+                        Box(
+                            modifier = Modifier.fillMaxSize(),
+                            contentAlignment = Alignment.Center
+                        ) {
+                            Text(
+                                text = "אני",
+                                fontSize = 12.sp,
+                                fontWeight = FontWeight.Bold,
+                                color = Color.DarkGray
+                            )
+                        }
                     }
+
+                    Card(
+                        modifier = Modifier.size(48.dp),
+                        shape = RoundedCornerShape(8.dp),
+                        colors = CardDefaults.cardColors(
+                            containerColor = Color(0xFFF48FB1)
+                        )
+                    ) {
+                        Box(
+                            modifier = Modifier.fillMaxSize(),
+                            contentAlignment = Alignment.Center
+                        ) {
+                            Text(
+                                text = "רוצה",
+                                fontSize = 11.sp,
+                                fontWeight = FontWeight.Bold,
+                                color = Color.DarkGray
+                            )
+                        }
+                    }
+
+                    Spacer(modifier = Modifier.weight(1f))
+
+                    Icon(
+                        imageVector = Icons.Default.Settings,
+                        contentDescription = null,
+                        tint = Color.White,
+                        modifier = Modifier.size(28.dp)
+                    )
+                }
+            } else {
+                Box(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .height(48.dp)
+                        .background(
+                            color = Color(0xFF34343C),
+                            shape = RoundedCornerShape(12.dp)
+                        ),
+                    contentAlignment = Alignment.Center
+                ) {
+                    Text(
+                        text = "מוסתר",
+                        style = MaterialTheme.typography.bodyMedium,
+                        color = Color.LightGray
+                    )
                 }
             }
         }
 
-        Spacer(modifier = Modifier.height(8.dp))
+        Row(
+            modifier = Modifier.fillMaxWidth(),
+            horizontalArrangement = Arrangement.spacedBy(16.dp)
+        ) {
+            Column(
+                modifier = Modifier.weight(1f),
+                horizontalAlignment = Alignment.CenterHorizontally,
+                verticalArrangement = Arrangement.spacedBy(8.dp)
+            ) {
+                Text(
+                    text = "גודל הכפתור והתמונה",
+                    style = MaterialTheme.typography.labelMedium,
+                    color = Color.LightGray
+                )
 
-        if (!homeInActionBar) {
-            BottomHomeBar(
-                onHomeClick = {},
-                scale = actionButtonScale
-            )
+                Box(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .height(130.dp),
+                    contentAlignment = Alignment.Center
+                ) {
+                    TileUI(
+                        label = "עוד",
+                        imageUri = null,
+                        emoji = "➕",
+                        backgroundColor = Color(0xFF90CAF9),
+                        tileType = TileType.BASIC,
+                        scale = gridTileScale,
+                        modifier = Modifier.fillMaxSize(
+                            fraction = gridTileContainerScale
+                        ),
+                        onClick = {}
+                    )
+                }
+            }
+
+            Column(
+                modifier = Modifier.weight(1f),
+                horizontalAlignment = Alignment.CenterHorizontally,
+                verticalArrangement = Arrangement.spacedBy(8.dp)
+            ) {
+                Text(
+                    text = "גודל כפתור הפעולה",
+                    style = MaterialTheme.typography.labelMedium,
+                    color = Color.LightGray
+                )
+
+                Box(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .height(130.dp),
+                    contentAlignment = Alignment.Center
+                ) {
+                    Button(
+                        onClick = {},
+                        modifier = Modifier
+                            .fillMaxWidth(
+                                fraction = actionButtonScale
+                                    .coerceIn(0.5f, 1f)
+                            )
+                            .height((64f * actionButtonScale).dp),
+                        colors = ButtonDefaults.buttonColors(
+                            containerColor = Color(0xFF4F535B)
+                        ),
+                        shape = RoundedCornerShape(12.dp),
+                        contentPadding = PaddingValues(0.dp)
+                    ) {
+                        Icon(
+                            imageVector = Icons.Default.Settings,
+                            contentDescription = null,
+                            tint = Color.White,
+                            modifier = Modifier.size(
+                                (32f * actionButtonScale).dp
+                            )
+                        )
+                    }
+                }
+            }
         }
     }
 }

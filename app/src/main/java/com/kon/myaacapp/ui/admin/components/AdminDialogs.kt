@@ -57,16 +57,15 @@ import androidx.compose.ui.unit.sp
 import coil.compose.AsyncImage
 import com.kon.myaacapp.AACViewModel
 import com.kon.myaacapp.R
-import com.kon.myaacapp.data.local.entity.AACTile
 import com.kon.myaacapp.domain.model.CombinedTile
 
 @Composable
 fun TileActionDialog(
-    tile: AACTile,
+    tile: CombinedTile,
     onDismiss: () -> Unit,
     onEdit: () -> Unit,
     onRemove: () -> Unit,
-    onOpen: (() -> Unit)? = null
+    onOpen: (() -> Unit)?
 ) {
     // OPTIMIZATION: Cache static modifiers to prevent minor heap allocations
     val fillWidthModifier = remember { Modifier.fillMaxWidth() }

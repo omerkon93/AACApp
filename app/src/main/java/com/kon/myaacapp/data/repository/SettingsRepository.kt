@@ -30,6 +30,8 @@ class SettingsRepository(private val context: Context) {
 
         // 👉 NEW LAYOUT SETTINGS KEYS
         val GRID_TILE_SCALE = floatPreferencesKey("grid_tile_scale")
+
+        val GRID_TILE_CONTAINER_SCALE = floatPreferencesKey("grid_tile_container_scale")
         val BAR_TILE_IMAGE_SCALE = floatPreferencesKey("bar_tile_image_scale")
         val BAR_TILE_TITLE_SCALE = floatPreferencesKey("bar_tile_title_scale")
         val ACTION_BUTTON_SCALE = floatPreferencesKey("action_button_scale")
@@ -95,6 +97,12 @@ class SettingsRepository(private val context: Context) {
     val gridTileScaleFlow: Flow<Float> = basePreferencesFlow
         .map { preferences ->
             preferences[PreferencesKeys.GRID_TILE_SCALE] ?: 1.0f
+        }
+        .distinctUntilChanged()
+
+    val gridTileContainerScaleFlow: Flow<Float> = basePreferencesFlow
+        .map { preferences ->
+            preferences[PreferencesKeys.GRID_TILE_CONTAINER_SCALE] ?: 1.0f
         }
         .distinctUntilChanged()
 
@@ -174,6 +182,12 @@ class SettingsRepository(private val context: Context) {
     suspend fun updateGridTileScale(scale: Float) {
         context.dataStore.edit { preferences ->
             preferences[PreferencesKeys.GRID_TILE_SCALE] = scale
+        }
+    }
+
+    suspend fun updateGridTileContainerScale(scale: Float) {
+        context.dataStore.edit { preferences ->
+            preferences[PreferencesKeys.GRID_TILE_CONTAINER_SCALE] = scale
         }
     }
 
