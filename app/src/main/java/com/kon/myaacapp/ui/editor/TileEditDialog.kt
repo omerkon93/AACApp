@@ -45,7 +45,6 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.compose.ui.window.DialogProperties
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
-import com.kon.myaacapp.data.local.entity.AACTile
 import com.kon.myaacapp.AACViewModel
 import com.kon.myaacapp.R
 import com.kon.myaacapp.ui.communication.TileUI
@@ -67,7 +66,7 @@ private const val DEFAULT_GRAMMATICAL_GENDER = "M"
 @Composable
 fun TileEditDialog(
     viewModel: AACViewModel,
-    existingTile: AACTile? = null,
+    existingTile: CombinedTile? = null,
     initialCellIndex: Int? = null,
     onDismiss: () -> Unit,
 ) {
@@ -111,7 +110,7 @@ fun TileEditDialog(
 
     var partOfSpeech by rememberSaveable(editorKey) {
         mutableStateOf(
-            existingTile?.partOfSpeech
+            existingTile?.definition?.partOfSpeech
                 ?: DEFAULT_PART_OF_SPEECH
         )
     }
@@ -160,16 +159,20 @@ fun TileEditDialog(
     }
 
     var labelFeminine by rememberSaveable(editorKey) {
-        mutableStateOf(existingTile?.labelFeminine.orEmpty())
+        mutableStateOf(
+            existingTile?.definition?.labelFeminine.orEmpty()
+        )
     }
 
     var ttsTextFeminine by rememberSaveable(editorKey) {
-        mutableStateOf(existingTile?.ttsTextFeminine.orEmpty())
+        mutableStateOf(
+            existingTile?.definition?.ttsTextFeminine.orEmpty()
+        )
     }
 
     var grammaticalGender by rememberSaveable(editorKey) {
         mutableStateOf(
-            existingTile?.grammaticalGender
+            existingTile?.definition?.grammaticalGender
                 ?: DEFAULT_GRAMMATICAL_GENDER
         )
     }
@@ -563,32 +566,41 @@ fun TileEditDialog(
                                 isHidden = isHidden,
                             )
                         } else {
-                            viewModel.updateTile(
-                                tile = existingTile.copy(
+                            val updatedDefinition =
+                                existingTile.definition.copy(
                                     label = label.trim(),
                                     ttsText = ttsText.trim(),
-                                    emoji = normalizedEmoji,
-                                    imageUri = imageUri,
-                                    isCategory = finalIsCategory,
-                                    parentId = parentId,
-                                    backgroundColorHex =
-                                        normalizedBackgroundColor,
-                                    partOfSpeech =
-                                        normalizedPartOfSpeech,
-                                    isQuickFire =
-                                        finalIsQuickFire,
-                                    linkedCategoryId =
-                                        finalLinkedId,
                                     labelFeminine =
                                         normalizedLabelFeminine,
                                     ttsTextFeminine =
                                         normalizedTtsTextFeminine,
+                                    emoji = normalizedEmoji,
+                                    audioUri = audioUri,
+                                    imageUri = imageUri,
+                                    backgroundColorHex =
+                                        normalizedBackgroundColor,
+                                    partOfSpeech =
+                                        normalizedPartOfSpeech,
                                     grammaticalGender =
                                         grammaticalGender,
-                                    audioUri = audioUri,
-                                    cellIndex =
-                                        normalizedCellIndex,
+                                    isCategory = finalIsCategory,
+                                    type = tileType,
+                                )
+
+                            val updatedLayoutState =
+                                existingTile.layoutState.copy(
+                                    parentId = parentId,
+                                    linkedCategoryId = finalLinkedId,
+                                    cellIndex = normalizedCellIndex
+                                        ?: existingTile.layoutState.cellIndex,
+                                    isQuickFire = finalIsQuickFire,
                                     isHidden = isHidden,
+                                )
+
+                            viewModel.updateTile(
+                                tile = existingTile.copy(
+                                    definition = updatedDefinition,
+                                    layoutState = updatedLayoutState,
                                 ),
                             )
                         }

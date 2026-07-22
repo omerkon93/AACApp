@@ -554,8 +554,61 @@ class AACViewModel(application: Application) : AndroidViewModel(application) {
     fun updateTile(tile: AACTile) {
         viewModelScope.launch {
             repository.updateTile(tile)
-            repository.updateTileIndex(tile.id, tile.parentId, tile.cellIndex ?: 0)
-            repository.updateTileVisibility(tile.id, tile.parentId, tile.isHidden)
+
+            repository.updateTileIndex(
+                tileId = tile.id,
+                parentId = tile.parentId,
+                newIndex = tile.cellIndex ?: 0
+            )
+
+            repository.updateTileVisibility(
+                tileId = tile.id,
+                parentId = tile.parentId,
+                isHidden = tile.isHidden
+            )
+        }
+    }
+
+    fun updateTile(tile: CombinedTile) {
+        viewModelScope.launch {
+            val definition = tile.definition
+            val layoutState = tile.layoutState
+
+            val legacyTile = AACTile(
+                id = definition.id,
+                label = definition.label,
+                ttsText = definition.ttsText,
+                labelFeminine = definition.labelFeminine,
+                ttsTextFeminine = definition.ttsTextFeminine,
+                emoji = definition.emoji,
+                audioUri = definition.audioUri,
+                imageUri = definition.imageUri,
+                backgroundColorHex = definition.backgroundColorHex,
+                partOfSpeech = definition.partOfSpeech,
+                grammaticalGender = definition.grammaticalGender,
+                isCategory = definition.resolvedType == TileType.FOLDER,
+                languageCode = definition.languageCode,
+                parentId = layoutState.parentId,
+                linkedCategoryId = layoutState.linkedCategoryId,
+                cellIndex = layoutState.cellIndex,
+                isQuickFire = layoutState.isQuickFire ||
+                        definition.resolvedType == TileType.QUICK_FIRE,
+                isHidden = layoutState.isHidden
+            )
+
+            repository.updateTile(legacyTile)
+
+            repository.updateTileIndex(
+                tileId = definition.id,
+                parentId = layoutState.parentId,
+                newIndex = layoutState.cellIndex
+            )
+
+            repository.updateTileVisibility(
+                tileId = definition.id,
+                parentId = layoutState.parentId,
+                isHidden = layoutState.isHidden
+            )
         }
     }
 

@@ -32,7 +32,6 @@ import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import com.kon.myaacapp.R
-import com.kon.myaacapp.data.local.entity.AACTile
 import com.kon.myaacapp.domain.model.CombinedTile
 import com.kon.myaacapp.domain.model.TileType
 
@@ -45,7 +44,7 @@ fun AdvancedSection(
     onTileTypeChange: (TileType) -> Unit,
 
     categories: List<CombinedTile>,
-    existingTile: AACTile?,
+    existingTile: CombinedTile?,
 
     parentId: String?,
     onParentIdChange: (String?) -> Unit,

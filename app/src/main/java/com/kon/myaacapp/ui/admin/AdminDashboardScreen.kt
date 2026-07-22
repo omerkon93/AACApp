@@ -80,6 +80,10 @@ fun AdminDashboardScreen(
         mutableStateOf<AACTile?>(null)
     }
 
+    var editingCombinedTile by remember {
+        mutableStateOf<CombinedTile?>(null)
+    }
+
     var tileToDelete by remember {
         mutableStateOf<AACTile?>(null)
     }
@@ -364,11 +368,12 @@ fun AdminDashboardScreen(
     if (showTileDialog) {
         TileEditDialog(
             viewModel = viewModel,
-            existingTile = editingTile,
+            existingTile = editingCombinedTile,
             initialCellIndex = initialCellIndex,
             onDismiss = {
                 showTileDialog = false
                 editingTile = null
+                editingCombinedTile = null
                 initialCellIndex = null
             }
         )
@@ -394,11 +399,10 @@ fun AdminDashboardScreen(
                 tileForAction = null
             },
             onEdit = {
-                /*
-                 * TileEditDialog still needs migration before CombinedTile
-                 * can be passed directly into the editor.
-                 */
+                editingCombinedTile = actionTile
+                initialCellIndex = actionTile.layoutState.cellIndex
                 tileForAction = null
+                showTileDialog = true
             },
             onRemove = {
                 viewModel.removeTileFromCategory(

@@ -52,6 +52,7 @@ import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.TextUnit
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import androidx.compose.ui.zIndex
 import androidx.core.graphics.toColorInt
 import coil.compose.rememberAsyncImagePainter
 import com.kon.myaacapp.AACViewModel
@@ -72,7 +73,8 @@ fun AdminEditableGridScreen(
     val gridColumns by viewModel.gridColumns.collectAsState()
     val gridRows by viewModel.gridRows.collectAsState()
     val gridTileScale by viewModel.gridTileScale.collectAsState()
-    val gridTileContainerScale by viewModel.gridTileContainerScale.collectAsState()
+    val gridTileContainerScale by
+    viewModel.gridTileContainerScale.collectAsState()
 
     val orientation = LocalConfiguration.current.orientation
 
@@ -82,15 +84,21 @@ fun AdminEditableGridScreen(
         gridColumns * 2
     } else {
         gridColumns
-    }
+    }.coerceAtLeast(1)
 
     val maxIndex = tiles.maxOfOrNull { tile ->
         tile.layoutState.cellIndex
     } ?: -1
 
+    val requiredRows = if (maxIndex >= 0) {
+        (maxIndex / columns) + 1
+    } else {
+        1
+    }
+
     val rows = maxOf(
         gridRows,
-        (maxIndex / columns) + 1
+        requiredRows
     )
 
     val maxCells = columns * rows
@@ -115,11 +123,19 @@ fun AdminEditableGridScreen(
         modifier = Modifier.fillMaxSize()
     ) {
         val spacing = 8.dp
-        val totalVerticalSpacing = spacing * (gridRows - 1)
+
+        val visibleRows = gridRows.coerceAtLeast(1)
+
+        val totalVerticalSpacing =
+            spacing * (visibleRows - 1)
 
         val cellHeight = maxOf(
             0.dp,
-            (maxHeight - totalVerticalSpacing) / gridRows
+            (
+                    maxHeight -
+                            totalVerticalSpacing -
+                            16.dp
+                    ) / visibleRows
         )
 
         LazyVerticalGrid(
@@ -133,12 +149,20 @@ fun AdminEditableGridScreen(
                         touchY: Float
                     ): Int? {
                         val matchedItem =
-                            gridState.layoutInfo.visibleItemsInfo.find { itemInfo ->
-                                val left = itemInfo.offset.x.toFloat()
-                                val right = left + itemInfo.size.width
+                            gridState.layoutInfo.visibleItemsInfo.find {
+                                    itemInfo ->
 
-                                val top = itemInfo.offset.y.toFloat()
-                                val bottom = top + itemInfo.size.height
+                                val left =
+                                    itemInfo.offset.x.toFloat()
+
+                                val right =
+                                    left + itemInfo.size.width
+
+                                val top =
+                                    itemInfo.offset.y.toFloat()
+
+                                val bottom =
+                                    top + itemInfo.size.height
 
                                 touchX in left..right &&
                                         touchY in top..bottom
@@ -189,12 +213,16 @@ fun AdminEditableGridScreen(
                     )
                 },
             contentPadding = PaddingValues(8.dp),
-            horizontalArrangement = Arrangement.spacedBy(8.dp),
-            verticalArrangement = Arrangement.spacedBy(8.dp)
+            horizontalArrangement =
+                Arrangement.spacedBy(spacing),
+            verticalArrangement =
+                Arrangement.spacedBy(spacing)
         ) {
             items(
                 count = maxCells,
-                key = { index -> index }
+                key = { index ->
+                    index
+                }
             ) { index ->
                 val tile = tileMap[index]
 
@@ -202,32 +230,22 @@ fun AdminEditableGridScreen(
                 val isHovered = index == hoveredIndex
 
                 val dragScale by animateFloatAsState(
-                    targetValue = if (isDragged) 0.9f else 1f,
+                    targetValue = if (isDragged) {
+                        0.9f
+                    } else {
+                        1f
+                    },
                     label = "tileDragScale"
                 )
 
                 val dragAlpha by animateFloatAsState(
-                    targetValue = if (isDragged) 0.6f else 1f,
+                    targetValue = if (isDragged) {
+                        0.6f
+                    } else {
+                        1f
+                    },
                     label = "tileDragAlpha"
                 )
-
-                val onEmptyClick: () -> Unit = remember(
-                    index,
-                    onCreateTile
-                ) {
-                    {
-                        onCreateTile(index)
-                    }
-                }
-
-                val onTileEdit: () -> Unit = remember(
-                    tile,
-                    onEditTile
-                ) {
-                    {
-                        tile?.let(onEditTile)
-                    }
-                }
 
                 Box(
                     modifier = Modifier
@@ -239,7 +257,11 @@ fun AdminEditableGridScreen(
                             alpha = dragAlpha
                         }
                         .border(
-                            width = if (isHovered) 3.dp else 0.dp,
+                            width = if (isHovered) {
+                                3.dp
+                            } else {
+                                0.dp
+                            },
                             color = if (isHovered) {
                                 Color.Blue
                             } else {
@@ -252,20 +274,27 @@ fun AdminEditableGridScreen(
                     if (tile != null) {
                         Box(
                             modifier = Modifier.fillMaxSize(
-                                fraction = gridTileContainerScale
+                                fraction =
+                                    gridTileContainerScale.coerceIn(
+                                        minimumValue = 0.1f,
+                                        maximumValue = 1f
+                                    )
                             )
                         ) {
                             AdminTileItem(
                                 tile = tile,
                                 scale = gridTileScale,
-                                onClick = onTileEdit,
-                                onEdit = onTileEdit,
+                                onEdit = {
+                                    onEditTile(tile)
+                                },
                                 modifier = Modifier.fillMaxSize()
                             )
                         }
                     } else {
                         EmptySlot(
-                            onClick = onEmptyClick,
+                            onClick = {
+                                onCreateTile(index)
+                            },
                             modifier = Modifier.fillMaxSize()
                         )
                     }
@@ -279,7 +308,6 @@ fun AdminEditableGridScreen(
 fun AdminTileItem(
     tile: CombinedTile,
     scale: Float,
-    onClick: () -> Unit,
     onEdit: () -> Unit,
     modifier: Modifier = Modifier
 ) {
@@ -295,7 +323,9 @@ fun AdminTileItem(
                     Color(colorHex.toColorInt())
                 }.getOrNull()
             }
-            ?: resolveFitzgeraldColor(definition.partOfSpeech)
+            ?: resolveFitzgeraldColor(
+                definition.partOfSpeech
+            )
     }
 
     AdminTileUI(
@@ -305,7 +335,6 @@ fun AdminTileItem(
         backgroundColor = backgroundColor,
         tileType = definition.resolvedType,
         scale = scale,
-        onClick = onClick,
         onEdit = onEdit,
         isHidden = tile.layoutState.isHidden,
         modifier = modifier
@@ -320,7 +349,6 @@ fun AdminTileUI(
     backgroundColor: Color,
     tileType: TileType,
     scale: Float,
-    onClick: () -> Unit,
     onEdit: () -> Unit,
     modifier: Modifier = Modifier,
     labelSize: TextUnit = 12.sp,
@@ -343,9 +371,12 @@ fun AdminTileUI(
     Card(
         modifier = modifier
             .fillMaxSize()
-            .clickable(onClick = onClick)
             .border(
-                width = if (isFolder) 3.dp else 0.dp,
+                width = if (isFolder) {
+                    3.dp
+                } else {
+                    0.dp
+                },
                 color = if (isFolder) {
                     Color.DarkGray
                 } else {
@@ -372,7 +403,8 @@ fun AdminTileUI(
                 modifier = Modifier
                     .fillMaxSize()
                     .padding(4.dp),
-                horizontalAlignment = Alignment.CenterHorizontally,
+                horizontalAlignment =
+                    Alignment.CenterHorizontally,
                 verticalArrangement = Arrangement.Center
             ) {
                 Box(
@@ -385,11 +417,13 @@ fun AdminTileUI(
                     when {
                         imageModel != null -> {
                             Image(
-                                painter = rememberAsyncImagePainter(
-                                    model = imageModel
-                                ),
+                                painter =
+                                    rememberAsyncImagePainter(
+                                        model = imageModel
+                                    ),
                                 contentDescription = null,
-                                modifier = Modifier.fillMaxSize(),
+                                modifier =
+                                    Modifier.fillMaxSize(),
                                 contentScale = ContentScale.Fit
                             )
                         }
@@ -397,7 +431,9 @@ fun AdminTileUI(
                         emoji != null -> {
                             Text(
                                 text = emoji,
-                                fontSize = (56f * scale).sp
+                                fontSize = (
+                                        56f * scale
+                                        ).sp
                             )
                         }
                     }
@@ -405,7 +441,9 @@ fun AdminTileUI(
 
                 Text(
                     text = label,
-                    fontSize = (labelSize.value * scale).sp,
+                    fontSize = (
+                            labelSize.value * scale
+                            ).sp,
                     fontWeight = FontWeight.Bold,
                     textAlign = TextAlign.Center,
                     maxLines = 1,
@@ -435,35 +473,23 @@ fun AdminTileUI(
                     contentDescription = null,
                     modifier = Modifier
                         .align(Alignment.TopEnd)
+                        .zIndex(2f)
                         .padding(6.dp)
                         .size((16f * scale).dp),
                     tint = FitzgeraldTileContent
                 )
             }
 
-            IconButton(
-                onClick = onEdit,
-                modifier = Modifier
-                    .align(Alignment.TopStart)
-                    .padding(4.dp)
-                    .size(32.dp)
-                    .background(
-                        color = Color.Black.copy(alpha = 0.4f),
-                        shape = RoundedCornerShape(6.dp)
-                    )
-            ) {
-                Icon(
-                    imageVector = Icons.Default.Edit,
-                    contentDescription = "Edit",
-                    tint = Color.White,
-                    modifier = Modifier.size(16.dp)
-                )
-            }
-
+            /*
+             * The hidden-state overlay is drawn before the edit
+             * button and uses a lower z-index. This prevents it
+             * from visually or interactively covering the button.
+             */
             if (isHidden) {
                 Box(
                     modifier = Modifier
                         .fillMaxSize()
+                        .zIndex(1f)
                         .background(
                             Color.Gray.copy(alpha = 0.5f)
                         ),
@@ -476,6 +502,32 @@ fun AdminTileUI(
                         fontWeight = FontWeight.Bold
                     )
                 }
+            }
+
+            /*
+             * The edit button is the topmost interactive element.
+             * Only this button opens the tile edit menu.
+             */
+            IconButton(
+                onClick = onEdit,
+                modifier = Modifier
+                    .align(Alignment.TopStart)
+                    .zIndex(3f)
+                    .padding(4.dp)
+                    .size(36.dp)
+                    .background(
+                        color = Color.Black.copy(
+                            alpha = 0.55f
+                        ),
+                        shape = RoundedCornerShape(6.dp)
+                    )
+            ) {
+                Icon(
+                    imageVector = Icons.Default.Edit,
+                    contentDescription = "Edit tile",
+                    tint = Color.White,
+                    modifier = Modifier.size(18.dp)
+                )
             }
         }
     }
@@ -495,22 +547,26 @@ fun EmptySlot(
                     alpha = 0.5f
                 )
             )
-            .clickable(onClick = onClick)
+            .clickable(
+                onClick = onClick
+            )
             .border(
                 width = 1.dp,
-                color = MaterialTheme.colorScheme.outline.copy(
-                    alpha = 0.3f
-                ),
+                color =
+                    MaterialTheme.colorScheme.outline.copy(
+                        alpha = 0.3f
+                    ),
                 shape = RoundedCornerShape(8.dp)
             ),
         contentAlignment = Alignment.Center
     ) {
         Icon(
             imageVector = Icons.Default.Add,
-            contentDescription = "Add Tile",
-            tint = MaterialTheme.colorScheme.onSurfaceVariant.copy(
-                alpha = 0.5f
-            )
+            contentDescription = "Add tile",
+            tint =
+                MaterialTheme.colorScheme.onSurfaceVariant.copy(
+                    alpha = 0.5f
+                )
         )
     }
 }
