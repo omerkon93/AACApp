@@ -1,5 +1,6 @@
 package com.kon.myaacapp.app
 
+import kotlinx.coroutines.flow.map
 import android.content.Context
 import android.os.Bundle
 import androidx.activity.ComponentActivity
@@ -17,22 +18,22 @@ import androidx.compose.runtime.remember
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalLayoutDirection
 import androidx.compose.ui.unit.LayoutDirection
-import androidx.lifecycle.viewmodel.compose.viewModel
 import androidx.navigation.compose.NavHost
 import androidx.navigation.compose.composable
 import androidx.navigation.compose.rememberNavController
 import com.google.android.play.core.splitcompat.SplitCompat
-import com.kon.myaacapp.AACViewModel
 import com.kon.myaacapp.core.locale.LocaleHelper
 import com.kon.myaacapp.data.repository.SettingsRepository
+import com.kon.myaacapp.ui.admin.AdminDashboardRoute
 import com.kon.myaacapp.ui.admin.AdminDashboardScreen
+import com.kon.myaacapp.ui.communication.CommunicationRoute
 import com.kon.myaacapp.ui.communication.MainCommunicationScreen
+import com.kon.myaacapp.ui.profile.ProfileManagerRoute
 import com.kon.myaacapp.ui.profile.ProfileManagerScreen
 import com.kon.myaacapp.ui.theme.MyAACAppTheme
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.runBlocking
-import com.kon.myaacapp.ui.profile.ProfileManagerRoute
 
 class MainActivity : ComponentActivity() {
 
@@ -55,19 +56,17 @@ class MainActivity : ComponentActivity() {
             val application =
                 applicationContext as MyApplication
 
-            val viewModelFactory = remember(application) {
-                AACViewModelFactory(
-                    application = application,
-                    appContainer = application.appContainer,
-                )
-            }
-
-            val viewModel: AACViewModel = viewModel(
-                factory = viewModelFactory,
+            val langCode by remember(application) {
+                application
+                    .appContainer
+                    .settingsRepository
+                    .languageCodeFlow
+                    .map { languageCode ->
+                        LocaleHelper.normalize(languageCode)
+                    }
+            }.collectAsState(
+                initial = "he",
             )
-
-            val langCode by
-            viewModel.languageCode.collectAsState()
 
             val layoutDir = remember(langCode) {
                 if (langCode == "he") LayoutDirection.Rtl else LayoutDirection.Ltr
@@ -88,29 +87,36 @@ class MainActivity : ComponentActivity() {
                                 modifier = Modifier.padding(innerPadding)
                             ) {
                                 composable("grid") {
-                                    val onNavigateToCategory: (String) -> Unit = remember(viewModel) {
-                                        { id -> viewModel.setCategory(id) }
-                                    }
+                                    val onNavigateBackFromRoot: () -> Unit =
+                                        remember(navController) {
+                                            {
+                                                navController.popBackStack()
+                                                Unit
+                                            }
+                                        }
 
-                                    val onBackClick: () -> Unit = remember(navController) {
-                                        { navController.popBackStack() }
-                                    }
+                                    val onNavigateToAdmin: () -> Unit =
+                                        remember(navController) {
+                                            {
+                                                navController.navigate("admin")
+                                            }
+                                        }
 
-                                    val onNavigateToAdmin: () -> Unit = remember(navController) {
-                                        { navController.navigate("admin") }
+                                    CommunicationRoute(
+                                        viewModelFactory =
+                                            application
+                                                .appContainer
+                                                .communicationViewModelFactory,
+                                        onNavigateBackFromRoot =
+                                            onNavigateBackFromRoot,
+                                        onNavigateToAdmin =
+                                            onNavigateToAdmin,
+                                    ) { state, onAction ->
+                                        MainCommunicationScreen(
+                                            state = state,
+                                            onAction = onAction,
+                                        )
                                     }
-
-                                    val onHomeClick: () -> Unit = remember(viewModel) {
-                                        { viewModel.resetToHome() }
-                                    }
-
-                                    MainCommunicationScreen(
-                                        viewModel = viewModel,
-                                        onNavigateToCategory = onNavigateToCategory,
-                                        onBackClick = onBackClick,
-                                        onNavigateToAdmin = onNavigateToAdmin,
-                                        onHomeClick = onHomeClick
-                                    )
                                 }
 
                                 composable("admin") {
@@ -119,35 +125,66 @@ class MainActivity : ComponentActivity() {
                                     val onNavigateToProfiles =
                                         remember(navController) { { navController.navigate("profiles") } }
 
-                                    AdminDashboardScreen(
-                                        viewModel = viewModel,
-                                        tileEditorViewModelFactory =
+                                    val onCommunicationReset =
+                                        remember(application) {
+                                            {
+                                                application
+                                                    .appContainer
+                                                    .communicationSessionController
+                                                    .requestReset()
+                                            }
+                                        }
+
+                                    AdminDashboardRoute(
+                                        viewModelFactory =
                                             application
                                                 .appContainer
-                                                .tileEditorViewModelFactory,
-                                        adminGridViewModelFactory =
-                                            application
-                                                .appContainer
-                                                .adminGridViewModelFactory,
-                                        layoutSettingsViewModelFactory =
-                                            application
-                                                .appContainer
-                                                .layoutSettingsViewModelFactory,
-                                        adminListViewModelFactory =
-                                            application
-                                                .appContainer
-                                                .adminListViewModelFactory,
-                                        adminStatisticsViewModelFactory =
-                                            application
-                                                .appContainer
-                                                .adminStatisticsViewModelFactory,
-                                        systemSettingsViewModelFactory =
-                                            application
-                                                .appContainer
-                                                .systemSettingsViewModelFactory,
-                                        onNavigateBack = onNavigateBack,
-                                        onNavigateToProfiles = onNavigateToProfiles,
-                                    )
+                                                .adminDashboardViewModelFactory,
+                                    ) { state, onAction ->
+
+                                        AdminDashboardScreen(
+                                            state = state,
+                                            onAction = onAction,
+                                            tileEditorViewModelFactory =
+                                                application
+                                                    .appContainer
+                                                    .tileEditorViewModelFactory,
+                                            adminGridViewModelFactory =
+                                                application
+                                                    .appContainer
+                                                    .adminGridViewModelFactory,
+                                            layoutSettingsViewModelFactory =
+                                                application
+                                                    .appContainer
+                                                    .layoutSettingsViewModelFactory,
+                                            adminListViewModelFactory =
+                                                application
+                                                    .appContainer
+                                                    .adminListViewModelFactory,
+                                            adminStatisticsViewModelFactory =
+                                                application
+                                                    .appContainer
+                                                    .adminStatisticsViewModelFactory,
+                                            systemSettingsViewModelFactory =
+                                                application
+                                                    .appContainer
+                                                    .systemSettingsViewModelFactory,
+                                            audioRecordingService =
+                                                application
+                                                    .appContainer
+                                                    .audioRecordingService,
+                                            audioPreviewManager =
+                                                application
+                                                    .appContainer
+                                                    .audioPreviewManager,
+                                            onCommunicationReset =
+                                                onCommunicationReset,
+                                            onNavigateBack =
+                                                onNavigateBack,
+                                            onNavigateToProfiles =
+                                                onNavigateToProfiles,
+                                        )
+                                    }
                                 }
 
                                 composable("profiles") {
@@ -160,10 +197,12 @@ class MainActivity : ComponentActivity() {
                                         }
 
                                     val onProfileChanged =
-                                        remember(viewModel) {
+                                        remember(application) {
                                             {
-                                                viewModel.clearSentence()
-                                                viewModel.resetToHome()
+                                                application
+                                                    .appContainer
+                                                    .communicationSessionController
+                                                    .requestReset()
                                             }
                                         }
 

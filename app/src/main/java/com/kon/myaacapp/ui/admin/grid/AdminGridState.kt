@@ -11,7 +11,7 @@ data class AdminGridState(
     val languageCode: String = "he",
 
     val gridColumns: Int = 3,
-    val gridRows: Int = 4,
+    val gridRows: Int = 5,
 
     val gridTileScale: Float = 1f,
     val gridTileContainerScale: Float = 1f,

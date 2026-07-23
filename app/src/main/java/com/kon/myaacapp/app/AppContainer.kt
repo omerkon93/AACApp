@@ -1,5 +1,7 @@
 package com.kon.myaacapp.app
 
+import com.kon.myaacapp.domain.service.AppStartupCoordinator
+import com.kon.myaacapp.service.backup.BackupService
 import android.app.Application
 import com.kon.myaacapp.data.local.AACDatabase
 import com.kon.myaacapp.data.repository.AACRepository
@@ -22,9 +24,14 @@ import com.kon.myaacapp.ui.admin.layout.LayoutSettingsViewModelFactory
 import com.kon.myaacapp.ui.admin.list.AdminListViewModelFactory
 import com.kon.myaacapp.ui.admin.statistics.AdminStatisticsViewModelFactory
 import com.kon.myaacapp.ui.admin.system.SystemSettingsViewModelFactory
+import com.kon.myaacapp.ui.communication.CommunicationViewModelFactory
 import com.kon.myaacapp.ui.editor.TileEditorViewModelFactory
 import com.kon.myaacapp.ui.profile.ProfileManagerViewModelFactory
 import kotlinx.coroutines.CoroutineScope
+import com.kon.myaacapp.ui.communication.CommunicationSessionController
+import com.kon.myaacapp.service.audio.AudioPreviewManager
+import com.kon.myaacapp.service.audio.AudioRecordingService
+import com.kon.myaacapp.ui.admin.AdminDashboardViewModelFactory
 
 class AppContainer(
     application: Application,
@@ -50,8 +57,36 @@ class AppContainer(
             profileRepository = profileRepository,
         )
 
+    val backupService: BackupService =
+        BackupService(
+            application,
+            aacRepository,
+        )
+
+    val startupCoordinator:
+            AppStartupCoordinator =
+        AppStartupCoordinator(
+            context = application,
+            backupService = backupService,
+            repository = aacRepository,
+            profileRepository = profileRepository,
+        )
+
     val tileRepository: TileRepository =
         aacRepository
+
+    val audioRecordingService:
+            AudioRecordingService =
+        AudioRecordingService(application)
+
+    val audioPreviewManager:
+            AudioPreviewManager =
+        AudioPreviewManager(
+            application = application,
+            settingsRepository = settingsRepository,
+            scope = applicationScope,
+            audioService = audioRecordingService,
+        )
 
     val observeTilesUseCase: ObserveTilesUseCase =
         ObserveTilesUseCase(
@@ -102,6 +137,28 @@ class AppContainer(
     val deleteTileUseCase: DeleteTileUseCase =
         DeleteTileUseCase(
             tileRepository = tileRepository,
+        )
+
+    val communicationSessionController =
+        CommunicationSessionController()
+
+    val adminDashboardViewModelFactory:
+            AdminDashboardViewModelFactory =
+        AdminDashboardViewModelFactory(
+            settingsRepository =
+                settingsRepository,
+            profileRepository =
+                profileRepository,
+            observeAllTilesUseCase =
+                observeAllTilesUseCase,
+            attachTileToCategoryUseCase =
+                attachTileToCategoryUseCase,
+            removeTileFromCategoryUseCase =
+                removeTileFromCategoryUseCase,
+            deleteTileUseCase =
+                deleteTileUseCase,
+            audioRecordingService =
+                audioRecordingService,
         )
 
     val tileEditorViewModelFactory: TileEditorViewModelFactory =
@@ -161,5 +218,18 @@ class AppContainer(
             settingsRepository = settingsRepository,
             aacRepository = aacRepository,
             profileRepository = profileRepository,
+        )
+
+    val communicationViewModelFactory:
+            CommunicationViewModelFactory =
+        CommunicationViewModelFactory(
+            application = application,
+            settingsRepository = settingsRepository,
+            observeTilesUseCase =
+                observeTilesUseCase,
+            incrementTileClickUseCase =
+                incrementTileClickUseCase,
+            communicationSessionController =
+                communicationSessionController,
         )
 }

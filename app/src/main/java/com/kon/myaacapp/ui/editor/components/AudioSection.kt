@@ -145,7 +145,6 @@ fun AudioSection(
                     }
                     OutlinedButton(
                         onClick = {
-                            audioService.deleteRecording(audioUri)
                             onAudioUriChange(null)
                         },
                         modifier = Modifier.weight(1f),

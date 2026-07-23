@@ -24,6 +24,11 @@ class BackupManager(
     private val profileRepository: ProfileRepository,
     private val scope: CoroutineScope,
 ) {
+    companion object {
+        private const val INITIAL_DATA_ASSET =
+            "initial_data.zip"
+    }
+
     private val _status =
         MutableStateFlow<String?>(null)
 
@@ -36,13 +41,52 @@ class BackupManager(
 
     fun resetToDefault() {
         scope.launch {
-            _status.value = application.getString(
-                R.string.resetting
-            )
+            val success = runCatching {
+                /*
+                 * Restore shared factory data while preserving
+                 * all existing profile files.
+                 *
+                 * This restores:
+                 * - tile definitions
+                 * - factory audio recordings
+                 * - factory images
+                 * - Room tile data
+                 */
+                val factoryDataRestored =
+                    backupService.importFromAssets(
+                        INITIAL_DATA_ASSET
+                    )
 
-            val success =
-                profileRepository
-                    .resetActiveProfileToDefault()
+                if (!factoryDataRestored) {
+                    return@runCatching false
+                }
+
+                /*
+                 * Reload the restored shared tile definitions.
+                 */
+                repository.reload()
+
+                /*
+                 * Restore the active profile's factory layout.
+                 *
+                 * Other profiles remain available.
+                 */
+                val profileRestored =
+                    profileRepository
+                        .resetActiveProfileToDefault()
+
+                if (!profileRestored) {
+                    return@runCatching false
+                }
+
+                /*
+                 * Reload once more after the profile layout
+                 * has been restored.
+                 */
+                repository.reload()
+
+                true
+            }.getOrDefault(false)
 
             _status.value = application.getString(
                 if (success) {

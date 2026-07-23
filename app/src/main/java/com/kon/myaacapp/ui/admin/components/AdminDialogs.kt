@@ -38,7 +38,6 @@ import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
-import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
@@ -55,7 +54,6 @@ import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import coil.compose.AsyncImage
-import com.kon.myaacapp.AACViewModel
 import com.kon.myaacapp.R
 import com.kon.myaacapp.domain.model.CombinedTile
 
@@ -156,11 +154,10 @@ fun TileActionDialog(
 
 @Composable
 fun TilePickerDialog(
-    viewModel: AACViewModel,
+    allTiles: List<CombinedTile>,
     onDismiss: () -> Unit,
-    onTileSelected: (CombinedTile?) -> Unit
+    onTileSelected: (CombinedTile?) -> Unit,
 ) {
-    val allTiles by viewModel.allTiles.collectAsState()
     var searchQuery by remember { mutableStateOf("") }
 
     val filteredTiles = remember(searchQuery, allTiles) {

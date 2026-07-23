@@ -48,7 +48,6 @@ import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
-import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
@@ -70,7 +69,6 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.core.graphics.toColorInt
 import coil.compose.rememberAsyncImagePainter
-import com.kon.myaacapp.AACViewModel
 import com.kon.myaacapp.R
 import com.kon.myaacapp.domain.model.CombinedTile
 import com.kon.myaacapp.domain.model.TileType
@@ -81,55 +79,18 @@ import java.io.File
 
 @Composable
 fun MainCommunicationScreen(
-    viewModel: AACViewModel,
-    onNavigateToCategory: (String) -> Unit,
-    onBackClick: () -> Unit,
-    onNavigateToAdmin: () -> Unit,
-    onHomeClick: () -> Unit
+    state: CommunicationState,
+    onAction: (CommunicationAction) -> Unit,
 ) {
-    val tiles by viewModel.currentTiles.collectAsState()
-    val sentence by viewModel.selectedSentence.collectAsState()
-    val currentParentId by viewModel.currentParentId.collectAsState()
-    val userGender by viewModel.userGender.collectAsState()
-    val langCode by viewModel.languageCode.collectAsState()
-
-    val layoutSettingsLoaded by
-    viewModel.layoutSettingsLoaded.collectAsState()
-    val gridColumns by viewModel.gridColumns.collectAsState()
-    val gridRows by viewModel.gridRows.collectAsState()
-    val gridTileScale by viewModel.gridTileScale.collectAsState()
-    val gridTileContainerScale by viewModel.gridTileContainerScale.collectAsState() // 👉 Added container scale
-    val barTileImageScale by viewModel.barTileImageScale.collectAsState()
-    val barTileTitleScale by viewModel.barTileTitleScale.collectAsState()
-    val actionButtonScale by viewModel.actionButtonScale.collectAsState()
-    val showSentenceBar by viewModel.showSentenceBar.collectAsState()
-
-    val showBackButton by viewModel.showBackButton.collectAsState()
-    val showBackspaceButton by viewModel.showBackspaceButton.collectAsState()
-    val showSpeakButton by viewModel.showSpeakButton.collectAsState()
-    val homeInActionBar by viewModel.homeInActionBar.collectAsState()
-
-    BackHandler(enabled = currentParentId != null) {
-        viewModel.navigateBack()
+    BackHandler(
+        enabled = state.currentParentId != null,
+    ) {
+        onAction(
+            CommunicationAction.BackClicked
+        )
     }
 
-    val onSpeak = remember(viewModel) { { viewModel.speakSentence() } }
-    val onClear = remember(viewModel) { { viewModel.clearSentence() } }
-    val onBackspace = remember(viewModel) { { viewModel.backspaceSentence() } }
-    val onTileClick = remember(viewModel, onNavigateToCategory) {
-        { tile: CombinedTile -> viewModel.selectTile(tile, onNavigateToCategory) }
-    }
-    val handleBackClick = remember(currentParentId, viewModel, onBackClick) {
-        {
-            if (currentParentId != null) {
-                viewModel.navigateBack()
-            } else {
-                onBackClick()
-            }
-        }
-    }
-
-    if (!layoutSettingsLoaded) {
+    if (!state.layoutSettingsLoaded) {
         Box(
             modifier = Modifier.fillMaxSize(),
         )
@@ -138,30 +99,93 @@ fun MainCommunicationScreen(
     }
 
     MainCommunicationScreenContent(
-        tiles = tiles,
-        sentence = sentence,
-        currentParentId = currentParentId,
-        userGender = userGender,
-        langCode = langCode,
-        onSpeak = onSpeak,
-        onClear = onClear,
-        onBackspace = onBackspace,
-        onTileClick = onTileClick,
-        onBackClick = handleBackClick,
-        onNavigateToAdmin = onNavigateToAdmin,
-        onHomeClick = onHomeClick,
-        gridColumns = gridColumns,
-        gridRows = gridRows,
-        gridTileScale = gridTileScale,
-        gridTileContainerScale = gridTileContainerScale, // 👉 Pass container scale down
-        barTileImageScale = barTileImageScale,
-        barTileTitleScale = barTileTitleScale,
-        actionButtonScale = actionButtonScale,
-        showSentenceBar = showSentenceBar,
-        showBackButton = showBackButton,
-        showBackspaceButton = showBackspaceButton,
-        showSpeakButton = showSpeakButton,
-        homeInActionBar = homeInActionBar
+        tiles = state.tiles,
+        sentence = state.sentence,
+        currentParentId =
+            state.currentParentId,
+        userGender = state.userGender,
+        langCode = state.languageCode,
+
+        onSpeak = {
+            onAction(
+                CommunicationAction
+                    .SpeakSentenceClicked
+            )
+        },
+
+        onClear = {
+            onAction(
+                CommunicationAction
+                    .ClearSentenceClicked
+            )
+        },
+
+        onBackspace = {
+            onAction(
+                CommunicationAction
+                    .BackspaceSentenceClicked
+            )
+        },
+
+        onTileClick = { tile ->
+            onAction(
+                CommunicationAction.TileClicked(
+                    tile = tile,
+                )
+            )
+        },
+
+        onBackClick = {
+            onAction(
+                CommunicationAction.BackClicked
+            )
+        },
+
+        onNavigateToAdmin = {
+            onAction(
+                CommunicationAction
+                    .AdminSettingsClicked
+            )
+        },
+
+        onHomeClick = {
+            onAction(
+                CommunicationAction.HomeClicked
+            )
+        },
+
+        gridColumns = state.gridColumns,
+        gridRows = state.gridRows,
+
+        gridTileScale =
+            state.gridTileScale,
+
+        gridTileContainerScale =
+            state.gridTileContainerScale,
+
+        barTileImageScale =
+            state.barTileImageScale,
+
+        barTileTitleScale =
+            state.barTileTitleScale,
+
+        actionButtonScale =
+            state.actionButtonScale,
+
+        showSentenceBar =
+            state.showSentenceBar,
+
+        showBackButton =
+            state.showBackButton,
+
+        showBackspaceButton =
+            state.showBackspaceButton,
+
+        showSpeakButton =
+            state.showSpeakButton,
+
+        homeInActionBar =
+            state.homeInActionBar,
     )
 }
 

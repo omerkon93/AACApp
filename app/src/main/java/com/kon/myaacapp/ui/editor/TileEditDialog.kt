@@ -593,9 +593,8 @@ private fun TileEditorFooter(
 fun TileEditDialogPreview() {
     MyAACAppTheme {
         /*
-         * TileEditDialog requires AACViewModel.
-         * Use a fake editor state or preview-specific ViewModel if a complete
-         * interactive preview is needed.
+         * Tile editor dependencies are supplied explicitly
+         * through TileEditorRoute and AppContainer.
          */
     }
 }

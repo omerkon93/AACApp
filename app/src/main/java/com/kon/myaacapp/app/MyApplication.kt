@@ -6,7 +6,6 @@ import com.google.android.play.core.splitcompat.SplitCompat
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.SupervisorJob
-import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.launch
 
 class MyApplication : Application() {
@@ -34,12 +33,11 @@ class MyApplication : Application() {
         super.onCreate()
 
         applicationScope.launch {
-            try {
+            runCatching {
                 appContainer
-                    .settingsRepository
-                    .languageCodeFlow
-                    .first()
-            } catch (error: Exception) {
+                    .startupCoordinator
+                    .initialize()
+            }.onFailure { error ->
                 error.printStackTrace()
             }
         }

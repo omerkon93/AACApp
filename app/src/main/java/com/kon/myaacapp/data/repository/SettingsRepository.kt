@@ -27,8 +27,8 @@ class SettingsRepository(
         const val FACTORY_GRID_COLUMNS = 3
         const val FACTORY_GRID_ROWS = 5
 
-        const val FACTORY_GRID_TILE_SCALE = 1.35f
-        const val FACTORY_GRID_TILE_CONTAINER_SCALE = 0.95f
+        const val FACTORY_GRID_TILE_SCALE = 1.0f
+        const val FACTORY_GRID_TILE_CONTAINER_SCALE = 1.0f
 
         const val FACTORY_BAR_TILE_IMAGE_SCALE = 1.0f
         const val FACTORY_BAR_TILE_TITLE_SCALE = 1.0f

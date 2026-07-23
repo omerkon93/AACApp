@@ -20,7 +20,6 @@ import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.CompositionLocalProvider
-import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
@@ -32,10 +31,11 @@ import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.LayoutDirection
 import androidx.compose.ui.unit.dp
-import com.kon.myaacapp.AACViewModel
 import com.kon.myaacapp.R
 import com.kon.myaacapp.domain.model.CombinedTile
 import com.kon.myaacapp.domain.model.TileType
+import com.kon.myaacapp.service.audio.AudioPreviewManager
+import com.kon.myaacapp.service.audio.AudioRecordingService
 import com.kon.myaacapp.ui.admin.components.TileActionDialog
 import com.kon.myaacapp.ui.admin.components.TilePickerDialog
 import com.kon.myaacapp.ui.admin.grid.AdminEditableGridScreen
@@ -48,16 +48,15 @@ import com.kon.myaacapp.ui.admin.list.AdminListRoute
 import com.kon.myaacapp.ui.admin.list.AdminListView
 import com.kon.myaacapp.ui.admin.list.AdminListViewModelFactory
 import com.kon.myaacapp.ui.admin.navigation.AdminBottomNavigation
+import com.kon.myaacapp.ui.admin.statistics.AdminStatisticsRoute
 import com.kon.myaacapp.ui.admin.statistics.AdminStatisticsScreen
 import com.kon.myaacapp.ui.admin.statistics.AdminStatisticsViewModelFactory
 import com.kon.myaacapp.ui.admin.system.AdminSystemSettings
+import com.kon.myaacapp.ui.admin.system.SystemSettingsRoute
+import com.kon.myaacapp.ui.admin.system.SystemSettingsViewModelFactory
 import com.kon.myaacapp.ui.editor.TileEditDialogContent
 import com.kon.myaacapp.ui.editor.TileEditorRoute
 import com.kon.myaacapp.ui.editor.TileEditorViewModelFactory
-import com.kon.myaacapp.ui.admin.statistics.AdminStatisticsRoute
-import com.kon.myaacapp.ui.admin.system.SystemSettingsRoute
-import com.kon.myaacapp.ui.admin.system.SystemSettingsViewModelFactory
-
 
 
 enum class AdminTab {
@@ -71,13 +70,17 @@ enum class AdminTab {
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun AdminDashboardScreen(
-    viewModel: AACViewModel,
+    state: AdminDashboardState,
+    onAction: (AdminDashboardAction) -> Unit,
     tileEditorViewModelFactory: TileEditorViewModelFactory,
     adminGridViewModelFactory: AdminGridViewModelFactory,
     layoutSettingsViewModelFactory: LayoutSettingsViewModelFactory,
     adminListViewModelFactory: AdminListViewModelFactory,
     adminStatisticsViewModelFactory: AdminStatisticsViewModelFactory,
     systemSettingsViewModelFactory: SystemSettingsViewModelFactory,
+    audioRecordingService: AudioRecordingService,
+    audioPreviewManager: AudioPreviewManager,
+    onCommunicationReset: () -> Unit,
     onNavigateBack: () -> Unit,
     onNavigateToProfiles: () -> Unit,
 ) {
@@ -124,16 +127,25 @@ fun AdminDashboardScreen(
         mutableStateOf(false)
     }
 
-    val langCode by viewModel.languageCode.collectAsState()
-    val currentParentId by viewModel.currentParentId.collectAsState()
+    val langCode = state.languageCode
 
-    val allCategories by viewModel.allCategories.collectAsState()
+    val currentParentId =
+        state.currentParentId
 
-    val gridColumns by viewModel.gridColumns.collectAsState()
-    val gridRows by viewModel.gridRows.collectAsState()
-    val gridTileScale by viewModel.gridTileScale.collectAsState()
-    val gridTileContainerScale by
-    viewModel.gridTileContainerScale.collectAsState()
+    val allCategories =
+        state.allCategories
+
+    val gridColumns =
+        state.gridColumns
+
+    val gridRows =
+        state.gridRows
+
+    val gridTileScale =
+        state.gridTileScale
+
+    val gridTileContainerScale =
+        state.gridTileContainerScale
 
     val layoutDir = if (langCode == "he") {
         LayoutDirection.Rtl
@@ -176,17 +188,23 @@ fun AdminDashboardScreen(
         }
     }
 
-    val onResetHome: () -> Unit = remember(viewModel) {
-        {
-            viewModel.resetToHome()
+    val onResetHome: () -> Unit =
+        remember(onAction) {
+            {
+                onAction(
+                    AdminDashboardAction.ResetToHome
+                )
+            }
         }
-    }
 
-    val onNavBack: () -> Unit = remember(viewModel) {
-        {
-            viewModel.navigateBack()
+    val onNavBack: () -> Unit =
+        remember(onAction) {
+            {
+                onAction(
+                    AdminDashboardAction.NavigateUp
+                )
+            }
         }
-    }
 
     CompositionLocalProvider(
         LocalLayoutDirection provides layoutDir
@@ -307,7 +325,7 @@ fun AdminDashboardScreen(
                     AdminTab.SETTINGS -> {
                         AdminListRoute(
                             languageCode = langCode,
-                            audioService = viewModel.audioService,
+                            audioService = audioRecordingService,
                             viewModelFactory =
                                 adminListViewModelFactory,
                             onCreateTile = {
@@ -320,7 +338,7 @@ fun AdminDashboardScreen(
                                 onDeleteTileList(tile)
                             },
                             onPlayPreview =
-                                viewModel::playPreviewAudio,
+                                audioPreviewManager::playPreview,
                         ) { state, onAction ->
                             AdminListView(
                                 state = state,
@@ -360,10 +378,8 @@ fun AdminDashboardScreen(
                                 systemSettingsViewModelFactory,
                             onNavigateToProfiles =
                                 onNavigateToProfiles,
-                            onSystemDataChanged = {
-                                viewModel.clearSentence()
-                                viewModel.resetToHome()
-                            },
+                            onSystemDataChanged =
+                                onCommunicationReset,
                         ) { state, onAction ->
                             AdminSystemSettings(
                                 state = state,
@@ -378,7 +394,7 @@ fun AdminDashboardScreen(
 
     if (showTilePicker) {
         TilePickerDialog(
-            viewModel = viewModel,
+            allTiles = state.allTiles,
             onDismiss = {
                 showTilePicker = false
                 initialCellIndex = null
@@ -391,10 +407,11 @@ fun AdminDashboardScreen(
                     editorSessionKey += 1
                     showTileDialog = true
                 } else {
-                    viewModel.attachTileToCategory(
-                        tileId = tile.id,
-                        parentId = currentParentId,
-                        cellIndex = initialCellIndex
+                    onAction(
+                        AdminDashboardAction.AttachTileToCategory(
+                            tileId = tile.id,
+                            cellIndex = initialCellIndex,
+                        )
                     )
 
                     initialCellIndex = null
@@ -426,7 +443,12 @@ fun AdminDashboardScreen(
             confirmButton = {
                 Button(
                     onClick = {
-                        viewModel.deleteTile(deleteTile)
+                        onAction(
+                            AdminDashboardAction.DeleteTile(
+                                tile = deleteTile,
+                            )
+                        )
+
                         tileToDelete = null
                     },
                     colors = ButtonDefaults.buttonColors(
@@ -470,9 +492,9 @@ fun AdminDashboardScreen(
         ) { state, onAction ->
             TileEditDialogContent(
                 state = state,
-                audioService = viewModel.audioService,
+                audioService = audioRecordingService,
                 onPlayPreview =
-                    viewModel::playPreviewAudio,
+                    audioPreviewManager::playPreview,
                 onAction = onAction,
             )
         }
@@ -484,7 +506,12 @@ fun AdminDashboardScreen(
         val onOpenAction: (() -> Unit)? = remember(actionTile) {
             if (definition.resolvedType == TileType.FOLDER) {
                 {
-                    viewModel.setCategory(definition.id)
+                    onAction(
+                        AdminDashboardAction.OpenCategory(
+                            categoryId = definition.id,
+                        )
+                    )
+
                     tileForAction = null
                 }
             } else {
@@ -507,9 +534,10 @@ fun AdminDashboardScreen(
                 showTileDialog = true
             },
             onRemove = {
-                viewModel.removeTileFromCategory(
-                    definition.id,
-                    currentParentId
+                onAction(
+                    AdminDashboardAction.RemoveTileFromCategory(
+                        tileId = definition.id,
+                    )
                 )
 
                 tileForAction = null

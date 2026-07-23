@@ -5,7 +5,7 @@ import androidx.compose.runtime.Immutable
 @Immutable
 data class LayoutSettingsState(
     val gridColumns: Int = 3,
-    val gridRows: Int = 4,
+    val gridRows: Int = 5,
 
     val gridTileScale: Float = 1f,
     val gridTileContainerScale: Float = 1f,
@@ -15,11 +15,11 @@ data class LayoutSettingsState(
 
     val actionButtonScale: Float = 1f,
 
-    val showSentenceBar: Boolean = true,
+    val showSentenceBar: Boolean = false,
     val showBackButton: Boolean = true,
     val showBackspaceButton: Boolean = true,
     val showSpeakButton: Boolean = true,
-    val homeInActionBar: Boolean = false,
+    val homeInActionBar: Boolean = true,
 
     val isSavingDefault: Boolean = false,
     val isRestoringDefault: Boolean = false,
