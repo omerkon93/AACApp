@@ -39,10 +39,8 @@ import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
-import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
-import androidx.compose.runtime.produceState
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
@@ -57,136 +55,90 @@ import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.tooling.preview.Preview
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
-import com.kon.myaacapp.AACViewModel
-import com.kon.myaacapp.domain.model.AnalyticsTimeFilter
 import com.kon.myaacapp.R
-import com.kon.myaacapp.data.local.entity.AACTile
-import com.kon.myaacapp.data.local.entity.TileClickEvent
+import com.kon.myaacapp.domain.model.AnalyticsTimeFilter
 import com.kon.myaacapp.domain.model.CombinedTile
-import com.kon.myaacapp.domain.model.toCombinedTile
+import com.kon.myaacapp.domain.model.TileDefinition
+import com.kon.myaacapp.domain.model.TileLayoutState
+import com.kon.myaacapp.domain.model.TileType
 import com.kon.myaacapp.ui.theme.MyAACAppTheme
-import kotlinx.coroutines.Dispatchers
-import kotlinx.coroutines.withContext
-import java.util.Calendar
 
 @Composable
-fun AdminStatisticsScreen(viewModel: AACViewModel) {
-    val allTiles by viewModel.allTiles.collectAsState()
-    val allCategories by viewModel.allCategories.collectAsState()
-    val clickEvents by viewModel.filteredClickEvents.collectAsState(initial = emptyList())
-    val selectedFilter by viewModel.selectedTimeFilter.collectAsState()
-
+fun AdminStatisticsScreen(
+    state: AdminStatisticsState,
+    onAction: (AdminStatisticsAction) -> Unit,
+) {
     AdminStatisticsScreenContent(
-        allTiles = allTiles,
-        allCategories = allCategories,
-        clickEvents = clickEvents,
-        selectedFilter = selectedFilter,
-        onFilterSelected = { viewModel.setTimeFilter(it) }
+        state = state,
+        onAction = onAction,
     )
 }
 
-// Internal data class to hold atomically processed UI state
-private data class StatsPayload(
-    val totalClicks: Int = 0,
-    val topWords: List<CombinedTile> = emptyList(),
-    val categoryBreakdown: List<Pair<String, Int>> = emptyList(),
-    val chartData: List<Pair<String, Int>> = emptyList(),
-    val dynamicInsight: Int = R.string.insight_general
-)
-
 @Composable
 fun AdminStatisticsScreenContent(
-    allTiles: List<CombinedTile>,
-    allCategories: List<CombinedTile>,
-    clickEvents: List<TileClickEvent>,
-    selectedFilter: AnalyticsTimeFilter,
-    onFilterSelected: (AnalyticsTimeFilter) -> Unit
+    state: AdminStatisticsState,
+    onAction: (AdminStatisticsAction) -> Unit,
 ) {
-    // OPTIMIZATION: produceState pushes all O(N) array processing off the Main Thread.
-    // This prevents the screen from freezing when loading thousands of analytics events.
-    val payload by produceState(
-        initialValue = StatsPayload(),
-        allTiles, allCategories, clickEvents, selectedFilter
-    ) {
-        withContext(Dispatchers.Default) {
-            if (clickEvents.isEmpty() || allTiles.isEmpty()) {
-                value = StatsPayload()
-                return@withContext
-            }
+    val insightResource = when (state.insight) {
+        StatisticsInsight.FOOD -> {
+            R.string.insight_food
+        }
 
-            // OPTIMIZATION: Convert lists to Maps to change lookups from O(N) to O(1)
-            val tileMap = allTiles.associateBy { it.id }
-            val categoryMap = allCategories.associateBy { it.id }
+        StatisticsInsight.REQUESTS -> {
+            R.string.insight_requests
+        }
 
-            val clickCounts = clickEvents.groupingBy { it.tileId }.eachCount()
-            val totalClicks = clickCounts.values.sum()
-
-            // Calculate Top Words in O(N) using the tileMap
-            val topWords = clickCounts.mapNotNull { (tileId, count) ->
-                val tile = tileMap[tileId]
-                if (tile != null && !tile.isCategory) {
-                    tile.copy(layoutState = tile.layoutState.copy(clickCount = count))
-                } else null
-            }.sortedByDescending { it.clickCount }.take(4)
-
-            // Calculate Category Breakdown
-            val catCounts = clickCounts.mapNotNull { (tileId, count) ->
-                val tile = tileMap[tileId]
-                if (tile != null && !tile.isCategory) {
-                    val parentId = tile.parentId
-                    val label =
-                        if (parentId == null) "Root" else categoryMap[parentId]?.label ?: "Unknown"
-                    label to count
-                } else null
-            }.groupBy({ it.first }, { it.second })
-                .map { (label, counts) -> label to counts.sum() }
-                .sortedByDescending { it.second }
-
-            val categoryBreakdown = if (catCounts.size > 4) {
-                val top4 = catCounts.take(4)
-                val othersCount = catCounts.drop(4).sumOf { it.second }
-                top4 + ("Other" to othersCount)
-            } else {
-                catCounts
-            }
-
-            // Chart Data Logic
-            val chartData = processChartData(clickEvents, selectedFilter)
-
-            // AI Insight Logic
-            val topWord = topWords.firstOrNull()
-            val topCategory = categoryBreakdown.firstOrNull()
-            val dynamicInsight = when {
-                topCategory?.first == "אוכל" || topCategory?.first == "Food" -> R.string.insight_food
-                topWord?.label?.contains("רוצה") == true || topWord?.label?.contains("want") == true -> R.string.insight_requests
-                else -> R.string.insight_general
-            }
-
-            value =
-                StatsPayload(totalClicks, topWords, categoryBreakdown, chartData, dynamicInsight)
+        StatisticsInsight.GENERAL -> {
+            R.string.insight_general
         }
     }
 
-    // 2. UI Layout
     Column(
         modifier = Modifier
             .fillMaxSize()
             .verticalScroll(rememberScrollState())
             .padding(horizontal = 16.dp)
-            .padding(top = 8.dp, bottom = 16.dp),
-        verticalArrangement = Arrangement.spacedBy(16.dp)
+            .padding(
+                top = 8.dp,
+                bottom = 16.dp,
+            ),
+        verticalArrangement =
+            Arrangement.spacedBy(16.dp),
     ) {
-        TimeFilterSelector(selectedFilter = selectedFilter, onFilterSelected = onFilterSelected)
+        TimeFilterSelector(
+            selectedFilter = state.selectedFilter,
+            onFilterSelected = { filter ->
+                onAction(
+                    AdminStatisticsAction.SelectFilter(
+                        filter = filter,
+                    )
+                )
+            },
+        )
 
-        OverviewBentoGrid(totalClicks = payload.totalClicks, clickEvents = clickEvents)
+        OverviewBentoGrid(
+            totalClicks = state.totalClicks,
+            activeDays = state.activeDays,
+            estimatedActiveMinutes =
+                state.estimatedActiveMinutes,
+        )
 
-        TopWordsChart(topWords = payload.topWords)
+        TopWordsChart(
+            topWords = state.topWords,
+        )
 
-        CategoryPieChart(breakdown = payload.categoryBreakdown)
+        CategoryPieChart(
+            breakdown = state.categoryBreakdown,
+        )
 
-        DynamicTrendsChart(chartData = payload.chartData, filter = selectedFilter)
+        DynamicTrendsChart(
+            chartData = state.chartData,
+            filter = state.selectedFilter,
+        )
 
-        InsightCard(insightResId = payload.dynamicInsight)
+        InsightCard(
+            insightResId = insightResource,
+        )
     }
 }
 
@@ -233,74 +185,93 @@ fun TimeFilterSelector(
 }
 
 @Composable
-fun OverviewBentoGrid(totalClicks: Int, clickEvents: List<TileClickEvent>) {
-    var infoDialogContent by remember { mutableStateOf<Pair<String, String>?>(null) }
-
-    // OPTIMIZATION: Offload grouping to background thread.
-    val sessionStats by produceState(initialValue = Pair("0m", "0"), clickEvents) {
-        withContext(Dispatchers.Default) {
-            if (clickEvents.isEmpty()) {
-                value = Pair("0m", "0")
-            } else {
-                val cal = Calendar.getInstance()
-                // OPTIMIZATION: distinctBy drops elements instantly, using vastly less heap memory
-                // than groupBy (which creates huge duplicate arrays for everyday).
-                val activeDays = clickEvents.distinctBy {
-                    cal.timeInMillis = it.timestamp
-                    cal.get(Calendar.DAY_OF_YEAR)
-                }.size
-
-                value = Pair("${activeDays * 2}m", activeDays.toString())
-            }
-        }
+fun OverviewBentoGrid(
+    totalClicks: Int,
+    activeDays: Int,
+    estimatedActiveMinutes: Int,
+) {
+    var infoDialogContent by remember {
+        mutableStateOf<Pair<String, String>?>(null)
     }
 
-    if (infoDialogContent != null) {
+    infoDialogContent?.let { dialogContent ->
         AlertDialog(
-            onDismissRequest = { infoDialogContent = null },
+            onDismissRequest = {
+                infoDialogContent = null
+            },
             confirmButton = {
-                TextButton(onClick = { infoDialogContent = null }) {
-                    Text(stringResource(R.string.ok))
+                TextButton(
+                    onClick = {
+                        infoDialogContent = null
+                    },
+                ) {
+                    Text(
+                        text = stringResource(R.string.ok)
+                    )
                 }
             },
-            title = { Text(infoDialogContent!!.first) },
-            text = { Text(infoDialogContent!!.second) }
+            title = {
+                Text(text = dialogContent.first)
+            },
+            text = {
+                Text(text = dialogContent.second)
+            },
         )
     }
 
     Row(
         modifier = Modifier.fillMaxWidth(),
-        horizontalArrangement = Arrangement.spacedBy(12.dp)
+        horizontalArrangement =
+            Arrangement.spacedBy(12.dp),
     ) {
         MetricCard(
-            label = stringResource(R.string.total_words_count),
+            label = stringResource(
+                R.string.total_words_count
+            ),
             value = totalClicks.toString(),
-            color = MaterialTheme.colorScheme.primaryContainer,
+            color =
+                MaterialTheme.colorScheme.primaryContainer,
             onInfoClick = {
-                infoDialogContent = "סה\"כ מילים" to "סך כל הפעמים שהמשתמש לחץ על מילים להשמעה."
+                infoDialogContent =
+                    "סה\"כ מילים" to
+                            "סך כל הפעמים שהמשתמש לחץ על מילים להשמעה."
             },
-            modifier = Modifier.weight(1f)
+            modifier = Modifier.weight(1f),
         )
+
         Column(
             modifier = Modifier.weight(1f),
-            verticalArrangement = Arrangement.spacedBy(12.dp)
+            verticalArrangement =
+                Arrangement.spacedBy(12.dp),
         ) {
             MetricCard(
-                label = stringResource(R.string.avg_time_per_session),
-                value = sessionStats.first,
-                color = MaterialTheme.colorScheme.secondaryContainer,
-                onInfoClick = {
-                    infoDialogContent = "זמן ממוצע" to "זמן משוער שהאפליקציה הייתה פתוחה ופעילה."
-                }
-            )
-            MetricCard(
-                label = stringResource(R.string.active_sessions),
-                value = sessionStats.second,
-                color = MaterialTheme.colorScheme.tertiaryContainer,
+                label = stringResource(
+                    R.string.avg_time_per_session
+                ),
+                value = "${estimatedActiveMinutes}m",
+                color = MaterialTheme
+                    .colorScheme
+                    .secondaryContainer,
                 onInfoClick = {
                     infoDialogContent =
-                        "סשנים פעילים" to "מספר הפעמים שהאפליקציה נפתחה לשימוש השבוע."
-                }
+                        "זמן ממוצע" to
+                                "זמן משוער שהאפליקציה הייתה פתוחה ופעילה."
+                },
+            )
+
+            MetricCard(
+                label = stringResource(
+                    R.string.active_sessions
+                ),
+                value = activeDays.toString(),
+                color = MaterialTheme
+                    .colorScheme
+                    .tertiaryContainer,
+                onInfoClick = {
+                    infoDialogContent =
+                        "סשנים פעילים" to
+                                "מספר הימים שבהם תועד שימוש באפליקציה."
+                },
             )
         }
     }
@@ -312,7 +283,7 @@ fun MetricCard(
     value: String,
     color: Color,
     onInfoClick: () -> Unit,
-    modifier: Modifier = Modifier.Companion
+    modifier: Modifier = Modifier
 ) {
     Card(
         modifier = modifier.fillMaxWidth(),
@@ -354,7 +325,9 @@ fun MetricCard(
 }
 
 @Composable
-fun TopWordsChart(topWords: List<CombinedTile>) {
+fun TopWordsChart(
+    topWords: List<StatisticsTopWord>,
+) {
     Card(
         modifier = Modifier.fillMaxWidth(),
         colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surfaceContainer),
@@ -399,74 +372,165 @@ fun TopWordsChart(topWords: List<CombinedTile>) {
 }
 
 @Composable
-fun CategoryPieChart(breakdown: List<Pair<String, Int>>) {
-    val total = breakdown.sumOf { it.second }.toFloat().coerceAtLeast(1f)
+fun CategoryPieChart(
+    breakdown: List<StatisticsCategoryUsage>,
+) {
+    val total = breakdown
+        .sumOf { item ->
+            item.clickCount
+        }
+        .toFloat()
+        .coerceAtLeast(1f)
+
     val colors = listOf(
-        Color(0xFF6200EE), Color(0xFF03DAC6), Color(0xFFBB86FC),
-        Color(0xFF018786), Color(0xFF3700B3), Color(0xFFFF0266)
+        Color(0xFF6200EE),
+        Color(0xFF03DAC6),
+        Color(0xFFBB86FC),
+        Color(0xFF018786),
+        Color(0xFF3700B3),
+        Color(0xFFFF0266),
     )
 
     Card(
         modifier = Modifier.fillMaxWidth(),
-        colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surfaceContainer),
-        shape = androidx.compose.foundation.shape.RoundedCornerShape(24.dp)
+        colors = CardDefaults.cardColors(
+            containerColor =
+                MaterialTheme.colorScheme.surfaceContainer,
+        ),
+        shape = RoundedCornerShape(24.dp),
     ) {
-        Column(modifier = Modifier.padding(20.dp)) {
+        Column(
+            modifier = Modifier.padding(20.dp),
+        ) {
             Text(
-                stringResource(R.string.category_usage_title),
+                text = stringResource(
+                    R.string.category_usage_title
+                ),
                 style = MaterialTheme.typography.titleMedium,
-                fontWeight = FontWeight.Bold
+                fontWeight = FontWeight.Bold,
             )
-            Spacer(modifier = Modifier.height(24.dp))
+
+            Spacer(
+                modifier = Modifier.height(24.dp)
+            )
 
             Row(
                 modifier = Modifier.fillMaxWidth(),
-                verticalAlignment = Alignment.CenterVertically,
-                horizontalArrangement = Arrangement.SpaceEvenly
+                verticalAlignment =
+                    Alignment.CenterVertically,
+                horizontalArrangement =
+                    Arrangement.SpaceEvenly,
             ) {
-                Box(contentAlignment = Alignment.Center, modifier = Modifier.size(120.dp)) {
-                    Canvas(modifier = Modifier.size(120.dp)) {
+                Box(
+                    contentAlignment = Alignment.Center,
+                    modifier = Modifier.size(120.dp),
+                ) {
+                    Canvas(
+                        modifier = Modifier.size(120.dp),
+                    ) {
                         var startAngle = -90f
-                        breakdown.forEachIndexed { index, pair ->
-                            val sweepAngle = (pair.second / total) * 360f
+
+                        breakdown.forEachIndexed {
+                                index,
+                                item ->
+
+                            val sweepAngle =
+                                (
+                                        item.clickCount
+                                            .toFloat() /
+                                                total
+                                        ) * 360f
+
                             drawArc(
-                                color = colors[index % colors.size],
+                                color =
+                                    colors[index % colors.size],
                                 startAngle = startAngle,
                                 sweepAngle = sweepAngle,
                                 useCenter = false,
-                                style = Stroke(width = 24.dp.toPx(), cap = StrokeCap.Round)
+                                style = Stroke(
+                                    width = 24.dp.toPx(),
+                                    cap = StrokeCap.Round,
+                                ),
                             )
+
                             startAngle += sweepAngle
                         }
                     }
-                    Column(horizontalAlignment = Alignment.CenterHorizontally) {
-                        Icon(
+
+                    Icon(
+                        imageVector =
                             Icons.Default.Analytics,
-                            contentDescription = null,
-                            tint = MaterialTheme.colorScheme.onSurfaceVariant
-                        )
-                    }
+                        contentDescription = null,
+                        tint = MaterialTheme
+                            .colorScheme
+                            .onSurfaceVariant,
+                    )
                 }
 
-                Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
-                    breakdown.forEachIndexed { index, pair ->
-                        val percentage = ((pair.second / total) * 100).toInt()
+                Column(
+                    verticalArrangement =
+                        Arrangement.spacedBy(8.dp),
+                ) {
+                    breakdown.forEachIndexed {
+                            index,
+                            item ->
+
+                        val percentage =
+                            (
+                                    (
+                                            item.clickCount
+                                                .toFloat() /
+                                                    total
+                                            ) * 100f
+                                    ).toInt()
+
                         val label =
-                            if (pair.first == "Other") stringResource(R.string.other_category) else pair.first
-                        Row(verticalAlignment = Alignment.CenterVertically) {
+                            if (item.label == "Other") {
+                                stringResource(
+                                    R.string.other_category
+                                )
+                            } else {
+                                item.label
+                            }
+
+                        Row(
+                            verticalAlignment =
+                                Alignment.CenterVertically,
+                        ) {
                             Box(
                                 modifier = Modifier
                                     .size(12.dp)
-                                    .clip(androidx.compose.foundation.shape.RoundedCornerShape(2.dp))
-                                    .background(colors[index % colors.size])
+                                    .clip(
+                                        RoundedCornerShape(
+                                            2.dp
+                                        )
+                                    )
+                                    .background(
+                                        colors[
+                                            index %
+                                                    colors.size
+                                        ]
+                                    ),
                             )
-                            Spacer(modifier = Modifier.width(8.dp))
+
+                            Spacer(
+                                modifier =
+                                    Modifier.width(8.dp)
+                            )
+
                             Text(
-                                text = "$label ($percentage%)",
-                                style = MaterialTheme.typography.labelSmall,
+                                text =
+                                    "$label ($percentage%)",
+                                style = MaterialTheme
+                                    .typography
+                                    .labelSmall,
                                 maxLines = 1,
-                                overflow = TextOverflow.Ellipsis,
-                                modifier = Modifier.widthIn(max = 120.dp)
+                                overflow =
+                                    TextOverflow.Ellipsis,
+                                modifier =
+                                    Modifier.widthIn(
+                                        max = 120.dp
+                                    ),
                             )
                         }
                     }
@@ -477,89 +541,206 @@ fun CategoryPieChart(breakdown: List<Pair<String, Int>>) {
 }
 
 @Composable
-fun DynamicTrendsChart(chartData: List<Pair<String, Int>>, filter: AnalyticsTimeFilter) {
-    val maxVal = chartData.maxOfOrNull { it.second }?.toFloat()?.coerceAtLeast(1f) ?: 1f
+fun DynamicTrendsChart(
+    chartData: List<StatisticsChartPoint>,
+    filter: AnalyticsTimeFilter,
+) {
+    val maxValue = chartData
+        .maxOfOrNull { point ->
+            point.clickCount
+        }
+        ?.toFloat()
+        ?.coerceAtLeast(1f)
+        ?: 1f
+
     val title = when (filter) {
-        AnalyticsTimeFilter.DAILY -> stringResource(R.string.daily_usage_title)
-        AnalyticsTimeFilter.WEEKLY -> stringResource(R.string.weekly_usage_title)
-        AnalyticsTimeFilter.MONTHLY -> stringResource(R.string.monthly_usage_title)
-        AnalyticsTimeFilter.YEARLY -> stringResource(R.string.yearly_usage_title)
-        AnalyticsTimeFilter.ALL_TIME -> stringResource(R.string.all_time_usage_title)
+        AnalyticsTimeFilter.DAILY -> {
+            stringResource(
+                R.string.daily_usage_title
+            )
+        }
+
+        AnalyticsTimeFilter.WEEKLY -> {
+            stringResource(
+                R.string.weekly_usage_title
+            )
+        }
+
+        AnalyticsTimeFilter.MONTHLY -> {
+            stringResource(
+                R.string.monthly_usage_title
+            )
+        }
+
+        AnalyticsTimeFilter.YEARLY -> {
+            stringResource(
+                R.string.yearly_usage_title
+            )
+        }
+
+        AnalyticsTimeFilter.ALL_TIME -> {
+            stringResource(
+                R.string.all_time_usage_title
+            )
+        }
     }
 
     Card(
         modifier = Modifier.fillMaxWidth(),
-        colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surfaceContainer),
-        shape = androidx.compose.foundation.shape.RoundedCornerShape(24.dp)
+        colors = CardDefaults.cardColors(
+            containerColor =
+                MaterialTheme.colorScheme.surfaceContainer,
+        ),
+        shape = RoundedCornerShape(24.dp),
     ) {
-        Column(modifier = Modifier.padding(20.dp)) {
+        Column(
+            modifier = Modifier.padding(20.dp),
+        ) {
             Row(
                 modifier = Modifier.fillMaxWidth(),
-                horizontalArrangement = Arrangement.SpaceBetween,
-                verticalAlignment = Alignment.CenterVertically
+                horizontalArrangement =
+                    Arrangement.SpaceBetween,
+                verticalAlignment =
+                    Alignment.CenterVertically,
             ) {
                 Text(
                     text = title,
-                    style = MaterialTheme.typography.titleMedium,
-                    fontWeight = FontWeight.Bold
+                    style =
+                        MaterialTheme.typography.titleMedium,
+                    fontWeight = FontWeight.Bold,
                 )
+
                 Icon(
-                    Icons.AutoMirrored.Filled.TrendingUp,
+                    imageVector =
+                        Icons.AutoMirrored.Filled.TrendingUp,
                     contentDescription = null,
-                    tint = MaterialTheme.colorScheme.primary
+                    tint =
+                        MaterialTheme.colorScheme.primary,
                 )
             }
-            Spacer(modifier = Modifier.height(24.dp))
 
-            val barWidth = if (filter == AnalyticsTimeFilter.DAILY) 40.dp else 0.dp
+            Spacer(
+                modifier = Modifier.height(24.dp)
+            )
+
+            val isDaily =
+                filter == AnalyticsTimeFilter.DAILY
+
+            val barWidth =
+                if (isDaily) {
+                    40.dp
+                } else {
+                    0.dp
+                }
 
             Row(
                 modifier = Modifier
                     .fillMaxWidth()
                     .height(140.dp)
                     .then(
-                        if (filter == AnalyticsTimeFilter.DAILY) Modifier.horizontalScroll(
-                            rememberScrollState()
-                        ) else Modifier.Companion
+                        if (isDaily) {
+                            Modifier.horizontalScroll(
+                                rememberScrollState()
+                            )
+                        } else {
+                            Modifier
+                        }
                     ),
-                horizontalArrangement = if (filter == AnalyticsTimeFilter.DAILY) Arrangement.spacedBy(
-                    8.dp
-                ) else Arrangement.SpaceBetween,
-                verticalAlignment = Alignment.Bottom
+                horizontalArrangement =
+                    if (isDaily) {
+                        Arrangement.spacedBy(8.dp)
+                    } else {
+                        Arrangement.SpaceBetween
+                    },
+                verticalAlignment = Alignment.Bottom,
             ) {
-                chartData.forEachIndexed { index, pair ->
-                    val barHeightFraction = pair.second / maxVal
+                chartData.forEachIndexed {
+                        index,
+                        point ->
+
+                    val barHeightFraction =
+                        (
+                                point.clickCount.toFloat() /
+                                        maxValue
+                                ).coerceIn(
+                                minimumValue = 0f,
+                                maximumValue = 1f,
+                            )
+
                     Column(
-                        horizontalAlignment = Alignment.CenterHorizontally,
-                        modifier = if (filter == AnalyticsTimeFilter.DAILY) Modifier.width(barWidth) else Modifier.weight(
-                            1f
-                        )
+                        horizontalAlignment =
+                            Alignment.CenterHorizontally,
+                        modifier =
+                            if (isDaily) {
+                                Modifier.width(barWidth)
+                            } else {
+                                Modifier.weight(1f)
+                            },
                     ) {
                         Text(
-                            pair.second.toString(),
-                            style = MaterialTheme.typography.labelSmall,
+                            text =
+                                point.clickCount.toString(),
+                            style = MaterialTheme
+                                .typography
+                                .labelSmall,
                             fontWeight = FontWeight.Bold,
-                            color = MaterialTheme.colorScheme.primary,
-                            fontSize = 10.sp
+                            color = MaterialTheme
+                                .colorScheme
+                                .primary,
+                            fontSize = 10.sp,
                         )
-                        Spacer(modifier = Modifier.height(4.dp))
+
+                        Spacer(
+                            modifier = Modifier.height(4.dp)
+                        )
+
                         Box(
                             modifier = Modifier
                                 .width(16.dp)
-                                .fillMaxHeight(barHeightFraction * 0.8f)
-                                .clip(RoundedCornerShape(topStart = 8.dp, topEnd = 8.dp))
-                                .background(
-                                    if (index == chartData.size - 1) MaterialTheme.colorScheme.primary
-                                    else MaterialTheme.colorScheme.primary.copy(alpha = 0.3f)
+                                .fillMaxHeight(
+                                    fraction =
+                                        barHeightFraction *
+                                                0.8f
                                 )
+                                .clip(
+                                    RoundedCornerShape(
+                                        topStart = 8.dp,
+                                        topEnd = 8.dp,
+                                    )
+                                )
+                                .background(
+                                    if (
+                                        index ==
+                                        chartData.lastIndex
+                                    ) {
+                                        MaterialTheme
+                                            .colorScheme
+                                            .primary
+                                    } else {
+                                        MaterialTheme
+                                            .colorScheme
+                                            .primary
+                                            .copy(alpha = 0.3f)
+                                    }
+                                ),
                         )
-                        Spacer(modifier = Modifier.height(8.dp))
+
+                        Spacer(
+                            modifier = Modifier.height(8.dp)
+                        )
+
                         Text(
-                            pair.first,
-                            style = MaterialTheme.typography.labelSmall,
-                            color = MaterialTheme.colorScheme.onSurfaceVariant,
+                            text = point.label,
+                            style = MaterialTheme
+                                .typography
+                                .labelSmall,
+                            color = MaterialTheme
+                                .colorScheme
+                                .onSurfaceVariant,
                             maxLines = 1,
-                            fontSize = 9.sp
+                            overflow =
+                                TextOverflow.Ellipsis,
+                            fontSize = 9.sp,
                         )
                     }
                 }
@@ -603,76 +784,144 @@ fun InsightCard(insightResId: Int) {
     }
 }
 
-private fun processChartData(events: List<TileClickEvent>, filter: AnalyticsTimeFilter): List<Pair<String, Int>> {
-    val cal = Calendar.getInstance()
-    return when (filter) {
-        AnalyticsTimeFilter.DAILY -> {
-            // OPTIMIZATION: groupingBy.eachCount() avoids allocating massive arrays of duplicate
-            // objects in memory, returning a simple Map<Int, Int> integer frequency.
-            val groups = events.groupingBy {
-                cal.timeInMillis = it.timestamp
-                cal.get(Calendar.HOUR_OF_DAY)
-            }.eachCount()
-            (0..23).map { hour -> "$hour:00" to (groups[hour] ?: 0) }
-        }
-        AnalyticsTimeFilter.WEEKLY -> {
-            val days = listOf("א'", "ב'", "ג'", "ד'", "ה'", "ו'", "ש'")
-            val groups = events.groupingBy {
-                cal.timeInMillis = it.timestamp
-                cal.get(Calendar.DAY_OF_WEEK)
-            }.eachCount()
-            (1..7).map { dow -> days[dow - 1] to (groups[dow] ?: 0) }
-        }
-        AnalyticsTimeFilter.MONTHLY -> {
-            val maxDay = cal.getActualMaximum(Calendar.DAY_OF_MONTH)
-            val groups = events.groupingBy {
-                cal.timeInMillis = it.timestamp
-                cal.get(Calendar.DAY_OF_MONTH)
-            }.eachCount()
-            (1..maxDay).map { dom -> dom.toString() to (groups[dom] ?: 0) }
-        }
-        AnalyticsTimeFilter.YEARLY -> {
-            val months = listOf("1", "2", "3", "4", "5", "6", "7", "8", "9", "10", "11", "12")
-            val groups = events.groupingBy {
-                cal.timeInMillis = it.timestamp
-                cal.get(Calendar.MONTH)
-            }.eachCount()
-            (0..11).map { month -> months[month] to (groups[month] ?: 0) }
-        }
-        AnalyticsTimeFilter.ALL_TIME -> {
-            processChartData(events, AnalyticsTimeFilter.WEEKLY)
-        }
-    }
-}
-
 @Preview(showBackground = true)
 @Composable
 fun AdminStatisticsScreenPreview() {
     val mockTiles = listOf(
-        AACTile("1", "שלום", "שלום", clickCount = 10, isCategory = false).toCombinedTile(),
-        AACTile("2", "אני רוצה", "אני רוצה", clickCount = 8, isCategory = false).toCombinedTile(),
-        AACTile("3", "תפוח", "תפוח", clickCount = 5, isCategory = false, parentId = "cat1").toCombinedTile(),
-        AACTile("4", "שתייה", "שתייה", clickCount = 3, isCategory = false, parentId = "cat1").toCombinedTile(),
-        AACTile("5", "לשחק", "לשחק", clickCount = 2, isCategory = false, parentId = "cat2").toCombinedTile(),
-        AACTile("cat1", "אוכל", "אוכל", isCategory = true).toCombinedTile(),
-        AACTile("cat2", "משחקים", "משחקים", isCategory = true).toCombinedTile()
+        createStatisticsPreviewTile(
+            id = "1",
+            label = "שלום",
+            clickCount = 10,
+            cellIndex = 0,
+        ),
+        createStatisticsPreviewTile(
+            id = "2",
+            label = "אני רוצה",
+            clickCount = 8,
+            cellIndex = 1,
+        ),
+        createStatisticsPreviewTile(
+            id = "3",
+            label = "תפוח",
+            clickCount = 5,
+            parentId = "cat1",
+            cellIndex = 0,
+        ),
+        createStatisticsPreviewTile(
+            id = "4",
+            label = "שתייה",
+            clickCount = 3,
+            parentId = "cat1",
+            cellIndex = 1,
+        ),
+        createStatisticsPreviewTile(
+            id = "5",
+            label = "לשחק",
+            clickCount = 2,
+            parentId = "cat2",
+            cellIndex = 0,
+        ),
+        createStatisticsPreviewTile(
+            id = "cat1",
+            label = "אוכל",
+            tileType = TileType.FOLDER,
+            cellIndex = 2,
+        ),
+        createStatisticsPreviewTile(
+            id = "cat2",
+            label = "משחקים",
+            tileType = TileType.FOLDER,
+            cellIndex = 3,
+        ),
     )
     val mockCategories = listOf(
-        AACTile("cat1", "אוכל", "אוכל", isCategory = true).toCombinedTile(),
-        AACTile("cat2", "משחקים", "משחקים", isCategory = true).toCombinedTile()
+        createStatisticsPreviewTile(
+            id = "cat1",
+            label = "אוכל",
+            tileType = TileType.FOLDER,
+            cellIndex = 0,
+        ),
+        createStatisticsPreviewTile(
+            id = "cat2",
+            label = "משחקים",
+            tileType = TileType.FOLDER,
+            cellIndex = 1,
+        ),
     )
-    val mockEvents = listOf(
-        TileClickEvent(tileId = "1"),
-        TileClickEvent(tileId = "1"),
-        TileClickEvent(tileId = "2")
-    )
+
     MyAACAppTheme {
-        AdminStatisticsScreenContent(
-            allTiles = mockTiles,
-            allCategories = mockCategories,
-            clickEvents = mockEvents,
-            selectedFilter = AnalyticsTimeFilter.WEEKLY,
-            onFilterSelected = {}
+        AdminStatisticsScreen(
+            state = AdminStatisticsState(
+                allTiles = mockTiles,
+                allCategories = mockCategories,
+                selectedFilter =
+                    AnalyticsTimeFilter.WEEKLY,
+                totalClicks = 3,
+                topWords = listOf(
+                    StatisticsTopWord(
+                        tileId = "1",
+                        label = "שלום",
+                        clickCount = 2,
+                    ),
+                    StatisticsTopWord(
+                        tileId = "2",
+                        label = "אני רוצה",
+                        clickCount = 1,
+                    ),
+                ),
+                categoryBreakdown = listOf(
+                    StatisticsCategoryUsage(
+                        label = "Root",
+                        clickCount = 3,
+                    ),
+                ),
+                chartData = listOf(
+                    StatisticsChartPoint(
+                        label = "א'",
+                        clickCount = 1,
+                    ),
+                    StatisticsChartPoint(
+                        label = "ב'",
+                        clickCount = 2,
+                    ),
+                ),
+                activeDays = 1,
+                estimatedActiveMinutes = 2,
+                insight =
+                    StatisticsInsight.REQUESTS,
+            ),
+            onAction = {},
         )
     }
+}
+
+private fun createStatisticsPreviewTile(
+    id: String,
+    label: String,
+    clickCount: Int = 0,
+    tileType: TileType = TileType.BASIC,
+    parentId: String? = null,
+    cellIndex: Int = 0,
+): CombinedTile {
+    return CombinedTile(
+        definition = TileDefinition(
+            id = id,
+            label = label,
+            ttsText = label,
+            isCategory = tileType == TileType.FOLDER,
+            type = tileType,
+            languageCode = "he",
+            defaultParentId = parentId,
+            defaultCellIndex = cellIndex,
+        ),
+        layoutState = TileLayoutState(
+            tileId = id,
+            parentId = parentId,
+            linkedCategoryId = null,
+            cellIndex = cellIndex,
+            isQuickFire = tileType == TileType.QUICK_FIRE,
+            isHidden = false,
+            clickCount = clickCount,
+        ),
+    )
 }

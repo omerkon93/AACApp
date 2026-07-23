@@ -30,8 +30,6 @@ import androidx.compose.material3.Slider
 import androidx.compose.material3.Switch
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
-import androidx.compose.runtime.collectAsState
-import androidx.compose.runtime.getValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
@@ -39,27 +37,15 @@ import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
-import com.kon.myaacapp.AACViewModel
 import com.kon.myaacapp.R
 import com.kon.myaacapp.domain.model.TileType
 import com.kon.myaacapp.ui.communication.TileUI
 
 @Composable
-fun AdminLayoutSettingsScreen(viewModel: AACViewModel) {
-    val gridColumns by viewModel.gridColumns.collectAsState()
-    val gridRows by viewModel.gridRows.collectAsState()
-    val gridTileScale by viewModel.gridTileScale.collectAsState()
-    val gridTileContainerScale by viewModel.gridTileContainerScale.collectAsState() // 👉 Added container scale
-    val barTileImageScale by viewModel.barTileImageScale.collectAsState()
-    val barTileTitleScale by viewModel.barTileTitleScale.collectAsState()
-    val actionButtonScale by viewModel.actionButtonScale.collectAsState()
-
-    val showSentenceBar by viewModel.showSentenceBar.collectAsState()
-    val showBackButton by viewModel.showBackButton.collectAsState()
-    val showBackspaceButton by viewModel.showBackspaceButton.collectAsState()
-    val showSpeakButton by viewModel.showSpeakButton.collectAsState()
-    val homeInActionBar by viewModel.homeInActionBar.collectAsState()
-
+fun AdminLayoutSettingsScreen(
+    state: LayoutSettingsState,
+    onAction: (LayoutSettingsAction) -> Unit,
+) {
     val scrollState = rememberScrollState()
 
     Column(
@@ -76,105 +62,208 @@ fun AdminLayoutSettingsScreen(viewModel: AACViewModel) {
         )
 
         LayoutPreview(
-            gridTileScale = gridTileScale,
-            gridTileContainerScale = gridTileContainerScale,
-            actionButtonScale = actionButtonScale,
-            showSentenceBar = showSentenceBar
+            gridTileScale = state.safeGridTileScale,
+            gridTileContainerScale =
+                state.safeGridTileContainerScale,
+            actionButtonScale =
+                state.safeActionButtonScale,
+            showSentenceBar = state.showSentenceBar,
         )
 
         HorizontalDivider()
 
         SettingIntSlider(
-            label = stringResource(R.string.setting_grid_columns),
-            value = gridColumns,
-            onValueChange = { viewModel.updateGridColumns(it) },
-            valueRange = 1..8
+            label = stringResource(
+                R.string.setting_grid_columns
+            ),
+            value = state.safeGridColumns,
+            onValueChange = { value ->
+                onAction(
+                    LayoutSettingsAction.GridColumnsChanged(
+                        value
+                    )
+                )
+            },
+            valueRange = 1..8,
         )
+
         SettingIntSlider(
-            label = stringResource(R.string.setting_grid_rows),
-            value = gridRows,
-            onValueChange = { viewModel.updateGridRows(it) },
-            valueRange = 1..10
+            label = stringResource(
+                R.string.setting_grid_rows
+            ),
+            value = state.safeGridRows,
+            onValueChange = { value ->
+                onAction(
+                    LayoutSettingsAction.GridRowsChanged(
+                        value
+                    )
+                )
+            },
+            valueRange = 1..10,
         )
 
-        // 👉 New Container Slider
         SettingSlider(
-            label = stringResource(R.string.setting_grid_tile_container_size),
-            value = gridTileContainerScale,
-            onValueChange = { viewModel.updateGridTileContainerScale(it) },
-            valueRange = 0.5f..1.0f // Capped at 1.0 so it doesn't overflow the cell
+            label = stringResource(
+                R.string.setting_grid_tile_container_size
+            ),
+            value = state.safeGridTileContainerScale,
+            onValueChange = { value ->
+                onAction(
+                    LayoutSettingsAction
+                        .GridTileContainerScaleChanged(
+                            value
+                        )
+                )
+            },
+            valueRange = 0.5f..1f,
         )
 
-        // Renamed existing Content Slider
         SettingSlider(
-            label = stringResource(R.string.setting_grid_tile_content_size),
-            value = gridTileScale,
-            onValueChange = { viewModel.updateGridTileScale(it) },
-            valueRange = 0.5f..2.0f
+            label = stringResource(
+                R.string.setting_grid_tile_content_size
+            ),
+            value = state.safeGridTileScale,
+            onValueChange = { value ->
+                onAction(
+                    LayoutSettingsAction
+                        .GridTileScaleChanged(value)
+                )
+            },
+            valueRange = 0.5f..2f,
         )
 
-        AnimatedVisibility(visible = showSentenceBar) {
+        AnimatedVisibility(
+            visible = state.showSentenceBar
+        ) {
             Column(verticalArrangement = Arrangement.spacedBy(16.dp)) {
                 SettingSlider(
-                    label = stringResource(R.string.setting_bar_image_size),
-                    value = barTileImageScale,
-                    onValueChange = { viewModel.updateBarTileImageScale(it) },
-                    valueRange = 0.5f..2.0f
+                    label = stringResource(
+                        R.string.setting_bar_image_size
+                    ),
+                    value = state.safeBarTileImageScale,
+                    onValueChange = { value ->
+                        onAction(
+                            LayoutSettingsAction
+                                .BarTileImageScaleChanged(value)
+                        )
+                    },
+                    valueRange = 0.5f..2f,
                 )
                 SettingSlider(
-                    label = stringResource(R.string.setting_bar_text_size),
-                    value = barTileTitleScale,
-                    onValueChange = { viewModel.updateBarTileTitleScale(it) },
-                    valueRange = 0.5f..2.0f
+                    label = stringResource(
+                        R.string.setting_bar_text_size
+                    ),
+                    value = state.safeBarTileTitleScale,
+                    onValueChange = { value ->
+                        onAction(
+                            LayoutSettingsAction
+                                .BarTileTitleScaleChanged(value)
+                        )
+                    },
+                    valueRange = 0.5f..2f,
                 )
             }
         }
 
         SettingSlider(
-            label = stringResource(R.string.setting_action_button_size),
-            value = actionButtonScale,
-            onValueChange = { viewModel.updateActionButtonScale(it) },
-            valueRange = 0.5f..2.0f
+            label = stringResource(
+                R.string.setting_action_button_size
+            ),
+            value = state.safeActionButtonScale,
+            onValueChange = { value ->
+                onAction(
+                    LayoutSettingsAction
+                        .ActionButtonScaleChanged(value)
+                )
+            },
+            valueRange = 0.5f..2f,
         )
 
         HorizontalDivider()
 
         SettingToggle(
-            title = stringResource(R.string.setting_show_sentence_bar),
-            description = stringResource(R.string.setting_show_sentence_bar_desc),
-            checked = showSentenceBar,
-            onCheckedChange = { viewModel.updateShowSentenceBar(it) }
+            title = stringResource(
+                R.string.setting_show_sentence_bar
+            ),
+            description = stringResource(
+                R.string.setting_show_sentence_bar_desc
+            ),
+            checked = state.showSentenceBar,
+            onCheckedChange = { value ->
+                onAction(
+                    LayoutSettingsAction
+                        .ShowSentenceBarChanged(value)
+                )
+            },
         )
 
         SettingToggle(
-            title = stringResource(R.string.setting_show_back),
-            description = stringResource(R.string.setting_show_back_desc),
-            checked = showBackButton,
-            onCheckedChange = { viewModel.updateShowBackButton(it) }
+            title = stringResource(
+                R.string.setting_show_back
+            ),
+            description = stringResource(
+                R.string.setting_show_back_desc
+            ),
+            checked = state.showBackButton,
+            onCheckedChange = { value ->
+                onAction(
+                    LayoutSettingsAction
+                        .ShowBackButtonChanged(value)
+                )
+            },
         )
 
-        AnimatedVisibility(visible = showSentenceBar) {
+        AnimatedVisibility(
+            visible = state.showSentenceBar
+        ) {
             Column(verticalArrangement = Arrangement.spacedBy(16.dp)) {
                 SettingToggle(
-                    title = stringResource(R.string.setting_show_backspace),
-                    description = stringResource(R.string.setting_show_backspace_desc),
-                    checked = showBackspaceButton,
-                    onCheckedChange = { viewModel.updateShowBackspaceButton(it) }
+                    title = stringResource(
+                        R.string.setting_show_backspace
+                    ),
+                    description = stringResource(
+                        R.string.setting_show_backspace_desc
+                    ),
+                    checked = state.showBackspaceButton,
+                    onCheckedChange = { value ->
+                        onAction(
+                            LayoutSettingsAction
+                                .ShowBackspaceButtonChanged(value)
+                        )
+                    },
                 )
                 SettingToggle(
-                    title = stringResource(R.string.setting_show_speak),
-                    description = stringResource(R.string.setting_show_speak_desc),
-                    checked = showSpeakButton,
-                    onCheckedChange = { viewModel.updateShowSpeakButton(it) }
+                    title = stringResource(
+                        R.string.setting_show_speak
+                    ),
+                    description = stringResource(
+                        R.string.setting_show_speak_desc
+                    ),
+                    checked = state.showSpeakButton,
+                    onCheckedChange = { value ->
+                        onAction(
+                            LayoutSettingsAction
+                                .ShowSpeakButtonChanged(value)
+                        )
+                    },
                 )
             }
         }
 
         SettingToggle(
-            title = stringResource(R.string.setting_home_in_action_bar),
-            description = stringResource(R.string.setting_home_in_action_bar_desc),
-            checked = homeInActionBar,
-            onCheckedChange = { viewModel.updateHomeInActionBar(it) }
+            title = stringResource(
+                R.string.setting_home_in_action_bar
+            ),
+            description = stringResource(
+                R.string.setting_home_in_action_bar_desc
+            ),
+            checked = state.homeInActionBar,
+            onCheckedChange = { value ->
+                onAction(
+                    LayoutSettingsAction
+                        .HomeInActionBarChanged(value)
+                )
+            },
         )
 
         HorizontalDivider()
@@ -185,23 +274,34 @@ fun AdminLayoutSettingsScreen(viewModel: AACViewModel) {
         ) {
             Button(
                 onClick = {
-                    viewModel.saveCurrentLayoutAsDefault()
+                    onAction(
+                        LayoutSettingsAction
+                            .SaveCurrentAsDefault
+                    )
                 },
-                modifier = Modifier.fillMaxWidth()
+                enabled = !state.isBusy,
+                modifier = Modifier.fillMaxWidth(),
             ) {
                 Text(
-                    text = stringResource(R.string.save_layout_as_default)
+                    text = stringResource(
+                        R.string.save_layout_as_default
+                    )
                 )
             }
 
             OutlinedButton(
                 onClick = {
-                    viewModel.restoreDefaultLayoutSettings()
+                    onAction(
+                        LayoutSettingsAction.RestoreDefault
+                    )
                 },
-                modifier = Modifier.fillMaxWidth()
+                enabled = !state.isBusy,
+                modifier = Modifier.fillMaxWidth(),
             ) {
                 Text(
-                    text = stringResource(R.string.restore_default_layout_settings)
+                    text = stringResource(
+                        R.string.restore_default_layout_settings
+                    )
                 )
             }
         }

@@ -35,17 +35,11 @@ import androidx.compose.material3.Scaffold
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
-import androidx.compose.runtime.collectAsState
-import androidx.compose.runtime.getValue
-import androidx.compose.runtime.mutableStateOf
-import androidx.compose.runtime.remember
-import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
-import com.kon.myaacapp.AACViewModel
 import com.kon.myaacapp.R
 import com.kon.myaacapp.domain.model.ProfileCreationMode
 import com.kon.myaacapp.domain.model.UserProfile
@@ -53,103 +47,165 @@ import com.kon.myaacapp.domain.model.UserProfile
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun ProfileManagerScreen(
-    viewModel: AACViewModel,
-    onNavigateBack: () -> Unit
+    state: ProfileManagerState,
+    onAction: (ProfileManagerAction) -> Unit,
+    onNavigateBack: () -> Unit,
 ) {
-    val profiles by viewModel.profiles.collectAsState()
-    val activeProfile by viewModel.activeProfile.collectAsState()
-    var showCreateDialog by remember { mutableStateOf(false) }
-    var profileToDelete by remember {
-        mutableStateOf<UserProfile?>(null)
-    }
-    // OPTIMIZATION: Hoist and memoize lambdas to guarantee stable function references.
-    // This prevents Compose of churning memory and forces ProfileItem to skip recomposition.
-    val onSwitchProfile = remember(viewModel) { { id: String -> viewModel.switchProfile(id) } }
-    val onDeleteRequest: (UserProfile) -> Unit = remember {
-        { profile ->
-            profileToDelete = profile
-        }
-    }
-    val onDismissCreate = remember { { showCreateDialog = false } }
-    val onCreateProfile:
-                (String, ProfileCreationMode) -> Unit =
-        remember(viewModel) {
-            { name, creationMode ->
-                viewModel.createProfile(
-                    name = name,
-                    creationMode = creationMode,
-                )
-
-                showCreateDialog = false
-            }
-        }
-
-    val onDismissDelete = remember { { profileToDelete = null } }
-    val onConfirmDelete = remember(viewModel) {
-        {
-            profileToDelete?.let { viewModel.deleteProfile(it.profileId) }
-            profileToDelete = null
-        }
-    }
-
     Scaffold(
         topBar = {
             CenterAlignedTopAppBar(
-                title = { Text(stringResource(R.string.profile_manager)) },
+                title = {
+                    Text(
+                        text = stringResource(
+                            R.string.profile_manager
+                        )
+                    )
+                },
                 navigationIcon = {
-                    IconButton(onClick = onNavigateBack) {
+                    IconButton(
+                        onClick = onNavigateBack,
+                    ) {
                         Icon(
-                            Icons.AutoMirrored.Filled.ArrowBack,
-                            contentDescription = stringResource(R.string.back)
+                            imageVector =
+                                Icons.AutoMirrored.Filled
+                                    .ArrowBack,
+                            contentDescription =
+                                stringResource(
+                                    R.string.back
+                                ),
                         )
                     }
-                }
+                },
             )
         },
         floatingActionButton = {
-            FloatingActionButton(onClick = { showCreateDialog = true }) {
+            FloatingActionButton(
+                onClick = {
+                    if (!state.isBusy) {
+                        onAction(
+                            ProfileManagerAction
+                                .OpenCreateDialog
+                        )
+                    }
+                },
+                containerColor =
+                    if (state.isBusy) {
+                        MaterialTheme
+                            .colorScheme
+                            .surfaceVariant
+                    } else {
+                        MaterialTheme
+                            .colorScheme
+                            .primaryContainer
+                    },
+                contentColor =
+                    if (state.isBusy) {
+                        MaterialTheme
+                            .colorScheme
+                            .onSurfaceVariant
+                    } else {
+                        MaterialTheme
+                            .colorScheme
+                            .onPrimaryContainer
+                    },
+            ) {
                 Icon(
-                    Icons.Default.Add,
-                    contentDescription = stringResource(R.string.create_new_profile)
+                    imageVector = Icons.Default.Add,
+                    contentDescription = stringResource(
+                        R.string.create_new_profile
+                    ),
                 )
             }
-        }
+        },
     ) { padding ->
         LazyColumn(
             modifier = Modifier
                 .fillMaxSize()
                 .padding(padding)
                 .padding(16.dp),
-            verticalArrangement = Arrangement.spacedBy(8.dp)
+            verticalArrangement =
+                Arrangement.spacedBy(8.dp),
         ) {
-            // OPTIMIZATION: Provide a structural key to the list
             items(
-                items = profiles,
-                key = { it.profileId }
+                items = state.profiles,
+                key = { profile ->
+                    profile.profileId
+                },
             ) { profile ->
-                val isActive = profile.profileId == activeProfile?.profileId
+                val isActive =
+                    profile.profileId ==
+                            state.activeProfile?.profileId
 
                 ProfileItem(
                     profile = profile,
                     isActive = isActive,
-                    // We pass the stable reference directly
-                    onSwitch = onSwitchProfile,
-                    onDelete = onDeleteRequest
+                    onSwitch = { profileId ->
+                        onAction(
+                            ProfileManagerAction
+                                .SwitchProfileClicked(
+                                    profileId = profileId,
+                                )
+                        )
+                    },
+                    onDelete = { selectedProfile ->
+                        onAction(
+                            ProfileManagerAction
+                                .DeleteProfileClicked(
+                                    profile =
+                                        selectedProfile,
+                                )
+                        )
+                    },
                 )
             }
         }
     }
 
-    if (showCreateDialog) {
+    if (state.showCreateDialog) {
         CreateProfileDialog(
-            onDismiss = onDismissCreate,
-            onCreate = onCreateProfile
+            profileName = state.profileName,
+            creationMode = state.creationMode,
+            canCreate = state.canCreateProfile,
+            isCreating = state.isCreatingProfile,
+            onProfileNameChange = { value ->
+                onAction(
+                    ProfileManagerAction
+                        .ProfileNameChanged(value)
+                )
+            },
+            onCreationModeChange = { value ->
+                onAction(
+                    ProfileManagerAction
+                        .CreationModeChanged(value)
+                )
+            },
+            onDismiss = {
+                onAction(
+                    ProfileManagerAction
+                        .CloseCreateDialog
+                )
+            },
+            onCreate = {
+                onAction(
+                    ProfileManagerAction
+                        .CreateProfileClicked
+                )
+            },
         )
     }
 
-    profileToDelete?.let { selectedProfile ->
+    state.profilePendingDeletion?.let {
+            selectedProfile ->
+
         AlertDialog(
-            onDismissRequest = onDismissDelete,
+            onDismissRequest = {
+                if (!state.isDeletingProfile) {
+                    onAction(
+                        ProfileManagerAction
+                            .CancelDeleteProfile
+                    )
+                }
+            },
             title = {
                 Text(
                     text = stringResource(
@@ -168,27 +224,43 @@ fun ProfileManagerScreen(
             confirmButton = {
                 Button(
                     onClick = {
-                        viewModel.deleteProfile(
-                            selectedProfile.profileId
+                        onAction(
+                            ProfileManagerAction
+                                .ConfirmDeleteProfile
                         )
-                        profileToDelete = null
                     },
-                    colors = ButtonDefaults.buttonColors(
-                        containerColor =
-                            MaterialTheme.colorScheme.error
-                    ),
+                    enabled =
+                        state.canDeletePendingProfile,
+                    colors =
+                        ButtonDefaults.buttonColors(
+                            containerColor =
+                                MaterialTheme
+                                    .colorScheme
+                                    .error,
+                        ),
                 ) {
                     Text(
-                        text = stringResource(R.string.delete)
+                        text = stringResource(
+                            R.string.delete
+                        )
                     )
                 }
             },
             dismissButton = {
                 TextButton(
-                    onClick = onDismissDelete
+                    onClick = {
+                        onAction(
+                            ProfileManagerAction
+                                .CancelDeleteProfile
+                        )
+                    },
+                    enabled =
+                        !state.isDeletingProfile,
                 ) {
                     Text(
-                        text = stringResource(R.string.cancel)
+                        text = stringResource(
+                            R.string.cancel
+                        )
                     )
                 }
             },
@@ -266,27 +338,22 @@ fun ProfileItem(
 
 @Composable
 fun CreateProfileDialog(
+    profileName: String,
+    creationMode: ProfileCreationMode,
+    canCreate: Boolean,
+    isCreating: Boolean,
+    onProfileNameChange: (String) -> Unit,
+    onCreationModeChange:
+        (ProfileCreationMode) -> Unit,
     onDismiss: () -> Unit,
-    onCreate: (
-        name: String,
-        creationMode: ProfileCreationMode,
-    ) -> Unit,
+    onCreate: () -> Unit,
 ) {
-    var name by remember {
-        mutableStateOf("")
-    }
-
-    var selectedMode by remember {
-        mutableStateOf(
-            ProfileCreationMode.DUPLICATE_CURRENT
-        )
-    }
-
-    val normalizedName = name.trim()
-    val canCreate = normalizedName.isNotEmpty()
-
     AlertDialog(
-        onDismissRequest = onDismiss,
+        onDismissRequest = {
+            if (!isCreating) {
+                onDismiss()
+            }
+        },
         title = {
             Text(
                 text = stringResource(
@@ -306,10 +373,9 @@ fun CreateProfileDialog(
                 )
 
                 OutlinedTextField(
-                    value = name,
-                    onValueChange = { updatedName ->
-                        name = updatedName
-                    },
+                    value = profileName,
+                    onValueChange =
+                        onProfileNameChange,
                     label = {
                         Text(
                             text = stringResource(
@@ -317,15 +383,18 @@ fun CreateProfileDialog(
                             )
                         )
                     },
+                    enabled = !isCreating,
                     singleLine = true,
-                    modifier = Modifier.fillMaxWidth(),
+                    modifier =
+                        Modifier.fillMaxWidth(),
                 )
 
                 Text(
                     text = stringResource(
                         R.string.profile_creation_mode
                     ),
-                    style = MaterialTheme.typography.titleSmall,
+                    style =
+                        MaterialTheme.typography.titleSmall,
                     fontWeight = FontWeight.Bold,
                 )
 
@@ -334,13 +403,20 @@ fun CreateProfileDialog(
                         R.string.profile_mode_duplicate
                     ),
                     description = stringResource(
-                        R.string.profile_mode_duplicate_description
+                        R.string
+                            .profile_mode_duplicate_description
                     ),
-                    selected = selectedMode ==
-                            ProfileCreationMode.DUPLICATE_CURRENT,
+                    selected =
+                        creationMode ==
+                                ProfileCreationMode
+                                    .DUPLICATE_CURRENT,
                     onClick = {
-                        selectedMode =
-                            ProfileCreationMode.DUPLICATE_CURRENT
+                        if (!isCreating) {
+                            onCreationModeChange(
+                                ProfileCreationMode
+                                    .DUPLICATE_CURRENT
+                            )
+                        }
                     },
                 )
 
@@ -349,13 +425,20 @@ fun CreateProfileDialog(
                         R.string.profile_mode_default
                     ),
                     description = stringResource(
-                        R.string.profile_mode_default_description
+                        R.string
+                            .profile_mode_default_description
                     ),
-                    selected = selectedMode ==
-                            ProfileCreationMode.DEFAULT_TEMPLATE,
+                    selected =
+                        creationMode ==
+                                ProfileCreationMode
+                                    .DEFAULT_TEMPLATE,
                     onClick = {
-                        selectedMode =
-                            ProfileCreationMode.DEFAULT_TEMPLATE
+                        if (!isCreating) {
+                            onCreationModeChange(
+                                ProfileCreationMode
+                                    .DEFAULT_TEMPLATE
+                            )
+                        }
                     },
                 )
 
@@ -364,38 +447,44 @@ fun CreateProfileDialog(
                         R.string.profile_mode_blank
                     ),
                     description = stringResource(
-                        R.string.profile_mode_blank_description
+                        R.string
+                            .profile_mode_blank_description
                     ),
-                    selected = selectedMode ==
-                            ProfileCreationMode.BLANK,
+                    selected =
+                        creationMode ==
+                                ProfileCreationMode.BLANK,
                     onClick = {
-                        selectedMode =
-                            ProfileCreationMode.BLANK
+                        if (!isCreating) {
+                            onCreationModeChange(
+                                ProfileCreationMode.BLANK
+                            )
+                        }
                     },
                 )
             }
         },
         confirmButton = {
             Button(
-                onClick = {
-                    onCreate(
-                        normalizedName,
-                        selectedMode,
-                    )
-                },
-                enabled = canCreate,
+                onClick = onCreate,
+                enabled =
+                    canCreate && !isCreating,
             ) {
                 Text(
-                    text = stringResource(R.string.add)
+                    text = stringResource(
+                        R.string.add
+                    )
                 )
             }
         },
         dismissButton = {
             TextButton(
-                onClick = onDismiss
+                onClick = onDismiss,
+                enabled = !isCreating,
             ) {
                 Text(
-                    text = stringResource(R.string.cancel)
+                    text = stringResource(
+                        R.string.cancel
+                    )
                 )
             }
         },

@@ -28,12 +28,7 @@ import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
-import androidx.compose.runtime.derivedStateOf
-import androidx.compose.runtime.getValue
-import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
-import androidx.compose.runtime.saveable.rememberSaveable
-import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalConfiguration
@@ -44,12 +39,10 @@ import androidx.compose.ui.tooling.preview.Preview
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.compose.ui.window.DialogProperties
-import androidx.lifecycle.compose.collectAsStateWithLifecycle
-import com.kon.myaacapp.AACViewModel
 import com.kon.myaacapp.R
-import com.kon.myaacapp.ui.communication.TileUI
-import com.kon.myaacapp.domain.model.CombinedTile
 import com.kon.myaacapp.domain.model.TileType
+import com.kon.myaacapp.service.audio.AudioRecordingService
+import com.kon.myaacapp.ui.communication.TileUI
 import com.kon.myaacapp.ui.editor.components.AdvancedSection
 import com.kon.myaacapp.ui.editor.components.AudioSection
 import com.kon.myaacapp.ui.editor.components.BasicInfoSection
@@ -59,163 +52,18 @@ import com.kon.myaacapp.ui.theme.MyAACAppTheme
 import com.kon.myaacapp.ui.theme.resolveFitzgeraldColor
 
 private const val DEFAULT_MAX_CAPACITY = 15
-private const val DEFAULT_PART_OF_SPEECH = "NONE"
-private const val DEFAULT_GRAMMATICAL_GENDER = "M"
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
-fun TileEditDialog(
-    viewModel: AACViewModel,
-    existingTile: CombinedTile? = null,
-    initialCellIndex: Int? = null,
-    onDismiss: () -> Unit,
+fun TileEditDialogContent(
+    state: TileEditorState,
+    audioService: AudioRecordingService,
+    onPlayPreview: (
+        ttsText: String,
+        audioUri: String?,
+    ) -> Unit,
+    onAction: (TileEditorAction) -> Unit,
 ) {
-    val editorKey = existingTile?.id ?: "new-tile"
-
-    val currentParentId by viewModel.currentParentId
-        .collectAsStateWithLifecycle()
-
-    var label by rememberSaveable(editorKey) {
-        mutableStateOf(existingTile?.label.orEmpty())
-    }
-
-    var ttsText by rememberSaveable(editorKey) {
-        mutableStateOf(existingTile?.ttsText.orEmpty())
-    }
-
-    var tileId by rememberSaveable(editorKey) {
-        mutableStateOf(existingTile?.id.orEmpty())
-    }
-
-    var parentId by rememberSaveable(
-        editorKey,
-        currentParentId,
-    ) {
-        mutableStateOf(
-            existingTile?.parentId ?: currentParentId
-        )
-    }
-
-    var emoji by rememberSaveable(editorKey) {
-        mutableStateOf(existingTile?.emoji.orEmpty())
-    }
-
-    var imageUri by rememberSaveable(editorKey) {
-        mutableStateOf(existingTile?.imageUri)
-    }
-
-    var backgroundColorHex by rememberSaveable(editorKey) {
-        mutableStateOf(existingTile?.backgroundColorHex.orEmpty())
-    }
-
-    var partOfSpeech by rememberSaveable(editorKey) {
-        mutableStateOf(
-            existingTile?.definition?.partOfSpeech
-                ?: DEFAULT_PART_OF_SPEECH
-        )
-    }
-
-    val initialTileType = remember(existingTile) {
-        when {
-            existingTile?.isCategory == true -> {
-                TileType.FOLDER
-            }
-
-            existingTile?.linkedCategoryId != null -> {
-                TileType.CONNECTOR
-            }
-
-            existingTile?.isQuickFire == true -> {
-                TileType.QUICK_FIRE
-            }
-
-            else -> {
-                TileType.BASIC
-            }
-        }
-    }
-
-    var tileType by rememberSaveable(editorKey) {
-        mutableStateOf(initialTileType)
-    }
-
-    var linkedCategoryId by rememberSaveable(editorKey) {
-        mutableStateOf(existingTile?.linkedCategoryId)
-    }
-
-    var cellIndex by rememberSaveable(
-        editorKey,
-        initialCellIndex,
-    ) {
-        mutableStateOf(
-            existingTile?.cellIndex?.toString()
-                ?: initialCellIndex?.toString()
-                ?: ""
-        )
-    }
-
-    var isHidden by rememberSaveable(editorKey) {
-        mutableStateOf(existingTile?.isHidden ?: false)
-    }
-
-    var labelFeminine by rememberSaveable(editorKey) {
-        mutableStateOf(
-            existingTile?.definition?.labelFeminine.orEmpty()
-        )
-    }
-
-    var ttsTextFeminine by rememberSaveable(editorKey) {
-        mutableStateOf(
-            existingTile?.definition?.ttsTextFeminine.orEmpty()
-        )
-    }
-
-    var grammaticalGender by rememberSaveable(editorKey) {
-        mutableStateOf(
-            existingTile?.definition?.grammaticalGender
-                ?: DEFAULT_GRAMMATICAL_GENDER
-        )
-    }
-
-    var audioUri by rememberSaveable(editorKey) {
-        mutableStateOf(existingTile?.audioUri)
-    }
-
-    var showOverwriteDialog by rememberSaveable(editorKey) {
-        mutableStateOf(false)
-    }
-
-    var pendingCellIndex by rememberSaveable(editorKey) {
-        mutableStateOf("")
-    }
-
-    var isSubmitting by remember(editorKey) {
-        mutableStateOf(false)
-    }
-
-    val tilesFlow = remember(viewModel, parentId) {
-        viewModel.getTilesByParentId(parentId)
-    }
-
-    val tilesInParent: List<CombinedTile> by
-    tilesFlow.collectAsStateWithLifecycle(
-        initialValue = emptyList()
-    )
-
-    val categories by viewModel.allCategories
-        .collectAsStateWithLifecycle()
-
-    val languageCode by viewModel.languageCode
-        .collectAsStateWithLifecycle()
-
-    val canSave by remember {
-        derivedStateOf {
-            label.isNotBlank() &&
-                    ttsText.isNotBlank() &&
-                    !isSubmitting
-        }
-    }
-
     val typeOptions = mapOf(
         TileType.BASIC to stringResource(
             R.string.tile_type_basic
@@ -231,24 +79,36 @@ fun TileEditDialog(
         ),
     )
 
-    val orientation = LocalConfiguration.current.orientation
+    val orientation =
+        LocalConfiguration.current.orientation
 
-    val tileColor = remember(partOfSpeech) {
-        resolveFitzgeraldColor(partOfSpeech)
+    val tileColor = remember(
+        state.partOfSpeech
+    ) {
+        resolveFitzgeraldColor(
+            state.partOfSpeech
+        )
     }
 
-    val previewAspectRatio = remember(orientation) {
-        if (orientation == Configuration.ORIENTATION_LANDSCAPE) {
+    val previewAspectRatio = remember(
+        orientation
+    ) {
+        if (
+            orientation ==
+            Configuration.ORIENTATION_LANDSCAPE
+        ) {
             1.2f
         } else {
-            1.0f
+            1f
         }
     }
 
     BasicAlertDialog(
         onDismissRequest = {
-            if (!isSubmitting) {
-                onDismiss()
+            if (!state.isSubmitting) {
+                onAction(
+                    TileEditorAction.CancelClicked
+                )
             }
         },
         properties = DialogProperties(
@@ -267,28 +127,34 @@ fun TileEditDialog(
                 modifier = Modifier.fillMaxSize()
             ) {
                 TileEditorHeader(
-                    isNewTile = existingTile == null,
+                    isNewTile = state.isNewTile,
                     onDismiss = {
-                        if (!isSubmitting) {
-                            onDismiss()
+                        if (!state.isSubmitting) {
+                            onAction(
+                                TileEditorAction.CancelClicked
+                            )
                         }
                     },
                 )
 
-                if (showOverwriteDialog) {
-                    val occupiedTile: CombinedTile? = remember(
-                        tilesInParent,
-                        pendingCellIndex,
-                    ) {
-                        tilesInParent.find { tile: CombinedTile ->
-                            tile.cellIndex.toString() == pendingCellIndex
+                if (state.showOverwriteDialog) {
+                    val occupiedTile =
+                        remember(
+                            state.tilesInParent,
+                            state.pendingCellIndex,
+                        ) {
+                            state.tilesInParent.find { tile ->
+                                tile.cellIndex.toString() ==
+                                        state.pendingCellIndex
+                            }
                         }
-                    }
 
                     AlertDialog(
                         onDismissRequest = {
-                            showOverwriteDialog = false
-                            pendingCellIndex = ""
+                            onAction(
+                                TileEditorAction
+                                    .DismissOccupiedCellDialog
+                            )
                         },
                         title = {
                             Text(
@@ -296,41 +162,52 @@ fun TileEditDialog(
                                     R.string.cell_occupied_title
                                 ),
                                 textAlign = TextAlign.Center,
-                                modifier = Modifier.fillMaxWidth(),
+                                modifier =
+                                    Modifier.fillMaxWidth(),
                             )
                         },
                         text = {
                             Text(
                                 text = stringResource(
                                     R.string.cell_occupied_msg,
-                                    occupiedTile?.label.orEmpty(),
+                                    occupiedTile
+                                        ?.label
+                                        .orEmpty(),
                                 ),
                                 textAlign = TextAlign.Center,
-                                modifier = Modifier.fillMaxWidth(),
+                                modifier =
+                                    Modifier.fillMaxWidth(),
                             )
                         },
                         confirmButton = {
                             TextButton(
                                 onClick = {
-                                    cellIndex = pendingCellIndex
-                                    pendingCellIndex = ""
-                                    showOverwriteDialog = false
+                                    onAction(
+                                        TileEditorAction
+                                            .ConfirmOccupiedCell
+                                    )
                                 }
                             ) {
                                 Text(
-                                    text = stringResource(R.string.ok)
+                                    text = stringResource(
+                                        R.string.ok
+                                    )
                                 )
                             }
                         },
                         dismissButton = {
                             TextButton(
                                 onClick = {
-                                    pendingCellIndex = ""
-                                    showOverwriteDialog = false
+                                    onAction(
+                                        TileEditorAction
+                                            .DismissOccupiedCellDialog
+                                    )
                                 }
                             ) {
                                 Text(
-                                    text = stringResource(R.string.cancel)
+                                    text = stringResource(
+                                        R.string.cancel
+                                    )
                                 )
                             }
                         },
@@ -338,7 +215,8 @@ fun TileEditDialog(
                 }
 
                 LazyColumn(
-                    verticalArrangement = Arrangement.spacedBy(24.dp),
+                    verticalArrangement =
+                        Arrangement.spacedBy(24.dp),
                     modifier = Modifier
                         .weight(1f)
                         .padding(horizontal = 24.dp),
@@ -348,7 +226,8 @@ fun TileEditDialog(
                             text = stringResource(
                                 R.string.edit_tile_desc
                             ),
-                            style = MaterialTheme.typography.bodyMedium,
+                            style =
+                                MaterialTheme.typography.bodyMedium,
                             color = MaterialTheme
                                 .colorScheme
                                 .onSurfaceVariant,
@@ -357,255 +236,204 @@ fun TileEditDialog(
 
                     item(key = "basic-info") {
                         BasicInfoSection(
-                            label = label,
-                            onLabelChange = { newLabel ->
-                                label = newLabel
+                            label = state.label,
+                            onLabelChange = { value ->
+                                onAction(
+                                    TileEditorAction
+                                        .LabelChanged(value)
+                                )
                             },
-                            ttsText = ttsText,
-                            onTtsTextChange = { newTtsText ->
-                                ttsText = newTtsText
+                            ttsText = state.ttsText,
+                            onTtsTextChange = { value ->
+                                onAction(
+                                    TileEditorAction
+                                        .TtsTextChanged(value)
+                                )
                             },
                         )
                     }
 
                     item(key = "visuals") {
                         VisualsSection(
-                            emoji = emoji,
-                            onEmojiChange = { newEmoji ->
-                                emoji = newEmoji
+                            emoji = state.emoji,
+                            onEmojiChange = { value ->
+                                onAction(
+                                    TileEditorAction
+                                        .EmojiChanged(value)
+                                )
                             },
-                            imageUri = imageUri,
-                            onImageUriChange = { newImageUri ->
-                                imageUri = newImageUri
+                            imageUri = state.imageUri,
+                            onImageUriChange = { value ->
+                                onAction(
+                                    TileEditorAction
+                                        .ImageUriChanged(value)
+                                )
                             },
-                            partOfSpeech = partOfSpeech,
-                            onPartOfSpeechChange = { newPartOfSpeech ->
-                                partOfSpeech = newPartOfSpeech
+                            partOfSpeech =
+                                state.partOfSpeech,
+                            onPartOfSpeechChange = { value ->
+                                onAction(
+                                    TileEditorAction
+                                        .PartOfSpeechChanged(
+                                            value
+                                        )
+                                )
                             },
                         )
                     }
 
                     item(key = "audio") {
                         AudioSection(
-                            audioUri = audioUri,
-                            onAudioUriChange = { newAudioUri ->
-                                audioUri = newAudioUri
+                            audioUri = state.audioUri,
+                            onAudioUriChange = { value ->
+                                onAction(
+                                    TileEditorAction
+                                        .AudioUriChanged(value)
+                                )
                             },
-                            languageCode = languageCode,
-                            audioService = viewModel.audioService,
+                            languageCode =
+                                state.languageCode,
+                            audioService = audioService,
                         )
                     }
 
                     item(key = "advanced") {
                         AdvancedSection(
                             typeOptions = typeOptions,
-                            tileType = tileType,
-                            onTileTypeChange = { newTileType ->
-                                tileType = newTileType
-
-                                if (
-                                    newTileType != TileType.FOLDER &&
-                                    newTileType != TileType.CONNECTOR
-                                ) {
-                                    linkedCategoryId = null
-                                }
+                            tileType = state.tileType,
+                            onTileTypeChange = { value ->
+                                onAction(
+                                    TileEditorAction
+                                        .TileTypeChanged(value)
+                                )
                             },
-                            categories = categories,
-                            existingTile = existingTile,
-                            parentId = parentId,
-                            onParentIdChange = { newParentId ->
-                                parentId = newParentId
-
-                                if (
-                                    newParentId !=
-                                    existingTile?.parentId
-                                ) {
-                                    cellIndex = ""
-                                }
+                            categories = state.categories,
+                            existingTile =
+                                state.existingTile,
+                            parentId = state.parentId,
+                            onParentIdChange = { value ->
+                                onAction(
+                                    TileEditorAction
+                                        .ParentIdChanged(value)
+                                )
                             },
-                            linkedCategoryId = linkedCategoryId,
-                            onLinkedCategoryIdChange = { newLinkedCategoryId ->
-                                linkedCategoryId =
-                                    newLinkedCategoryId
+                            linkedCategoryId =
+                                state.linkedCategoryId,
+                            onLinkedCategoryIdChange = {
+                                    value ->
+                                onAction(
+                                    TileEditorAction
+                                        .LinkedCategoryIdChanged(
+                                            value
+                                        )
+                                )
                             },
-                            cellIndex = cellIndex,
-                            onCellIndexChange = { newCellIndex ->
-                                cellIndex = newCellIndex
+                            cellIndex = state.cellIndex,
+                            onCellIndexChange = { value ->
+                                onAction(
+                                    TileEditorAction
+                                        .CellIndexChanged(value)
+                                )
                             },
-                            tilesInParent = tilesInParent,
-                            maxCapacity = DEFAULT_MAX_CAPACITY,
-                            onOccupiedCellSelected = { occupiedIndex ->
-                                pendingCellIndex = occupiedIndex
-                                showOverwriteDialog = true
+                            tilesInParent =
+                                state.tilesInParent,
+                            maxCapacity =
+                                DEFAULT_MAX_CAPACITY,
+                            onOccupiedCellSelected = {
+                                    occupiedIndex ->
+                                onAction(
+                                    TileEditorAction
+                                        .OccupiedCellSelected(
+                                            occupiedIndex
+                                        )
+                                )
                             },
-                            isHidden = isHidden,
-                            onHiddenChange = { hidden ->
-                                isHidden = hidden
+                            isHidden = state.isHidden,
+                            onHiddenChange = { value ->
+                                onAction(
+                                    TileEditorAction
+                                        .HiddenChanged(value)
+                                )
                             },
-                            tileId = tileId,
-                            onTileIdChange = { newTileId ->
-                                tileId = newTileId
+                            tileId = state.tileId,
+                            onTileIdChange = { value ->
+                                onAction(
+                                    TileEditorAction
+                                        .TileIdChanged(value)
+                                )
                             },
                         )
                     }
 
                     item(key = "localization") {
                         LocalizationSection(
-                            labelFeminine = labelFeminine,
-                            onLabelFeminineChange = { newLabel ->
-                                labelFeminine = newLabel
+                            labelFeminine =
+                                state.labelFeminine,
+                            onLabelFeminineChange = {
+                                    value ->
+                                onAction(
+                                    TileEditorAction
+                                        .LabelFeminineChanged(
+                                            value
+                                        )
+                                )
                             },
-                            ttsTextFeminine = ttsTextFeminine,
-                            onTtsTextFeminineChange = { newText ->
-                                ttsTextFeminine = newText
+                            ttsTextFeminine =
+                                state.ttsTextFeminine,
+                            onTtsTextFeminineChange = {
+                                    value ->
+                                onAction(
+                                    TileEditorAction
+                                        .TtsTextFeminineChanged(
+                                            value
+                                        )
+                                )
                             },
                         )
                     }
 
                     item(key = "preview") {
                         TileEditorPreview(
-                            label = label,
-                            ttsText = ttsText,
-                            imageUri = imageUri,
-                            emoji = emoji,
-                            tileType = tileType,
-                            isHidden = isHidden,
-                            audioUri = audioUri,
+                            label = state.label,
+                            ttsText = state.ttsText,
+                            imageUri = state.imageUri,
+                            emoji = state.emoji,
+                            tileType = state.tileType,
+                            isHidden = state.isHidden,
+                            audioUri = state.audioUri,
                             backgroundColor = tileColor,
-                            aspectRatio = previewAspectRatio,
-                            onPlayPreview = viewModel::playPreviewAudio,
+                            aspectRatio =
+                                previewAspectRatio,
+                            onPlayPreview =
+                                onPlayPreview,
                         )
                     }
 
                     item(key = "bottom-spacer") {
                         Spacer(
-                            modifier = Modifier.height(32.dp)
+                            modifier =
+                                Modifier.height(32.dp)
                         )
                     }
                 }
 
                 TileEditorFooter(
-                    isNewTile = existingTile == null,
-                    canSave = canSave,
-                    isSubmitting = isSubmitting,
+                    isNewTile = state.isNewTile,
+                    canSave = state.canSave,
+                    isSubmitting =
+                        state.isSubmitting,
                     onCancel = {
-                        if (!isSubmitting) {
-                            onDismiss()
+                        if (!state.isSubmitting) {
+                            onAction(
+                                TileEditorAction
+                                    .CancelClicked
+                            )
                         }
                     },
                     onSave = {
-                        if (!canSave || isSubmitting) {
-                            return@TileEditorFooter
-                        }
-
-                        isSubmitting = true
-
-                        val finalIsCategory =
-                            tileType == TileType.FOLDER
-
-                        val finalIsQuickFire =
-                            tileType == TileType.QUICK_FIRE
-
-                        val finalLinkedId =
-                            when (tileType) {
-                                TileType.FOLDER,
-                                TileType.CONNECTOR -> {
-                                    linkedCategoryId
-                                }
-
-                                else -> {
-                                    null
-                                }
-                            }
-
-                        val normalizedEmoji =
-                            emoji.trim().ifBlank { null }
-
-                        val normalizedBackgroundColor =
-                            backgroundColorHex
-                                .trim()
-                                .ifBlank { null }
-
-                        val normalizedPartOfSpeech =
-                            partOfSpeech.takeUnless {
-                                it == DEFAULT_PART_OF_SPEECH
-                            }
-
-                        val normalizedLabelFeminine =
-                            labelFeminine.trim().ifBlank { null }
-
-                        val normalizedTtsTextFeminine =
-                            ttsTextFeminine.trim().ifBlank { null }
-
-                        val normalizedCellIndex =
-                            cellIndex.toIntOrNull()
-
-                        if (existingTile == null) {
-                            viewModel.addTile(
-                                id = tileId.trim().ifBlank { null },
-                                label = label.trim(),
-                                ttsText = ttsText.trim(),
-                                emoji = normalizedEmoji,
-                                imageUri = imageUri,
-                                isCategory = finalIsCategory,
-                                parentId = parentId,
-                                backgroundColorHex =
-                                    normalizedBackgroundColor,
-                                partOfSpeech =
-                                    normalizedPartOfSpeech,
-                                isQuickFire = finalIsQuickFire,
-                                linkedCategoryId = finalLinkedId,
-                                labelFeminine =
-                                    normalizedLabelFeminine,
-                                ttsTextFeminine =
-                                    normalizedTtsTextFeminine,
-                                grammaticalGender =
-                                    grammaticalGender,
-                                audioUri = audioUri,
-                                cellIndex = normalizedCellIndex,
-                                isHidden = isHidden,
-                            )
-                        } else {
-                            val updatedDefinition =
-                                existingTile.definition.copy(
-                                    label = label.trim(),
-                                    ttsText = ttsText.trim(),
-                                    labelFeminine =
-                                        normalizedLabelFeminine,
-                                    ttsTextFeminine =
-                                        normalizedTtsTextFeminine,
-                                    emoji = normalizedEmoji,
-                                    audioUri = audioUri,
-                                    imageUri = imageUri,
-                                    backgroundColorHex =
-                                        normalizedBackgroundColor,
-                                    partOfSpeech =
-                                        normalizedPartOfSpeech,
-                                    grammaticalGender =
-                                        grammaticalGender,
-                                    isCategory = finalIsCategory,
-                                    type = tileType,
-                                )
-
-                            val updatedLayoutState =
-                                existingTile.layoutState.copy(
-                                    parentId = parentId,
-                                    linkedCategoryId = finalLinkedId,
-                                    cellIndex = normalizedCellIndex
-                                        ?: existingTile.layoutState.cellIndex,
-                                    isQuickFire = finalIsQuickFire,
-                                    isHidden = isHidden,
-                                )
-
-                            viewModel.updateTile(
-                                tile = existingTile.copy(
-                                    definition = updatedDefinition,
-                                    layoutState = updatedLayoutState,
-                                ),
-                            )
-                        }
-
-                        onDismiss()
+                        onAction(
+                            TileEditorAction.SaveClicked
+                        )
                     },
                 )
             }

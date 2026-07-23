@@ -93,6 +93,8 @@ fun MainCommunicationScreen(
     val userGender by viewModel.userGender.collectAsState()
     val langCode by viewModel.languageCode.collectAsState()
 
+    val layoutSettingsLoaded by
+    viewModel.layoutSettingsLoaded.collectAsState()
     val gridColumns by viewModel.gridColumns.collectAsState()
     val gridRows by viewModel.gridRows.collectAsState()
     val gridTileScale by viewModel.gridTileScale.collectAsState()
@@ -125,6 +127,14 @@ fun MainCommunicationScreen(
                 onBackClick()
             }
         }
+    }
+
+    if (!layoutSettingsLoaded) {
+        Box(
+            modifier = Modifier.fillMaxSize(),
+        )
+
+        return
     }
 
     MainCommunicationScreenContent(

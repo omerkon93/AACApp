@@ -1,9 +1,5 @@
 package com.kon.myaacapp.ui.admin.list
 
-import android.Manifest
-import android.content.pm.PackageManager
-import androidx.activity.compose.rememberLauncherForActivityResult
-import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
@@ -54,20 +50,13 @@ import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.material3.rememberModalBottomSheetState
 import androidx.compose.runtime.Composable
-import androidx.compose.runtime.collectAsState
-import androidx.compose.runtime.getValue
-import androidx.compose.runtime.mutableStateOf
-import androidx.compose.runtime.produceState
 import androidx.compose.runtime.remember
-import androidx.compose.runtime.rememberCoroutineScope
-import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.draw.scale
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.layout.ContentScale
-import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.platform.LocalWindowInfo
 import androidx.compose.ui.res.stringResource
@@ -76,17 +65,10 @@ import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
-import androidx.core.content.ContextCompat
 import coil.compose.AsyncImage
-import com.kon.myaacapp.AACViewModel
 import com.kon.myaacapp.R
-import com.kon.myaacapp.data.local.entity.AACTile
 import com.kon.myaacapp.domain.model.CombinedTile
 import com.kon.myaacapp.domain.model.TileType
-import com.kon.myaacapp.domain.model.toLegacyAACTile
-import kotlinx.coroutines.Dispatchers
-import kotlinx.coroutines.launch
-import kotlinx.coroutines.withContext
 
 enum class MediaFilter { MISSING_AUDIO, MISSING_TTS, MISSING_IMAGE }
 enum class UsageFilter { LOW_USAGE, HIDDEN }
@@ -94,185 +76,206 @@ enum class UsageFilter { LOW_USAGE, HIDDEN }
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun AdminListView(
-    viewModel: AACViewModel,
-    onEditTile: (AACTile?) -> Unit,
-    onDeleteTile: (AACTile) -> Unit
+    state: AdminListState,
+    onAction: (AdminListAction) -> Unit,
 ) {
-    val allTiles by viewModel.allTiles.collectAsState()
-    val languageCode by viewModel.languageCode.collectAsState()
+    val sheetState = rememberModalBottomSheetState(
+        skipPartiallyExpanded = true,
+    )
 
-    // Coroutine Scope to launch suspend audio functions safely
-    val scope = rememberCoroutineScope()
-    val audioService = remember(viewModel) { viewModel.audioService }
-    val context = LocalContext.current
-
-    // Quick-Record States
-    var quickRecordTile by remember { mutableStateOf<CombinedTile?>(null) }
-    var isRecording by remember { mutableStateOf(false) }
-    var tempAudioPath by remember { mutableStateOf<String?>(null) }
-
-    val recordPermissionLauncher = rememberLauncherForActivityResult(
-        contract = ActivityResultContracts.RequestPermission()
-    ) { isGranted ->
-        if (isGranted) {
-            quickRecordTile?.let { tile ->
-                val newPath = audioService.startRecording(
-                    languageCode = languageCode,
-                    tileId = tile.definition.id
-                )
-                tempAudioPath = newPath
-                isRecording = true
-            }
-        }
-    }
-
-    // UI States
-    var searchQuery by remember { mutableStateOf("") }
-    var isFilterActive by remember { mutableStateOf(false) }
-
-    // Filter Sets
-    var selectedMediaFilters by remember { mutableStateOf(setOf<MediaFilter>()) }
-    var selectedTypes: Set<TileType> by remember { mutableStateOf(emptySet()) }
-    var selectedUsageFilters by remember { mutableStateOf(setOf<UsageFilter>()) }
-
-    val activeFilterCount = selectedMediaFilters.size + selectedTypes.size + selectedUsageFilters.size
-
-    // Bottom Sheet State
-    var showFilterSheet by remember { mutableStateOf(false) }
-    val sheetState = rememberModalBottomSheetState(skipPartiallyExpanded = true)
-
-    val filteredTiles by produceState(
-        initialValue = allTiles,
-        allTiles,
-        searchQuery,
-        isFilterActive,
-        selectedMediaFilters,
-        selectedTypes,
-        selectedUsageFilters
+    Box(
+        modifier = Modifier.fillMaxSize(),
     ) {
-        withContext(Dispatchers.Default) {
-            if (searchQuery.isBlank() && (!isFilterActive || activeFilterCount == 0)) {
-                value = allTiles
-                return@withContext
-            }
-
-            val query = searchQuery.lowercase()
-            val filterMedia = isFilterActive && selectedMediaFilters.isNotEmpty()
-            val filterTypes = isFilterActive && selectedTypes.isNotEmpty()
-            val filterUsage = isFilterActive && selectedUsageFilters.isNotEmpty()
-
-            val needsAudio = selectedMediaFilters.contains(MediaFilter.MISSING_AUDIO)
-            val needsTts = selectedMediaFilters.contains(MediaFilter.MISSING_TTS)
-            val needsImage = selectedMediaFilters.contains(MediaFilter.MISSING_IMAGE)
-            val needsHidden = selectedUsageFilters.contains(UsageFilter.HIDDEN)
-            val needsLowUsage = selectedUsageFilters.contains(UsageFilter.LOW_USAGE)
-
-            value = allTiles.filter { tile ->
-                if (query.isNotBlank() &&
-                    !tile.definition.label.lowercase().contains(query) &&
-                    !tile.definition.ttsText.lowercase().contains(query)
-                ) { return@filter false }
-
-                if (filterMedia) {
-                    var mediaMatch = false
-                    if (needsAudio && tile.definition.audioUri == null) mediaMatch = true
-                    if (needsTts && tile.definition.ttsText.isBlank()) mediaMatch = true
-                    if (needsImage && tile.definition.imageUri == null && tile.definition.emoji == null) mediaMatch = true
-                    if (!mediaMatch) return@filter false
-                }
-
-                if (filterTypes && !selectedTypes.contains(tile.definition.resolvedType)) {
-                    return@filter false
-                }
-
-                if (filterUsage) {
-                    var usageMatch = false
-                    if (needsHidden && tile.layoutState.isHidden) usageMatch = true
-                    if (needsLowUsage && tile.layoutState.clickCount < 5) usageMatch = true
-                    if (!usageMatch) return@filter false
-                }
-                true
-            }
-        }
-    }
-
-    val onAddClick = remember(onEditTile) { { onEditTile(null) } }
-
-    Box(modifier = Modifier.fillMaxSize()) {
-        Column(modifier = Modifier.fillMaxSize()) {
+        Column(
+            modifier = Modifier.fillMaxSize(),
+        ) {
             Surface(
                 color = MaterialTheme.colorScheme.surface,
                 tonalElevation = 2.dp,
-                modifier = Modifier.fillMaxWidth()
+                modifier = Modifier.fillMaxWidth(),
             ) {
                 Column(
-                    modifier = Modifier.padding(horizontal = 16.dp, vertical = 12.dp),
-                    verticalArrangement = Arrangement.spacedBy(12.dp)
+                    modifier = Modifier.padding(
+                        horizontal = 16.dp,
+                        vertical = 12.dp,
+                    ),
+                    verticalArrangement =
+                        Arrangement.spacedBy(12.dp),
                 ) {
                     OutlinedTextField(
-                        value = searchQuery,
-                        onValueChange = { searchQuery = it },
+                        value = state.searchQuery,
+                        onValueChange = { value ->
+                            onAction(
+                                AdminListAction
+                                    .SearchQueryChanged(value)
+                            )
+                        },
                         modifier = Modifier.fillMaxWidth(),
-                        placeholder = { Text(stringResource(R.string.search_tiles_placeholder)) },
-                        leadingIcon = { Icon(Icons.Default.Search, contentDescription = null) },
+                        placeholder = {
+                            Text(
+                                stringResource(
+                                    R.string
+                                        .search_tiles_placeholder
+                                )
+                            )
+                        },
+                        leadingIcon = {
+                            Icon(
+                                imageVector =
+                                    Icons.Default.Search,
+                                contentDescription = null,
+                            )
+                        },
                         shape = RoundedCornerShape(16.dp),
                         singleLine = true,
-                        colors = OutlinedTextFieldDefaults.colors(
-                            unfocusedContainerColor = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.5f),
-                            focusedContainerColor = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.8f),
-                            unfocusedBorderColor = Color.Transparent,
-                            focusedBorderColor = MaterialTheme.colorScheme.primary
-                        )
+                        colors =
+                            OutlinedTextFieldDefaults.colors(
+                                unfocusedContainerColor =
+                                    MaterialTheme
+                                        .colorScheme
+                                        .surfaceVariant
+                                        .copy(alpha = 0.5f),
+
+                                focusedContainerColor =
+                                    MaterialTheme
+                                        .colorScheme
+                                        .surfaceVariant
+                                        .copy(alpha = 0.8f),
+
+                                unfocusedBorderColor =
+                                    Color.Transparent,
+
+                                focusedBorderColor =
+                                    MaterialTheme
+                                        .colorScheme
+                                        .primary,
+                            ),
                     )
 
                     Row(
                         modifier = Modifier.fillMaxWidth(),
-                        horizontalArrangement = Arrangement.SpaceBetween,
-                        verticalAlignment = Alignment.CenterVertically
+                        horizontalArrangement =
+                            Arrangement.SpaceBetween,
+                        verticalAlignment =
+                            Alignment.CenterVertically,
                     ) {
                         Button(
                             onClick = {
-                                isFilterActive = true
-                                showFilterSheet = true
+                                onAction(
+                                    AdminListAction
+                                        .OpenFilterSheet
+                                )
                             },
-                            colors = ButtonDefaults.buttonColors(
-                                containerColor = if (activeFilterCount > 0 && isFilterActive) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.primaryContainer,
-                                contentColor = if (activeFilterCount > 0 && isFilterActive) MaterialTheme.colorScheme.onPrimary else MaterialTheme.colorScheme.onPrimaryContainer
-                            ),
-                            shape = RoundedCornerShape(100.dp)
+                            colors =
+                                ButtonDefaults.buttonColors(
+                                    containerColor =
+                                        if (
+                                            state.hasActiveFilters
+                                        ) {
+                                            MaterialTheme
+                                                .colorScheme
+                                                .primary
+                                        } else {
+                                            MaterialTheme
+                                                .colorScheme
+                                                .primaryContainer
+                                        },
+
+                                    contentColor =
+                                        if (
+                                            state.hasActiveFilters
+                                        ) {
+                                            MaterialTheme
+                                                .colorScheme
+                                                .onPrimary
+                                        } else {
+                                            MaterialTheme
+                                                .colorScheme
+                                                .onPrimaryContainer
+                                        },
+                                ),
+                            shape =
+                                RoundedCornerShape(100.dp),
                         ) {
                             Icon(
-                                Icons.Default.FilterList,
+                                imageVector =
+                                    Icons.Default.FilterList,
                                 contentDescription = null,
-                                modifier = Modifier.size(18.dp)
+                                modifier =
+                                    Modifier.size(18.dp),
                             )
-                            Spacer(Modifier.width(8.dp))
+
+                            Spacer(
+                                modifier =
+                                    Modifier.width(8.dp)
+                            )
+
                             Text(
-                                if (activeFilterCount > 0)
-                                    stringResource(R.string.filter_by_count, activeFilterCount)
-                                else
-                                    stringResource(R.string.filter_by)
+                                text =
+                                    if (
+                                        state.activeFilterCount > 0
+                                    ) {
+                                        stringResource(
+                                            R.string
+                                                .filter_by_count,
+                                            state.activeFilterCount,
+                                        )
+                                    } else {
+                                        stringResource(
+                                            R.string.filter_by
+                                        )
+                                    }
                             )
                         }
 
                         Surface(
-                            shape = RoundedCornerShape(100.dp),
-                            color = MaterialTheme.colorScheme.surfaceVariant,
-                            modifier = Modifier.clip(RoundedCornerShape(100.dp))
+                            shape =
+                                RoundedCornerShape(100.dp),
+                            color = MaterialTheme
+                                .colorScheme
+                                .surfaceVariant,
+                            modifier = Modifier.clip(
+                                RoundedCornerShape(100.dp)
+                            ),
                         ) {
                             Row(
-                                verticalAlignment = Alignment.CenterVertically,
-                                modifier = Modifier.padding(start = 16.dp, end = 8.dp, top = 4.dp, bottom = 4.dp)
+                                verticalAlignment =
+                                    Alignment.CenterVertically,
+                                modifier = Modifier.padding(
+                                    start = 16.dp,
+                                    end = 8.dp,
+                                    top = 4.dp,
+                                    bottom = 4.dp,
+                                ),
                             ) {
                                 Text(
-                                    stringResource(R.string.filter_active),
-                                    style = MaterialTheme.typography.labelLarge
+                                    text = stringResource(
+                                        R.string.filter_active
+                                    ),
+                                    style =
+                                        MaterialTheme
+                                            .typography
+                                            .labelLarge,
                                 )
-                                Spacer(Modifier.width(8.dp))
+
+                                Spacer(
+                                    modifier =
+                                        Modifier.width(8.dp)
+                                )
+
                                 Switch(
-                                    checked = isFilterActive,
-                                    onCheckedChange = { isFilterActive = it },
-                                    modifier = Modifier.scale(0.8f)
+                                    checked =
+                                        state.isFilterActive,
+                                    onCheckedChange = { value ->
+                                        onAction(
+                                            AdminListAction
+                                                .FilterActiveChanged(
+                                                    value
+                                                )
+                                        )
+                                    },
+                                    modifier =
+                                        Modifier.scale(0.8f),
                                 )
                             }
                         }
@@ -282,149 +285,340 @@ fun AdminListView(
 
             LazyColumn(
                 modifier = Modifier.weight(1f),
-                contentPadding = PaddingValues(start = 16.dp, end = 16.dp, top = 8.dp, bottom = 80.dp),
-                verticalArrangement = Arrangement.spacedBy(8.dp)
+                contentPadding = PaddingValues(
+                    start = 16.dp,
+                    end = 16.dp,
+                    top = 8.dp,
+                    bottom = 80.dp,
+                ),
+                verticalArrangement =
+                    Arrangement.spacedBy(8.dp),
             ) {
                 items(
-                    items = filteredTiles,
-                    key = { it.definition.id }
+                    items = state.filteredTiles,
+                    key = { tile ->
+                        "${tile.id}_${tile.parentId}"
+                    },
                 ) { tile ->
-                    val editAction = remember(tile.definition.id, onEditTile) { { onEditTile(tile.toLegacyAACTile()) } }
-                    val deleteAction = remember(tile.definition.id, onDeleteTile) { { onDeleteTile(tile.toLegacyAACTile()) } }
-                    val recordAction = remember(tile.definition.id) { { quickRecordTile = tile } }
-
                     AdminListRowItem(
                         tile = tile,
-                        onEdit = editAction,
-                        onDelete = deleteAction,
-                        onQuickRecord = recordAction
+                        onEdit = {
+                            onAction(
+                                AdminListAction
+                                    .EditTileClicked(tile)
+                            )
+                        },
+                        onDelete = {
+                            onAction(
+                                AdminListAction
+                                    .DeleteTileClicked(tile)
+                            )
+                        },
+                        onQuickRecord = {
+                            onAction(
+                                AdminListAction
+                                    .QuickRecordClicked(tile)
+                            )
+                        },
                     )
                 }
             }
         }
 
         FloatingActionButton(
-            onClick = onAddClick,
-            containerColor = MaterialTheme.colorScheme.primary,
+            onClick = {
+                onAction(
+                    AdminListAction.AddTileClicked
+                )
+            },
+            containerColor =
+                MaterialTheme.colorScheme.primary,
             modifier = Modifier
                 .align(Alignment.BottomStart)
-                .padding(16.dp)
+                .padding(16.dp),
         ) {
-            Icon(Icons.Default.Add, contentDescription = stringResource(R.string.add), tint = Color.White)
+            Icon(
+                imageVector = Icons.Default.Add,
+                contentDescription =
+                    stringResource(R.string.add),
+                tint = Color.White,
+            )
         }
     }
 
-    if (showFilterSheet) {
+    if (state.showFilterSheet) {
         ModalBottomSheet(
-            onDismissRequest = { showFilterSheet = false },
+            onDismissRequest = {
+                onAction(
+                    AdminListAction.CloseFilterSheet
+                )
+            },
             sheetState = sheetState,
-            containerColor = MaterialTheme.colorScheme.surface
+            containerColor =
+                MaterialTheme.colorScheme.surface,
         ) {
             val density = LocalDensity.current
             val windowInfo = LocalWindowInfo.current
-            val maxScrollHeight = remember(density, windowInfo) {
-                with(density) { (windowInfo.containerSize.height * 0.65f).toDp() }
-            }
+
+            val maxScrollHeight =
+                remember(density, windowInfo) {
+                    with(density) {
+                        (
+                                windowInfo
+                                    .containerSize
+                                    .height * 0.65f
+                                ).toDp()
+                    }
+                }
 
             Column(
                 modifier = Modifier
                     .fillMaxWidth()
                     .padding(horizontal = 16.dp)
-                    .padding(bottom = 24.dp)
+                    .padding(bottom = 24.dp),
             ) {
                 Text(
-                    text = stringResource(R.string.filter_by),
-                    style = MaterialTheme.typography.titleLarge,
+                    text = stringResource(
+                        R.string.filter_by
+                    ),
+                    style =
+                        MaterialTheme.typography.titleLarge,
                     fontWeight = FontWeight.Bold,
-                    modifier = Modifier.padding(bottom = 16.dp)
+                    modifier =
+                        Modifier.padding(bottom = 16.dp),
                 )
 
                 Column(
                     modifier = Modifier
                         .fillMaxWidth()
                         .heightIn(max = maxScrollHeight)
-                        .verticalScroll(rememberScrollState()),
-                    verticalArrangement = Arrangement.spacedBy(16.dp)
+                        .verticalScroll(
+                            rememberScrollState()
+                        ),
+                    verticalArrangement =
+                        Arrangement.spacedBy(16.dp),
                 ) {
                     Column {
                         Text(
-                            stringResource(R.string.filter_section_media),
-                            style = MaterialTheme.typography.labelLarge,
-                            color = MaterialTheme.colorScheme.primary,
-                            modifier = Modifier.padding(bottom = 8.dp)
+                            text = stringResource(
+                                R.string
+                                    .filter_section_media
+                            ),
+                            style = MaterialTheme
+                                .typography
+                                .labelLarge,
+                            color = MaterialTheme
+                                .colorScheme
+                                .primary,
+                            modifier = Modifier.padding(
+                                bottom = 8.dp
+                            ),
                         )
+
                         FilterCheckboxRow(
-                            label = stringResource(R.string.filter_missing_audio),
-                            isChecked = selectedMediaFilters.contains(MediaFilter.MISSING_AUDIO)
-                        ) { isChecked ->
-                            selectedMediaFilters =
-                                if (isChecked) selectedMediaFilters + MediaFilter.MISSING_AUDIO else selectedMediaFilters - MediaFilter.MISSING_AUDIO
-                        }
+                            label = stringResource(
+                                R.string
+                                    .filter_missing_audio
+                            ),
+                            isChecked =
+                                MediaFilter.MISSING_AUDIO in
+                                        state
+                                            .selectedMediaFilters,
+                            onCheckedChange = { checked ->
+                                onAction(
+                                    AdminListAction
+                                        .MediaFilterChanged(
+                                            filter =
+                                                MediaFilter
+                                                    .MISSING_AUDIO,
+                                            isSelected = checked,
+                                        )
+                                )
+                            },
+                        )
+
                         FilterCheckboxRow(
-                            label = stringResource(R.string.filter_missing_tts),
-                            isChecked = selectedMediaFilters.contains(MediaFilter.MISSING_TTS)
-                        ) { isChecked ->
-                            selectedMediaFilters =
-                                if (isChecked) selectedMediaFilters + MediaFilter.MISSING_TTS else selectedMediaFilters - MediaFilter.MISSING_TTS
-                        }
+                            label = stringResource(
+                                R.string
+                                    .filter_missing_tts
+                            ),
+                            isChecked =
+                                MediaFilter.MISSING_TTS in
+                                        state
+                                            .selectedMediaFilters,
+                            onCheckedChange = { checked ->
+                                onAction(
+                                    AdminListAction
+                                        .MediaFilterChanged(
+                                            filter =
+                                                MediaFilter
+                                                    .MISSING_TTS,
+                                            isSelected = checked,
+                                        )
+                                )
+                            },
+                        )
+
                         FilterCheckboxRow(
-                            label = stringResource(R.string.filter_missing_image),
-                            isChecked = selectedMediaFilters.contains(MediaFilter.MISSING_IMAGE)
-                        ) { isChecked ->
-                            selectedMediaFilters =
-                                if (isChecked) selectedMediaFilters + MediaFilter.MISSING_IMAGE else selectedMediaFilters - MediaFilter.MISSING_IMAGE
-                        }
+                            label = stringResource(
+                                R.string
+                                    .filter_missing_image
+                            ),
+                            isChecked =
+                                MediaFilter.MISSING_IMAGE in
+                                        state
+                                            .selectedMediaFilters,
+                            onCheckedChange = { checked ->
+                                onAction(
+                                    AdminListAction
+                                        .MediaFilterChanged(
+                                            filter =
+                                                MediaFilter
+                                                    .MISSING_IMAGE,
+                                            isSelected = checked,
+                                        )
+                                )
+                            },
+                        )
                     }
 
-                    HorizontalDivider(color = MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.5f))
+                    HorizontalDivider(
+                        color = MaterialTheme
+                            .colorScheme
+                            .outlineVariant
+                            .copy(alpha = 0.5f)
+                    )
 
                     Column {
                         Text(
-                            stringResource(R.string.filter_section_type),
-                            style = MaterialTheme.typography.labelLarge,
-                            color = MaterialTheme.colorScheme.primary,
-                            modifier = Modifier.padding(bottom = 8.dp)
+                            text = stringResource(
+                                R.string
+                                    .filter_section_type
+                            ),
+                            style = MaterialTheme
+                                .typography
+                                .labelLarge,
+                            color = MaterialTheme
+                                .colorScheme
+                                .primary,
+                            modifier = Modifier.padding(
+                                bottom = 8.dp
+                            ),
                         )
+
                         TileType.entries.forEach { type ->
-                            val labelRes = when (type) {
-                                TileType.BASIC -> R.string.tile_type_basic
-                                TileType.FOLDER -> R.string.tile_type_folder
-                                TileType.CONNECTOR -> R.string.tile_type_connector
-                                TileType.QUICK_FIRE -> R.string.tile_type_quick_fire
-                            }
+                            val labelResource =
+                                when (type) {
+                                    TileType.BASIC -> {
+                                        R.string
+                                            .tile_type_basic
+                                    }
+
+                                    TileType.FOLDER -> {
+                                        R.string
+                                            .tile_type_folder
+                                    }
+
+                                    TileType.CONNECTOR -> {
+                                        R.string
+                                            .tile_type_connector
+                                    }
+
+                                    TileType.QUICK_FIRE -> {
+                                        R.string
+                                            .tile_type_quick_fire
+                                    }
+                                }
+
                             FilterCheckboxRow(
-                                label = stringResource(labelRes),
-                                isChecked = selectedTypes.contains(type)
-                            ) { isChecked ->
-                                selectedTypes =
-                                    if (isChecked) selectedTypes + type else selectedTypes - type
-                            }
+                                label = stringResource(
+                                    labelResource
+                                ),
+                                isChecked =
+                                    type in
+                                            state.selectedTypes,
+                                onCheckedChange = {
+                                        checked ->
+                                    onAction(
+                                        AdminListAction
+                                            .TileTypeFilterChanged(
+                                                tileType =
+                                                    type,
+                                                isSelected =
+                                                    checked,
+                                            )
+                                    )
+                                },
+                            )
                         }
                     }
 
-                    HorizontalDivider(color = MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.5f))
+                    HorizontalDivider(
+                        color = MaterialTheme
+                            .colorScheme
+                            .outlineVariant
+                            .copy(alpha = 0.5f)
+                    )
 
                     Column {
                         Text(
-                            stringResource(R.string.filter_section_usage),
-                            style = MaterialTheme.typography.labelLarge,
-                            color = MaterialTheme.colorScheme.primary,
-                            modifier = Modifier.padding(bottom = 8.dp)
+                            text = stringResource(
+                                R.string
+                                    .filter_section_usage
+                            ),
+                            style = MaterialTheme
+                                .typography
+                                .labelLarge,
+                            color = MaterialTheme
+                                .colorScheme
+                                .primary,
+                            modifier = Modifier.padding(
+                                bottom = 8.dp
+                            ),
                         )
+
                         FilterCheckboxRow(
-                            label = stringResource(R.string.filter_usage_low),
-                            isChecked = selectedUsageFilters.contains(UsageFilter.LOW_USAGE)
-                        ) { isChecked ->
-                            selectedUsageFilters =
-                                if (isChecked) selectedUsageFilters + UsageFilter.LOW_USAGE else selectedUsageFilters - UsageFilter.LOW_USAGE
-                        }
+                            label = stringResource(
+                                R.string.filter_usage_low
+                            ),
+                            isChecked =
+                                UsageFilter.LOW_USAGE in
+                                        state
+                                            .selectedUsageFilters,
+                            onCheckedChange = { checked ->
+                                onAction(
+                                    AdminListAction
+                                        .UsageFilterChanged(
+                                            filter =
+                                                UsageFilter
+                                                    .LOW_USAGE,
+                                            isSelected = checked,
+                                        )
+                                )
+                            },
+                        )
+
                         FilterCheckboxRow(
-                            label = stringResource(R.string.filter_usage_hidden),
-                            isChecked = selectedUsageFilters.contains(UsageFilter.HIDDEN)
-                        ) { isChecked ->
-                            selectedUsageFilters =
-                                if (isChecked) selectedUsageFilters + UsageFilter.HIDDEN else selectedUsageFilters - UsageFilter.HIDDEN
-                        }
+                            label = stringResource(
+                                R.string
+                                    .filter_usage_hidden
+                            ),
+                            isChecked =
+                                UsageFilter.HIDDEN in
+                                        state
+                                            .selectedUsageFilters,
+                            onCheckedChange = { checked ->
+                                onAction(
+                                    AdminListAction
+                                        .UsageFilterChanged(
+                                            filter =
+                                                UsageFilter
+                                                    .HIDDEN,
+                                            isSelected = checked,
+                                        )
+                                )
+                            },
+                        )
                     }
                 }
 
@@ -432,107 +626,168 @@ fun AdminListView(
                     modifier = Modifier
                         .fillMaxWidth()
                         .padding(top = 16.dp),
-                    horizontalArrangement = Arrangement.spacedBy(12.dp)
+                    horizontalArrangement =
+                        Arrangement.spacedBy(12.dp),
                 ) {
                     OutlinedButton(
                         onClick = {
-                            selectedMediaFilters = emptySet()
-                            selectedTypes = emptySet()
-                            selectedUsageFilters = emptySet()
+                            onAction(
+                                AdminListAction.ClearFilters
+                            )
                         },
-                        modifier = Modifier.weight(1f)
+                        modifier = Modifier.weight(1f),
                     ) {
-                        Text(stringResource(R.string.clear_action))
+                        Text(
+                            text = stringResource(
+                                R.string.clear_action
+                            )
+                        )
                     }
+
                     Button(
-                        onClick = { showFilterSheet = false },
-                        modifier = Modifier.weight(1.5f)
+                        onClick = {
+                            onAction(
+                                AdminListAction
+                                    .CloseFilterSheet
+                            )
+                        },
+                        modifier = Modifier.weight(1.5f),
                     ) {
-                        Text(stringResource(R.string.filter_apply))
+                        Text(
+                            text = stringResource(
+                                R.string.filter_apply
+                            )
+                        )
                     }
                 }
             }
         }
     }
 
-    if (quickRecordTile != null) {
-        val tileToUpdate = quickRecordTile!!
+    state.quickRecordTile?.let { tile ->
         AlertDialog(
             onDismissRequest = {
-                if (isRecording) {
-                    scope.launch { audioService.stopRecording() }
-                    isRecording = false
-                }
-                quickRecordTile = null
-                tempAudioPath = null
+                onAction(
+                    AdminListAction
+                        .CancelRecordingClicked
+                )
             },
             title = {
                 Text(
-                    text = "הקלטה מהירה עבור: ${tileToUpdate.definition.label}",
+                    text =
+                        "הקלטה מהירה עבור: ${tile.label}",
                     textAlign = TextAlign.Center,
-                    modifier = Modifier.fillMaxWidth(),
-                    fontWeight = FontWeight.Bold
+                    modifier =
+                        Modifier.fillMaxWidth(),
+                    fontWeight = FontWeight.Bold,
                 )
             },
             text = {
                 Column(
-                    horizontalAlignment = Alignment.CenterHorizontally,
-                    verticalArrangement = Arrangement.spacedBy(16.dp),
-                    modifier = Modifier.fillMaxWidth()
+                    horizontalAlignment =
+                        Alignment.CenterHorizontally,
+                    verticalArrangement =
+                        Arrangement.spacedBy(16.dp),
+                    modifier =
+                        Modifier.fillMaxWidth(),
                 ) {
                     Text(
-                        text = if (isRecording) "מקליט כעת... לחץ לעצירה" else "לחץ על המיקרופון כדי להתחיל להקליט",
-                        style = MaterialTheme.typography.bodyMedium,
-                        textAlign = TextAlign.Center
+                        text =
+                            if (state.isRecording) {
+                                "מקליט כעת... לחץ לעצירה"
+                            } else {
+                                "לחץ על המיקרופון כדי להתחיל להקליט"
+                            },
+                        style =
+                            MaterialTheme.typography.bodyMedium,
+                        textAlign = TextAlign.Center,
                     )
 
                     IconButton(
                         onClick = {
-                            if (!isRecording) {
-                                // 👉 1. Check if we have microphone permission
-                                val hasPermission = ContextCompat.checkSelfPermission(
-                                    context,
-                                    Manifest.permission.RECORD_AUDIO
-                                ) == PackageManager.PERMISSION_GRANTED
-
-                                if (hasPermission) {
-                                    // 👉 2. We have permission, start recording
-                                    val newPath = audioService.startRecording(
-                                        languageCode = languageCode,
-                                        tileId = tileToUpdate.definition.id
-                                    )
-                                    tempAudioPath = newPath
-                                    isRecording = true
-                                } else {
-                                    // 👉 3. No permission yet, ask the user
-                                    recordPermissionLauncher.launch(Manifest.permission.RECORD_AUDIO)
-                                }
+                            if (state.isRecording) {
+                                onAction(
+                                    AdminListAction
+                                        .StopRecordingClicked
+                                )
                             } else {
-                                scope.launch { audioService.stopRecording() }
-                                isRecording = false
+                                onAction(
+                                    AdminListAction
+                                        .QuickRecordClicked(
+                                            tile
+                                        )
+                                )
                             }
                         },
                         modifier = Modifier
                             .size(72.dp)
                             .background(
-                                if (isRecording) MaterialTheme.colorScheme.errorContainer else MaterialTheme.colorScheme.primaryContainer,
-                                CircleShape
-                            )
+                                color =
+                                    if (state.isRecording) {
+                                        MaterialTheme
+                                            .colorScheme
+                                            .errorContainer
+                                    } else {
+                                        MaterialTheme
+                                            .colorScheme
+                                            .primaryContainer
+                                    },
+                                shape = CircleShape,
+                            ),
                     ) {
                         Icon(
-                            imageVector = if (isRecording) Icons.Default.Delete else Icons.Default.Mic,
-                            contentDescription = if (isRecording) "עצור הקלטה" else "התחל להקליט",
-                            tint = if (isRecording) MaterialTheme.colorScheme.error else MaterialTheme.colorScheme.primary,
-                            modifier = Modifier.size(36.dp)
+                            imageVector =
+                                if (state.isRecording) {
+                                    Icons.Default.Delete
+                                } else {
+                                    Icons.Default.Mic
+                                },
+                            contentDescription =
+                                if (state.isRecording) {
+                                    "עצור הקלטה"
+                                } else {
+                                    "התחל להקליט"
+                                },
+                            tint =
+                                if (state.isRecording) {
+                                    MaterialTheme
+                                        .colorScheme
+                                        .error
+                                } else {
+                                    MaterialTheme
+                                        .colorScheme
+                                        .primary
+                                },
+                            modifier =
+                                Modifier.size(36.dp),
                         )
                     }
 
-                    if (tempAudioPath != null && !isRecording) {
+                    if (
+                        state.temporaryAudioPath != null &&
+                        !state.isRecording
+                    ) {
                         Button(
-                            onClick = { viewModel.playPreviewAudio(tileToUpdate.definition.ttsText, tempAudioPath) },
-                            colors = ButtonDefaults.buttonColors(containerColor = MaterialTheme.colorScheme.secondaryContainer)
+                            onClick = {
+                                onAction(
+                                    AdminListAction
+                                        .PreviewRecordingClicked
+                                )
+                            },
+                            colors =
+                                ButtonDefaults.buttonColors(
+                                    containerColor =
+                                        MaterialTheme
+                                            .colorScheme
+                                            .secondaryContainer
+                                ),
                         ) {
-                            Text("השמע בדיקה", color = MaterialTheme.colorScheme.onSecondaryContainer)
+                            Text(
+                                text = "השמע בדיקה",
+                                color = MaterialTheme
+                                    .colorScheme
+                                    .onSecondaryContainer,
+                            )
                         }
                     }
                 }
@@ -540,17 +795,12 @@ fun AdminListView(
             confirmButton = {
                 Button(
                     onClick = {
-                        tempAudioPath?.let { path ->
-                            viewModel.updateTile(
-                                tile = tileToUpdate.toLegacyAACTile().copy(
-                                    audioUri = path
-                                )
-                            )
-                        }
-                        quickRecordTile = null
-                        tempAudioPath = null
+                        onAction(
+                            AdminListAction
+                                .SaveRecordingClicked
+                        )
                     },
-                    enabled = tempAudioPath != null && !isRecording
+                    enabled = state.canSaveRecording,
                 ) {
                     Text("שמור הקלטה")
                 }
@@ -558,17 +808,17 @@ fun AdminListView(
             dismissButton = {
                 TextButton(
                     onClick = {
-                        if (isRecording) {
-                            scope.launch { audioService.stopRecording() }
-                            isRecording = false
-                        }
-                        quickRecordTile = null
-                        tempAudioPath = null
-                    }
+                        onAction(
+                            AdminListAction
+                                .CancelRecordingClicked
+                        )
+                    },
+                    enabled =
+                        !state.isSavingRecording,
                 ) {
                     Text("ביטול")
                 }
-            }
+            },
         )
     }
 }

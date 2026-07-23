@@ -177,41 +177,75 @@ class SettingsRepository(
         }
         .distinctUntilChanged()
 
-    val barTileImageScaleFlow: Flow<Float> = basePreferencesFlow
-        .map { preferences ->
-            preferences[PreferencesKeys.BAR_TILE_IMAGE_SCALE] ?: 1.0f
-        }
-        .distinctUntilChanged()
+    val barTileImageScaleFlow: Flow<Float> =
+        basePreferencesFlow
+            .map { preferences ->
+                preferences[
+                    PreferencesKeys.BAR_TILE_IMAGE_SCALE
+                ] ?: FACTORY_BAR_TILE_IMAGE_SCALE
+            }
+            .distinctUntilChanged()
 
-    val barTileTitleScaleFlow: Flow<Float> = basePreferencesFlow
-        .map { preferences ->
-            preferences[PreferencesKeys.BAR_TILE_TITLE_SCALE] ?: 1.0f
-        }
-        .distinctUntilChanged()
+    val barTileTitleScaleFlow: Flow<Float> =
+        basePreferencesFlow
+            .map { preferences ->
+                preferences[
+                    PreferencesKeys.BAR_TILE_TITLE_SCALE
+                ] ?: FACTORY_BAR_TILE_TITLE_SCALE
+            }
+            .distinctUntilChanged()
 
-    val showBackButtonFlow: Flow<Boolean> = basePreferencesFlow
-        .map { it[PreferencesKeys.SHOW_BACK_BUTTON] ?: true }.distinctUntilChanged()
+    val showBackButtonFlow: Flow<Boolean> =
+        basePreferencesFlow
+            .map { preferences ->
+                preferences[
+                    PreferencesKeys.SHOW_BACK_BUTTON
+                ] ?: FACTORY_SHOW_BACK_BUTTON
+            }
+            .distinctUntilChanged()
 
-    val showBackspaceButtonFlow: Flow<Boolean> = basePreferencesFlow
-        .map { it[PreferencesKeys.SHOW_BACKSPACE_BUTTON] ?: true }.distinctUntilChanged()
+    val showBackspaceButtonFlow: Flow<Boolean> =
+        basePreferencesFlow
+            .map { preferences ->
+                preferences[
+                    PreferencesKeys.SHOW_BACKSPACE_BUTTON
+                ] ?: FACTORY_SHOW_BACKSPACE_BUTTON
+            }
+            .distinctUntilChanged()
 
-    val showSpeakButtonFlow: Flow<Boolean> = basePreferencesFlow
-        .map { it[PreferencesKeys.SHOW_SPEAK_BUTTON] ?: true }.distinctUntilChanged()
+    val showSpeakButtonFlow: Flow<Boolean> =
+        basePreferencesFlow
+            .map { preferences ->
+                preferences[
+                    PreferencesKeys.SHOW_SPEAK_BUTTON
+                ] ?: FACTORY_SHOW_SPEAK_BUTTON
+            }
+            .distinctUntilChanged()
 
-    val homeInActionBarFlow: Flow<Boolean> = basePreferencesFlow
-        .map { it[PreferencesKeys.HOME_IN_ACTION_BAR] ?: false }.distinctUntilChanged()
+    val homeInActionBarFlow: Flow<Boolean> =
+        basePreferencesFlow
+            .map { preferences ->
+                preferences[
+                    PreferencesKeys.HOME_IN_ACTION_BAR
+                ] ?: FACTORY_HOME_IN_ACTION_BAR
+            }
+            .distinctUntilChanged()
 
-    val gridColumnsFlow: Flow<Int> = basePreferencesFlow
-        .map { preferences ->
-            preferences[PreferencesKeys.GRID_COLUMNS] ?: 3
-        }
-        .distinctUntilChanged()
+    val gridColumnsFlow: Flow<Int> =
+        basePreferencesFlow
+            .map { preferences ->
+                preferences[PreferencesKeys.GRID_COLUMNS]
+                    ?: FACTORY_GRID_COLUMNS
+            }
+            .distinctUntilChanged()
 
-    val gridRowsFlow: Flow<Int> = basePreferencesFlow
-        .map { preferences ->
-            preferences[PreferencesKeys.GRID_ROWS] ?: 4
-        }
-        .distinctUntilChanged()
+    val gridRowsFlow: Flow<Int> =
+        basePreferencesFlow
+            .map { preferences ->
+                preferences[PreferencesKeys.GRID_ROWS]
+                    ?: FACTORY_GRID_ROWS
+            }
+            .distinctUntilChanged()
 
     suspend fun updateActiveProfileId(profileId: String) {
         context.dataStore.edit { preferences ->

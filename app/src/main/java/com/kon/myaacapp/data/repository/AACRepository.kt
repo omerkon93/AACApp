@@ -7,11 +7,15 @@ import com.kon.myaacapp.data.local.entity.AACTile
 import com.kon.myaacapp.data.local.entity.ROOT_PARENT_ID
 import com.kon.myaacapp.data.local.entity.TileClickEvent
 import com.kon.myaacapp.data.local.entity.toAACTile
+import com.kon.myaacapp.data.mapper.toDomain
 import com.kon.myaacapp.domain.model.CombinedTile
+import com.kon.myaacapp.domain.model.CreateTileRequest
 import com.kon.myaacapp.domain.model.TileDefinition
 import com.kon.myaacapp.domain.model.TileLayoutState
 import com.kon.myaacapp.domain.model.TileType
+import com.kon.myaacapp.domain.model.TileUsageEvent
 import com.kon.myaacapp.domain.model.UserProfile
+import com.kon.myaacapp.domain.repository.TileRepository
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.ExperimentalCoroutinesApi
 import kotlinx.coroutines.flow.Flow
@@ -22,6 +26,7 @@ import kotlinx.coroutines.flow.combine
 import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.flow.flatMapLatest
 import kotlinx.coroutines.flow.flowOf
+import kotlinx.coroutines.flow.map
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.sync.Mutex
 import kotlinx.coroutines.sync.withLock
@@ -32,8 +37,8 @@ import java.io.File
 class AACRepository(
     private val aacTileDao: AACTileDao,
     private val context: Context,
-    private val profileRepository: ProfileRepository
-) {
+    private val profileRepository: ProfileRepository,
+) : TileRepository {
     private val json = Json {
         ignoreUnknownKeys = true
         prettyPrint = true
@@ -46,13 +51,13 @@ class AACRepository(
     private val _baseDefinitions =
         MutableStateFlow<List<TileDefinition>>(emptyList())
 
-    val baseDefinitions: StateFlow<List<TileDefinition>> =
+    override val baseDefinitions: StateFlow<List<TileDefinition>> =
         _baseDefinitions.asStateFlow()
 
     private val diskMutex = Mutex()
     private val profileMutex = Mutex()
 
-    suspend fun reload() {
+    override suspend fun reload() {
         loadAllDefinitions()
     }
 
@@ -67,7 +72,8 @@ class AACRepository(
         }
     }
 
-    suspend fun loadAllDefinitions() = withContext(Dispatchers.IO) {
+    override suspend fun loadAllDefinitions(): Unit =
+        withContext(Dispatchers.IO) {
         val tilesDir = File(
             context.filesDir,
             "tiles",
@@ -161,10 +167,15 @@ class AACRepository(
                 "Failed to load tile definitions",
                 error,
             )
+
+            Unit
         }
     }
 
-    fun getCombinedTiles(parentId: String?, langCode: String): Flow<List<CombinedTile>> =
+    override fun getCombinedTiles(
+        parentId: String?,
+        langCode: String,
+    ): Flow<List<CombinedTile>> =
         combine(activeProfile, baseDefinitions) { profile, definitions ->
             if (profile == null || definitions.isEmpty()) {
                 return@combine emptyList()
@@ -291,11 +302,19 @@ class AACRepository(
         return true
     }
 
-    suspend fun updateTileIndex(tileId: String, parentId: String?, newIndex: Int) {
+    override suspend fun updateTileIndex(
+        tileId: String,
+        parentId: String?,
+        newIndex: Int,
+    ) {
         updateLayoutState(tileId, parentId) { it.copy(cellIndex = newIndex) }
     }
 
-    suspend fun updateTileVisibility(tileId: String, parentId: String?, isHidden: Boolean) {
+    override suspend fun updateTileVisibility(
+        tileId: String,
+        parentId: String?,
+        isHidden: Boolean,
+    ) {
         updateLayoutState(tileId, parentId) { it.copy(isHidden = isHidden) }
     }
 
@@ -323,7 +342,12 @@ class AACRepository(
         }
     }
 
-    suspend fun attachTileToCategory(tileId: String, parentId: String?, langCode: String, cellIndex: Int? = null) {
+    override suspend fun attachTileToCategory(
+        tileId: String,
+        parentId: String?,
+        langCode: String,
+        cellIndex: Int?,
+    ) {
         val currentProfile = activeProfile.value ?: return
         val def = baseDefinitions.value.find { it.id == tileId && it.languageCode == langCode } ?: return
 
@@ -345,7 +369,11 @@ class AACRepository(
     }
 
     @Suppress("UNUSED_PARAMETER")
-    suspend fun removeTileFromCategory(tileId: String, parentId: String?, langCode: String) {
+    override suspend fun removeTileFromCategory(
+        tileId: String,
+        parentId: String?,
+        langCode: String,
+    ) {
         val currentProfile = activeProfile.value ?: return
         val newLayout = currentProfile.layout.toMutableMap()
         newLayout.remove(getLayoutKey(parentId, tileId))
@@ -373,7 +401,9 @@ class AACRepository(
         profileRepository.updateActiveProfile(currentProfile.copy(layout = newLayout))
     }
 
-    fun getAllDefinitionsAsCombinedTiles(langCode: String): Flow<List<CombinedTile>> =
+    override fun getAllDefinitionsAsCombinedTiles(
+        langCode: String,
+    ): Flow<List<CombinedTile>> =
         combine(activeProfile, baseDefinitions) { profile, definitions ->
             if (definitions.isEmpty()) {
                 return@combine emptyList()
@@ -400,6 +430,51 @@ class AACRepository(
     fun getAllCategories(langCode: String): Flow<List<AACTile>> = aacTileDao.getAllCategories(langCode)
 
     suspend fun getTileById(id: String, langCode: String): AACTile? = aacTileDao.getTileById(id, langCode)
+
+    override suspend fun addTile(
+        request: CreateTileRequest,
+    ) {
+        val nextIndex = request.cellIndex
+            ?: getCombinedTiles(
+                parentId = request.parentId,
+                langCode = request.languageCode,
+            ).first().size
+
+        val tileId = request.id
+            ?.trim()
+            ?.takeIf { it.isNotEmpty() }
+            ?: java.util.UUID.randomUUID().toString()
+
+        val databaseTile = AACTile(
+            id = tileId,
+            label = request.label.trim(),
+            ttsText = request.ttsText.trim(),
+            labelFeminine = request.labelFeminine,
+            ttsTextFeminine = request.ttsTextFeminine,
+            emoji = request.emoji,
+            audioUri = request.audioUri,
+            imageUri = request.imageUri,
+            backgroundColorHex = request.backgroundColorHex,
+            partOfSpeech = request.partOfSpeech,
+            grammaticalGender = request.grammaticalGender,
+            isCategory = request.tileType == TileType.FOLDER,
+            languageCode = request.languageCode,
+            parentId = request.parentId,
+            linkedCategoryId = when (request.tileType) {
+                TileType.FOLDER,
+                TileType.CONNECTOR -> request.linkedCategoryId
+
+                TileType.BASIC,
+                TileType.QUICK_FIRE -> null
+            },
+            cellIndex = nextIndex,
+            isQuickFire =
+                request.tileType == TileType.QUICK_FIRE,
+            isHidden = request.isHidden,
+        )
+
+        insertTile(databaseTile)
+    }
 
     suspend fun insertTile(tile: AACTile) {
         val definition = createDefinitionFromTile(tile)
@@ -488,6 +563,54 @@ class AACRepository(
             } + definition
     }
 
+    override suspend fun updateTile(
+        tile: CombinedTile,
+    ) {
+        val definition = tile.definition
+        val layoutState = tile.layoutState
+
+        val databaseTile = AACTile(
+            id = definition.id,
+            label = definition.label,
+            ttsText = definition.ttsText,
+            labelFeminine = definition.labelFeminine,
+            ttsTextFeminine = definition.ttsTextFeminine,
+            emoji = definition.emoji,
+            audioUri = definition.audioUri,
+            imageUri = definition.imageUri,
+            backgroundColorHex = definition.backgroundColorHex,
+            partOfSpeech = definition.partOfSpeech,
+            grammaticalGender = definition.grammaticalGender,
+            isCategory = definition.resolvedType == TileType.FOLDER,
+            languageCode = definition.languageCode,
+            parentId = layoutState.parentId,
+            linkedCategoryId = layoutState.linkedCategoryId,
+            cellIndex = layoutState.cellIndex,
+            isQuickFire = layoutState.isQuickFire ||
+                    definition.resolvedType == TileType.QUICK_FIRE,
+            isHidden = layoutState.isHidden,
+            clickCount = layoutState.clickCount,
+        )
+
+        updateTile(databaseTile)
+    }
+
+    override suspend fun removeAllAudio() {
+        val tiles = withContext(Dispatchers.IO) {
+            aacTileDao.getAllTilesSync()
+        }
+
+        tiles.forEach { tile ->
+            if (tile.audioUri != null) {
+                updateTile(
+                    tile.copy(
+                        audioUri = null,
+                    )
+                )
+            }
+        }
+    }
+
     suspend fun deleteTile(tile: AACTile) {
         val currentProfile = activeProfile.value ?: return
         val newLayout = currentProfile.layout.toMutableMap()
@@ -522,6 +645,40 @@ class AACRepository(
             }
     }
 
+    override suspend fun deleteTile(
+        tile: CombinedTile,
+    ) {
+        val definition = tile.definition
+        val layoutState = tile.layoutState
+
+        val databaseTile = AACTile(
+            id = definition.id,
+            label = definition.label,
+            ttsText = definition.ttsText,
+            labelFeminine = definition.labelFeminine,
+            ttsTextFeminine = definition.ttsTextFeminine,
+            emoji = definition.emoji,
+            audioUri = definition.audioUri,
+            imageUri = definition.imageUri,
+            backgroundColorHex = definition.backgroundColorHex,
+            partOfSpeech = definition.partOfSpeech,
+            grammaticalGender = definition.grammaticalGender,
+            isCategory =
+                definition.resolvedType == TileType.FOLDER,
+            languageCode = definition.languageCode,
+            parentId = layoutState.parentId,
+            linkedCategoryId = layoutState.linkedCategoryId,
+            cellIndex = layoutState.cellIndex,
+            isQuickFire =
+                layoutState.isQuickFire ||
+                        definition.resolvedType == TileType.QUICK_FIRE,
+            isHidden = layoutState.isHidden,
+            clickCount = layoutState.clickCount,
+        )
+
+        deleteTile(databaseTile)
+    }
+
     private fun createDefinitionFromTile(tile: AACTile): TileDefinition {
         return TileDefinition(
             id = tile.id,
@@ -550,7 +707,7 @@ class AACRepository(
     }
 
     @Suppress("UNUSED_PARAMETER")
-    suspend fun incrementClickCount(
+    override suspend fun incrementClickCount(
         id: String,
         parentId: String?,
         langCode: String,
@@ -576,10 +733,10 @@ class AACRepository(
     }
 
     @OptIn(ExperimentalCoroutinesApi::class)
-    fun getClickEventsBetween(
+    override fun observeUsageEvents(
         startTime: Long,
         endTime: Long,
-    ): Flow<List<TileClickEvent>> {
+    ): Flow<List<TileUsageEvent>> {
         return activeProfile.flatMapLatest { profile ->
             if (profile == null) {
                 flowOf(emptyList())
@@ -588,7 +745,11 @@ class AACRepository(
                     profileId = profile.profileId,
                     startTime = startTime,
                     endTime = endTime,
-                )
+                ).map { events ->
+                    events.map { event ->
+                        event.toDomain()
+                    }
+                }
             }
         }
     }
@@ -631,7 +792,11 @@ class AACRepository(
         return aacTileDao.getAllTilesWithPlacements().map { it.toAACTile() }
     }
 
-    suspend fun swapTilesByIndex(parentId: String?, fromIndex: Int, toIndex: Int) {
+    override suspend fun swapTilesByIndex(
+        parentId: String?,
+        fromIndex: Int,
+        toIndex: Int,
+    ) {
         profileMutex.withLock {
             val currentProfile = activeProfile.value ?: return@withLock
             val newLayout = currentProfile.layout.toMutableMap()

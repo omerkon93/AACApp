@@ -34,18 +34,31 @@ import androidx.compose.ui.unit.LayoutDirection
 import androidx.compose.ui.unit.dp
 import com.kon.myaacapp.AACViewModel
 import com.kon.myaacapp.R
-import com.kon.myaacapp.data.local.entity.AACTile
 import com.kon.myaacapp.domain.model.CombinedTile
 import com.kon.myaacapp.domain.model.TileType
 import com.kon.myaacapp.ui.admin.components.TileActionDialog
 import com.kon.myaacapp.ui.admin.components.TilePickerDialog
 import com.kon.myaacapp.ui.admin.grid.AdminEditableGridScreen
+import com.kon.myaacapp.ui.admin.grid.AdminGridRoute
+import com.kon.myaacapp.ui.admin.grid.AdminGridViewModelFactory
 import com.kon.myaacapp.ui.admin.layout.AdminLayoutSettingsScreen
+import com.kon.myaacapp.ui.admin.layout.LayoutSettingsRoute
+import com.kon.myaacapp.ui.admin.layout.LayoutSettingsViewModelFactory
+import com.kon.myaacapp.ui.admin.list.AdminListRoute
 import com.kon.myaacapp.ui.admin.list.AdminListView
+import com.kon.myaacapp.ui.admin.list.AdminListViewModelFactory
 import com.kon.myaacapp.ui.admin.navigation.AdminBottomNavigation
 import com.kon.myaacapp.ui.admin.statistics.AdminStatisticsScreen
+import com.kon.myaacapp.ui.admin.statistics.AdminStatisticsViewModelFactory
 import com.kon.myaacapp.ui.admin.system.AdminSystemSettings
-import com.kon.myaacapp.ui.editor.TileEditDialog
+import com.kon.myaacapp.ui.editor.TileEditDialogContent
+import com.kon.myaacapp.ui.editor.TileEditorRoute
+import com.kon.myaacapp.ui.editor.TileEditorViewModelFactory
+import com.kon.myaacapp.ui.admin.statistics.AdminStatisticsRoute
+import com.kon.myaacapp.ui.admin.system.SystemSettingsRoute
+import com.kon.myaacapp.ui.admin.system.SystemSettingsViewModelFactory
+
+
 
 enum class AdminTab {
     HOME,
@@ -59,33 +72,39 @@ enum class AdminTab {
 @Composable
 fun AdminDashboardScreen(
     viewModel: AACViewModel,
+    tileEditorViewModelFactory: TileEditorViewModelFactory,
+    adminGridViewModelFactory: AdminGridViewModelFactory,
+    layoutSettingsViewModelFactory: LayoutSettingsViewModelFactory,
+    adminListViewModelFactory: AdminListViewModelFactory,
+    adminStatisticsViewModelFactory: AdminStatisticsViewModelFactory,
+    systemSettingsViewModelFactory: SystemSettingsViewModelFactory,
     onNavigateBack: () -> Unit,
-    onNavigateToProfiles: () -> Unit
+    onNavigateToProfiles: () -> Unit,
 ) {
     var selectedTab by rememberSaveable {
         mutableStateOf(AdminTab.HOME)
     }
 
     /*
-     * Legacy editor/list state.
+     * Tile editor and permanent-delete state.
      *
-     * These remain AACTile until AdminListView and TileEditDialog
-     * are migrated to the new domain models.
+     * Both the grid and list now use the domain CombinedTile model.
+     * A null editingTile means that a new tile is being created.
      */
     var showTileDialog by remember {
         mutableStateOf(false)
     }
 
-    var editingTile by remember {
-        mutableStateOf<AACTile?>(null)
+    var editorSessionKey by rememberSaveable {
+        mutableStateOf(0)
     }
 
-    var editingCombinedTile by remember {
+    var editingTile by remember {
         mutableStateOf<CombinedTile?>(null)
     }
 
     var tileToDelete by remember {
-        mutableStateOf<AACTile?>(null)
+        mutableStateOf<CombinedTile?>(null)
     }
 
     /*
@@ -107,6 +126,14 @@ fun AdminDashboardScreen(
 
     val langCode by viewModel.languageCode.collectAsState()
     val currentParentId by viewModel.currentParentId.collectAsState()
+
+    val allCategories by viewModel.allCategories.collectAsState()
+
+    val gridColumns by viewModel.gridColumns.collectAsState()
+    val gridRows by viewModel.gridRows.collectAsState()
+    val gridTileScale by viewModel.gridTileScale.collectAsState()
+    val gridTileContainerScale by
+    viewModel.gridTileContainerScale.collectAsState()
 
     val layoutDir = if (langCode == "he") {
         LayoutDirection.Rtl
@@ -132,15 +159,18 @@ fun AdminDashboardScreen(
         }
     }
 
-    val onEditTileList: (AACTile?) -> Unit = remember {
+    val onEditTileList: (CombinedTile?) -> Unit = remember {
         { tile ->
             editingTile = tile
-            initialCellIndex = tile?.cellIndex
+            initialCellIndex =
+                tile?.layoutState?.cellIndex
+
+            editorSessionKey += 1
             showTileDialog = true
         }
     }
 
-    val onDeleteTileList: (AACTile) -> Unit = remember {
+    val onDeleteTileList: (CombinedTile) -> Unit = remember {
         { tile ->
             tileToDelete = tile
         }
@@ -184,7 +214,9 @@ fun AdminDashboardScreen(
                                 }
 
                                 AdminTab.STATISTICS -> {
-                                    stringResource(R.string.admin_tab_statistics)
+                                    stringResource(
+                                        R.string.admin_tab_statistics
+                                    )
                                 }
 
                                 AdminTab.SYSTEM -> {
@@ -252,38 +284,92 @@ fun AdminDashboardScreen(
             ) {
                 when (selectedTab) {
                     AdminTab.HOME -> {
-                        AdminEditableGridScreen(
-                            viewModel = viewModel,
+                        AdminGridRoute(
+                            currentParentId = currentParentId,
+                            languageCode = langCode,
+                            gridColumns = gridColumns,
+                            gridRows = gridRows,
+                            gridTileScale = gridTileScale,
+                            gridTileContainerScale =
+                                gridTileContainerScale,
+                            viewModelFactory =
+                                adminGridViewModelFactory,
                             onEditTile = onEditTileGrid,
-                            onCreateTile = onCreateTileGrid
-                        )
+                            onCreateTile = onCreateTileGrid,
+                        ) { state, onAction ->
+                            AdminEditableGridScreen(
+                                state = state,
+                                onAction = onAction,
+                            )
+                        }
                     }
 
                     AdminTab.SETTINGS -> {
-                        AdminListView(
-                            viewModel = viewModel,
-                            onEditTile = onEditTileList,
-                            onDeleteTile = onDeleteTileList
-                        )
+                        AdminListRoute(
+                            languageCode = langCode,
+                            audioService = viewModel.audioService,
+                            viewModelFactory =
+                                adminListViewModelFactory,
+                            onCreateTile = {
+                                onEditTileList(null)
+                            },
+                            onEditTile = { tile ->
+                                onEditTileList(tile)
+                            },
+                            onDeleteTile = { tile ->
+                                onDeleteTileList(tile)
+                            },
+                            onPlayPreview =
+                                viewModel::playPreviewAudio,
+                        ) { state, onAction ->
+                            AdminListView(
+                                state = state,
+                                onAction = onAction,
+                            )
+                        }
                     }
 
                     AdminTab.LAYOUT -> {
-                        AdminLayoutSettingsScreen(
-                            viewModel = viewModel
-                        )
+                        LayoutSettingsRoute(
+                            viewModelFactory =
+                                layoutSettingsViewModelFactory,
+                        ) { state, onAction ->
+                            AdminLayoutSettingsScreen(
+                                state = state,
+                                onAction = onAction,
+                            )
+                        }
                     }
 
                     AdminTab.STATISTICS -> {
-                        AdminStatisticsScreen(
-                            viewModel = viewModel
-                        )
+                        AdminStatisticsRoute(
+                            languageCode = langCode,
+                            viewModelFactory =
+                                adminStatisticsViewModelFactory,
+                        ) { state, onAction ->
+                            AdminStatisticsScreen(
+                                state = state,
+                                onAction = onAction,
+                            )
+                        }
                     }
 
                     AdminTab.SYSTEM -> {
-                        AdminSystemSettings(
-                            viewModel = viewModel,
-                            onNavigateToProfiles = onNavigateToProfiles
-                        )
+                        SystemSettingsRoute(
+                            viewModelFactory =
+                                systemSettingsViewModelFactory,
+                            onNavigateToProfiles =
+                                onNavigateToProfiles,
+                            onSystemDataChanged = {
+                                viewModel.clearSentence()
+                                viewModel.resetToHome()
+                            },
+                        ) { state, onAction ->
+                            AdminSystemSettings(
+                                state = state,
+                                onAction = onAction,
+                            )
+                        }
                     }
                 }
             }
@@ -302,6 +388,7 @@ fun AdminDashboardScreen(
 
                 if (tile == null) {
                     editingTile = null
+                    editorSessionKey += 1
                     showTileDialog = true
                 } else {
                     viewModel.attachTileToCategory(
@@ -366,17 +453,29 @@ fun AdminDashboardScreen(
     }
 
     if (showTileDialog) {
-        TileEditDialog(
-            viewModel = viewModel,
-            existingTile = editingCombinedTile,
+        TileEditorRoute(
+            editorSessionKey = editorSessionKey,
+            existingTile = editingTile,
             initialCellIndex = initialCellIndex,
+            currentParentId = currentParentId,
+            languageCode = langCode,
+            categories = allCategories,
+            viewModelFactory =
+                tileEditorViewModelFactory,
             onDismiss = {
                 showTileDialog = false
                 editingTile = null
-                editingCombinedTile = null
                 initialCellIndex = null
-            }
-        )
+            },
+        ) { state, onAction ->
+            TileEditDialogContent(
+                state = state,
+                audioService = viewModel.audioService,
+                onPlayPreview =
+                    viewModel::playPreviewAudio,
+                onAction = onAction,
+            )
+        }
     }
 
     tileForAction?.let { actionTile ->
@@ -399,9 +498,12 @@ fun AdminDashboardScreen(
                 tileForAction = null
             },
             onEdit = {
-                editingCombinedTile = actionTile
-                initialCellIndex = actionTile.layoutState.cellIndex
+                editingTile = actionTile
+                initialCellIndex =
+                    actionTile.layoutState.cellIndex
+
                 tileForAction = null
+                editorSessionKey += 1
                 showTileDialog = true
             },
             onRemove = {

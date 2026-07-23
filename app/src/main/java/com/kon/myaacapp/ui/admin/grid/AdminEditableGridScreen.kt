@@ -33,11 +33,8 @@ import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
-import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
-import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
-import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
@@ -55,7 +52,6 @@ import androidx.compose.ui.unit.sp
 import androidx.compose.ui.zIndex
 import androidx.core.graphics.toColorInt
 import coil.compose.rememberAsyncImagePainter
-import com.kon.myaacapp.AACViewModel
 import com.kon.myaacapp.domain.model.CombinedTile
 import com.kon.myaacapp.domain.model.TileType
 import com.kon.myaacapp.ui.theme.FitzgeraldTileContent
@@ -64,59 +60,29 @@ import java.io.File
 
 @Composable
 fun AdminEditableGridScreen(
-    viewModel: AACViewModel,
-    onEditTile: (CombinedTile) -> Unit,
-    onCreateTile: (Int) -> Unit
+    state: AdminGridState,
+    onAction: (AdminGridAction) -> Unit,
 ) {
-    val tiles by viewModel.currentTiles.collectAsState()
-
-    val gridColumns by viewModel.gridColumns.collectAsState()
-    val gridRows by viewModel.gridRows.collectAsState()
-    val gridTileScale by viewModel.gridTileScale.collectAsState()
-    val gridTileContainerScale by
-    viewModel.gridTileContainerScale.collectAsState()
-
-    val orientation = LocalConfiguration.current.orientation
+    val orientation =
+        LocalConfiguration.current.orientation
 
     val columns = if (
-        orientation == Configuration.ORIENTATION_LANDSCAPE
+        orientation ==
+        Configuration.ORIENTATION_LANDSCAPE
     ) {
-        gridColumns * 2
+        state.safeGridColumns * 2
     } else {
-        gridColumns
-    }.coerceAtLeast(1)
-
-    val maxIndex = tiles.maxOfOrNull { tile ->
-        tile.layoutState.cellIndex
-    } ?: -1
-
-    val requiredRows = if (maxIndex >= 0) {
-        (maxIndex / columns) + 1
-    } else {
-        1
+        state.safeGridColumns
     }
 
-    val rows = maxOf(
-        gridRows,
-        requiredRows
-    )
+    val maxCells =
+        state.maximumCells(columns)
 
-    val maxCells = columns * rows
+    val gridState =
+        rememberLazyGridState()
 
-    var draggedIndex by remember {
-        mutableStateOf<Int?>(null)
-    }
-
-    var hoveredIndex by remember {
-        mutableStateOf<Int?>(null)
-    }
-
-    val gridState = rememberLazyGridState()
-
-    val tileMap: Map<Int, CombinedTile> = remember(tiles) {
-        tiles.associateBy { tile ->
-            tile.layoutState.cellIndex
-        }
+    val tileMap = remember(state.tiles) {
+        state.tileMap
     }
 
     BoxWithConstraints(
@@ -124,7 +90,7 @@ fun AdminEditableGridScreen(
     ) {
         val spacing = 8.dp
 
-        val visibleRows = gridRows.coerceAtLeast(1)
+        val visibleRows = state.safeGridRows
 
         val totalVerticalSpacing =
             spacing * (visibleRows - 1)
@@ -143,73 +109,76 @@ fun AdminEditableGridScreen(
             columns = GridCells.Fixed(columns),
             modifier = Modifier
                 .fillMaxSize()
-                .pointerInput(gridState) {
+                .pointerInput(
+                    gridState,
+                    onAction,
+                ) {
                     fun getIndexFromTouch(
                         touchX: Float,
-                        touchY: Float
+                        touchY: Float,
                     ): Int? {
                         val matchedItem =
-                            gridState.layoutInfo.visibleItemsInfo.find {
-                                    itemInfo ->
+                            gridState.layoutInfo
+                                .visibleItemsInfo
+                                .find { itemInfo ->
+                                    val left =
+                                        itemInfo.offset.x.toFloat()
 
-                                val left =
-                                    itemInfo.offset.x.toFloat()
+                                    val right =
+                                        left + itemInfo.size.width
 
-                                val right =
-                                    left + itemInfo.size.width
+                                    val top =
+                                        itemInfo.offset.y.toFloat()
 
-                                val top =
-                                    itemInfo.offset.y.toFloat()
+                                    val bottom =
+                                        top + itemInfo.size.height
 
-                                val bottom =
-                                    top + itemInfo.size.height
-
-                                touchX in left..right &&
-                                        touchY in top..bottom
-                            }
+                                    touchX in left..right &&
+                                            touchY in top..bottom
+                                }
 
                         return matchedItem?.index
                     }
 
                     detectDragGesturesAfterLongPress(
                         onDragStart = { offset ->
-                            draggedIndex = getIndexFromTouch(
-                                touchX = offset.x,
-                                touchY = offset.y
-                            )
+                            val draggedCellIndex =
+                                getIndexFromTouch(
+                                    touchX = offset.x,
+                                    touchY = offset.y,
+                                )
 
-                            hoveredIndex = draggedIndex
+                            onAction(
+                                AdminGridAction.DragStarted(
+                                    cellIndex = draggedCellIndex,
+                                )
+                            )
                         },
                         onDrag = { change, _ ->
                             change.consume()
 
-                            hoveredIndex = getIndexFromTouch(
-                                touchX = change.position.x,
-                                touchY = change.position.y
+                            val hoveredCellIndex =
+                                getIndexFromTouch(
+                                    touchX = change.position.x,
+                                    touchY = change.position.y,
+                                )
+
+                            onAction(
+                                AdminGridAction.DragHovered(
+                                    cellIndex = hoveredCellIndex,
+                                )
                             )
                         },
                         onDragEnd = {
-                            val fromIndex = draggedIndex
-                            val toIndex = hoveredIndex
-
-                            if (
-                                fromIndex != null &&
-                                toIndex != null &&
-                                fromIndex != toIndex
-                            ) {
-                                viewModel.swapTilePositions(
-                                    fromIndex = fromIndex,
-                                    toIndex = toIndex
-                                )
-                            }
-
-                            draggedIndex = null
-                            hoveredIndex = null
+                            onAction(
+                                AdminGridAction.DragEnded
+                            )
                         },
                         onDragCancel = {
-                            draggedIndex = null
-                            hoveredIndex = null
-                        }
+                            onAction(
+                                AdminGridAction.DragCancelled
+                            )
+                        },
                     )
                 },
             contentPadding = PaddingValues(8.dp),
@@ -226,8 +195,11 @@ fun AdminEditableGridScreen(
             ) { index ->
                 val tile = tileMap[index]
 
-                val isDragged = index == draggedIndex
-                val isHovered = index == hoveredIndex
+                val isDragged =
+                    index == state.draggedIndex
+
+                val isHovered =
+                    index == state.hoveredIndex
 
                 val dragScale by animateFloatAsState(
                     targetValue = if (isDragged) {
@@ -275,27 +247,35 @@ fun AdminEditableGridScreen(
                         Box(
                             modifier = Modifier.fillMaxSize(
                                 fraction =
-                                    gridTileContainerScale.coerceIn(
+                                    state.gridTileContainerScale.coerceIn(
                                         minimumValue = 0.1f,
-                                        maximumValue = 1f
+                                        maximumValue = 1f,
                                     )
                             )
                         ) {
                             AdminTileItem(
                                 tile = tile,
-                                scale = gridTileScale,
+                                scale = state.gridTileScale,
                                 onEdit = {
-                                    onEditTile(tile)
+                                    onAction(
+                                        AdminGridAction.TileEditClicked(
+                                            tile = tile,
+                                        )
+                                    )
                                 },
-                                modifier = Modifier.fillMaxSize()
+                                modifier = Modifier.fillMaxSize(),
                             )
                         }
                     } else {
                         EmptySlot(
                             onClick = {
-                                onCreateTile(index)
+                                onAction(
+                                    AdminGridAction.EmptyCellClicked(
+                                        cellIndex = index,
+                                    )
+                                )
                             },
-                            modifier = Modifier.fillMaxSize()
+                            modifier = Modifier.fillMaxSize(),
                         )
                     }
                 }

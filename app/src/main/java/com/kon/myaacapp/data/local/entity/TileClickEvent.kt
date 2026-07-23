@@ -14,7 +14,6 @@ import androidx.room.PrimaryKey
     ]
 )
 data class TileClickEvent(
-    // FIX: Restored autoGenerate = true so Room correctly increments the ID.
     @PrimaryKey(autoGenerate = true)
     val id: Long = 0,
 

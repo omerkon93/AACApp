@@ -32,6 +32,7 @@ import com.kon.myaacapp.ui.theme.MyAACAppTheme
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.runBlocking
+import com.kon.myaacapp.ui.profile.ProfileManagerRoute
 
 class MainActivity : ComponentActivity() {
 
@@ -51,15 +52,28 @@ class MainActivity : ComponentActivity() {
 
         enableEdgeToEdge()
         setContent {
-            val viewModel: AACViewModel = viewModel()
-            val langCode by viewModel.languageCode.collectAsState()
+            val application =
+                applicationContext as MyApplication
+
+            val viewModelFactory = remember(application) {
+                AACViewModelFactory(
+                    application = application,
+                    appContainer = application.appContainer,
+                )
+            }
+
+            val viewModel: AACViewModel = viewModel(
+                factory = viewModelFactory,
+            )
+
+            val langCode by
+            viewModel.languageCode.collectAsState()
 
             val layoutDir = remember(langCode) {
                 if (langCode == "he") LayoutDirection.Rtl else LayoutDirection.Ltr
             }
 
             MyAACAppTheme {
-                // 👉 ADD THIS SURFACE WRAPPER
                 Surface(
                     modifier = Modifier.fillMaxSize(),
                     color = MaterialTheme.colorScheme.background
@@ -86,7 +100,6 @@ class MainActivity : ComponentActivity() {
                                         { navController.navigate("admin") }
                                     }
 
-                                    // 👉 1. Use resetToHome() which already exists in your ViewModel!
                                     val onHomeClick: () -> Unit = remember(viewModel) {
                                         { viewModel.resetToHome() }
                                     }
@@ -96,7 +109,7 @@ class MainActivity : ComponentActivity() {
                                         onNavigateToCategory = onNavigateToCategory,
                                         onBackClick = onBackClick,
                                         onNavigateToAdmin = onNavigateToAdmin,
-                                        onHomeClick = onHomeClick // 👉 2. Pass it exactly like this
+                                        onHomeClick = onHomeClick
                                     )
                                 }
 
@@ -108,19 +121,65 @@ class MainActivity : ComponentActivity() {
 
                                     AdminDashboardScreen(
                                         viewModel = viewModel,
+                                        tileEditorViewModelFactory =
+                                            application
+                                                .appContainer
+                                                .tileEditorViewModelFactory,
+                                        adminGridViewModelFactory =
+                                            application
+                                                .appContainer
+                                                .adminGridViewModelFactory,
+                                        layoutSettingsViewModelFactory =
+                                            application
+                                                .appContainer
+                                                .layoutSettingsViewModelFactory,
+                                        adminListViewModelFactory =
+                                            application
+                                                .appContainer
+                                                .adminListViewModelFactory,
+                                        adminStatisticsViewModelFactory =
+                                            application
+                                                .appContainer
+                                                .adminStatisticsViewModelFactory,
+                                        systemSettingsViewModelFactory =
+                                            application
+                                                .appContainer
+                                                .systemSettingsViewModelFactory,
                                         onNavigateBack = onNavigateBack,
-                                        onNavigateToProfiles = onNavigateToProfiles
+                                        onNavigateToProfiles = onNavigateToProfiles,
                                     )
                                 }
 
                                 composable("profiles") {
                                     val onNavigateBack =
-                                        remember(navController) { { navController.popBackStack(); Unit } }
+                                        remember(navController) {
+                                            {
+                                                navController.popBackStack()
+                                                Unit
+                                            }
+                                        }
 
-                                    ProfileManagerScreen(
-                                        viewModel = viewModel,
-                                        onNavigateBack = onNavigateBack
-                                    )
+                                    val onProfileChanged =
+                                        remember(viewModel) {
+                                            {
+                                                viewModel.clearSentence()
+                                                viewModel.resetToHome()
+                                            }
+                                        }
+
+                                    ProfileManagerRoute(
+                                        viewModelFactory =
+                                            application
+                                                .appContainer
+                                                .profileManagerViewModelFactory,
+                                        onProfileChanged = onProfileChanged,
+                                    ) { state, onAction ->
+                                        ProfileManagerScreen(
+                                            state = state,
+                                            onAction = onAction,
+                                            onNavigateBack = onNavigateBack,
+                                        )
+                                    }
                                 }
                             }
                         }

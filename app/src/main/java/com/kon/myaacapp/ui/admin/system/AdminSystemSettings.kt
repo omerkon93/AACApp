@@ -1,15 +1,5 @@
 package com.kon.myaacapp.ui.admin.system
 
-import android.app.Activity
-import android.content.Intent
-import java.text.SimpleDateFormat
-import java.util.Date
-import java.util.Locale
-import android.widget.Toast
-import androidx.compose.material.icons.filled.Save
-
-import androidx.activity.compose.rememberLauncherForActivityResult
-import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
@@ -27,6 +17,7 @@ import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Download
 import androidx.compose.material.icons.filled.Person
 import androidx.compose.material.icons.filled.Refresh
+import androidx.compose.material.icons.filled.Save
 import androidx.compose.material.icons.filled.Share
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Button
@@ -42,175 +33,119 @@ import androidx.compose.material3.Switch
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
-import androidx.compose.runtime.LaunchedEffect
-import androidx.compose.runtime.collectAsState
-import androidx.compose.runtime.getValue
-import androidx.compose.runtime.mutableStateOf
-import androidx.compose.runtime.remember
-import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
-import com.kon.myaacapp.AACViewModel
 import com.kon.myaacapp.R
 import com.kon.myaacapp.core.locale.DownloadStatus
 import com.kon.myaacapp.domain.service.Gender
 
 @Composable
 fun AdminSystemSettings(
-    viewModel: AACViewModel,
-    onNavigateToProfiles: () -> Unit
+    state: SystemSettingsState,
+    onAction: (SystemSettingsAction) -> Unit,
 ) {
-    val speakOnTilePress by viewModel.speakOnTilePress.collectAsState()
-    val langCode by viewModel.languageCode.collectAsState()
-    val importExportStatus by viewModel.importExportStatus.collectAsState()
-    val context = LocalContext.current
-    var showResetConfirm by remember { mutableStateOf(false) }
+    val speakOnTilePress =
+        state.speakOnTilePress
 
-    val backupShareTitle = stringResource(R.string.share_backup)
-    val backupFailedMsg = stringResource(R.string.backup_failed)
+    val langCode =
+        state.languageCode
 
-    val backupFileName = remember {
-        val timestamp = SimpleDateFormat(
-            "yyyy-MM-dd_HH-mm",
-            Locale.US,
-        ).format(Date())
+    val userGender =
+        state.userGender
 
-        "MyAACApp_Backup_$timestamp.zip"
-    }
+    val downloadStatus =
+        state.languageDownloadStatus
 
-    val importLauncher = rememberLauncherForActivityResult(
-        contract = ActivityResultContracts.OpenDocument(),
-    ) { uri ->
-        uri?.let { selectedUri ->
-            viewModel.importDatabase(
-                uri = selectedUri,
-                contentResolver = context.contentResolver,
-            )
-        }
-    }
-
-    val saveBackupLauncher = rememberLauncherForActivityResult(
-        contract = ActivityResultContracts.CreateDocument(
-            "application/zip"
-        ),
-    ) { uri ->
-        uri?.let { selectedUri ->
-            viewModel.exportDatabase(
-                uri = selectedUri,
-                contentResolver = context.contentResolver,
-            )
-        }
-    }
-
-    val onSaveBackupClick = remember(
-        saveBackupLauncher,
-        backupFileName,
-    ) {
-        {
-            saveBackupLauncher.launch(backupFileName)
-        }
-    }
-
-    // OPTIMIZATION: Cache the MIME types array to prevent JVM reallocation on every tap/recomposition.
-    val backupMimeTypes = remember {
-        arrayOf(
-            "application/zip",
-            "application/x-zip-compressed",
-            "application/octet-stream",
+    val onProfilesClick: () -> Unit = {
+        onAction(
+            SystemSettingsAction.OpenProfilesClicked
         )
     }
 
-    LaunchedEffect(importExportStatus) {
-        importExportStatus?.let {
-            Toast.makeText(context, it, Toast.LENGTH_LONG).show()
-            viewModel.clearImportExportStatus()
-        }
+    val onToggleSpeak: (Boolean) -> Unit = { value ->
+        onAction(
+            SystemSettingsAction
+                .SpeakOnTilePressChanged(
+                    value = value,
+                )
+        )
     }
 
-    // OPTIMIZATION: Memoize all click actions. This allows To Compose's "Strong Skipping Mode"
-    // to bypass recomposing buttons and chips when unrelated state changes occur.
-    val onProfilesClick = remember(onNavigateToProfiles) { { onNavigateToProfiles() } }
-    val onToggleSpeak =
-        remember(viewModel) { { it: Boolean -> viewModel.updateSpeakOnTilePress(it) } }
-
-    val onMaleClick = remember(viewModel) { { viewModel.updateUserGender(Gender.MALE) } }
-    val onFemaleClick = remember(viewModel) { { viewModel.updateUserGender(Gender.FEMALE) } }
-
-    val switchLanguage: (String) -> Unit = remember(
-        viewModel,
-        context,
-        langCode,
-    ) {
-        { requestedLanguage ->
-            if (requestedLanguage != langCode) {
-                viewModel.downloadAndSetLanguage(
-                    requestedLanguage
-                ) { success ->
-                    if (success) {
-                        (context as? Activity)?.recreate()
-                    }
-                }
-            }
-        }
+    val onMaleClick: () -> Unit = {
+        onAction(
+            SystemSettingsAction.GenderChanged(
+                value = Gender.MALE,
+            )
+        )
     }
 
-    val onHebrewClick: () -> Unit = remember(
-        switchLanguage
-    ) {
-        {
-            switchLanguage("he")
-        }
+    val onFemaleClick: () -> Unit = {
+        onAction(
+            SystemSettingsAction.GenderChanged(
+                value = Gender.FEMALE,
+            )
+        )
     }
 
-    val onEnglishClick: () -> Unit = remember(
-        switchLanguage
-    ) {
-        {
-            switchLanguage("en")
-        }
+    val onHebrewClick: () -> Unit = {
+        onAction(
+            SystemSettingsAction.LanguageChanged(
+                languageCode = "he",
+            )
+        )
     }
 
-    val onExportClick = remember(viewModel, context, backupShareTitle, backupFailedMsg) {
-        {
-            viewModel.exportAndShareDatabase(context) { uri ->
-                if (uri != null) {
-                    val shareIntent = Intent(Intent.ACTION_SEND).apply {
-                        type = "application/zip"
-                        putExtra(Intent.EXTRA_STREAM, uri)
-                        addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION)
-                    }
-                    context.startActivity(Intent.createChooser(shareIntent, backupShareTitle))
-                } else {
-                    Toast.makeText(context, backupFailedMsg, Toast.LENGTH_SHORT).show()
-                }
-            }
-        }
+    val onEnglishClick: () -> Unit = {
+        onAction(
+            SystemSettingsAction.LanguageChanged(
+                languageCode = "en",
+            )
+        )
     }
 
-    val onImportClick = remember(
-        importLauncher,
-        backupMimeTypes,
-    ) {
-        {
-            importLauncher.launch(backupMimeTypes)
-        }
+    val onSaveBackupClick: () -> Unit = {
+        onAction(
+            SystemSettingsAction.SaveBackupClicked
+        )
     }
 
-    val onShowReset = remember { { showResetConfirm = true } }
-    val onDismissReset = remember { { showResetConfirm = false } }
-    val onConfirmReset = remember(viewModel, context) {
-        {
-            showResetConfirm = false
-            viewModel.resetToDefault(context)
-        }
+    val onExportClick: () -> Unit = {
+        onAction(
+            SystemSettingsAction.ShareBackupClicked
+        )
     }
 
-    if (showResetConfirm) {
+    val onImportClick: () -> Unit = {
+        onAction(
+            SystemSettingsAction.ImportBackupClicked
+        )
+    }
+
+    val onShowReset: () -> Unit = {
+        onAction(
+            SystemSettingsAction
+                .ShowResetConfirmation
+        )
+    }
+
+    val onDismissReset: () -> Unit = {
+        onAction(
+            SystemSettingsAction
+                .HideResetConfirmation
+        )
+    }
+
+    val onConfirmReset: () -> Unit = {
+        onAction(
+            SystemSettingsAction.ConfirmReset
+        )
+    }
+
+    if (state.showResetConfirmation) {
         AlertDialog(
             onDismissRequest = onDismissReset,
             title = { Text(stringResource(R.string.reset_confirm_title)) },
@@ -218,16 +153,22 @@ fun AdminSystemSettings(
             confirmButton = {
                 Button(
                     onClick = onConfirmReset,
+                    enabled = !state.isResetting,
                     colors = ButtonDefaults.buttonColors(containerColor = MaterialTheme.colorScheme.error)
                 ) {
                     Text(stringResource(R.string.ok))
                 }
             },
             dismissButton = {
-                TextButton(onClick = onDismissReset) {
-                    Text(stringResource(R.string.cancel))
+                TextButton(
+                    onClick = onDismissReset,
+                    enabled = !state.isResetting,
+                ) {
+                    Text(
+                        text = stringResource(R.string.cancel)
+                    )
                 }
-            }
+            },
         )
     }
 
@@ -276,13 +217,13 @@ fun AdminSystemSettings(
                     Text(stringResource(R.string.speak_on_press))
                     Switch(
                         checked = speakOnTilePress,
-                        onCheckedChange = onToggleSpeak
+                        onCheckedChange = onToggleSpeak,
+                        enabled = !state.isBusy,
                     )
                 }
 
                 Spacer(modifier = Modifier.height(12.dp))
 
-                val userGender by viewModel.userGender.collectAsState()
                 Text(
                     stringResource(R.string.grammatical_gender),
                     style = MaterialTheme.typography.bodyMedium
@@ -295,18 +236,18 @@ fun AdminSystemSettings(
                     FilterChip(
                         selected = userGender == Gender.MALE,
                         onClick = onMaleClick,
-                        label = { Text(stringResource(R.string.male)) }
+                        label = { Text(stringResource(R.string.male)) },
+                        enabled = !state.isBusy,
                     )
                     FilterChip(
                         selected = userGender == Gender.FEMALE,
                         onClick = onFemaleClick,
-                        label = { Text(stringResource(R.string.female)) }
+                        label = { Text(stringResource(R.string.female)) },
+                        enabled = !state.isBusy,
                     )
                 }
 
                 Spacer(modifier = Modifier.height(12.dp))
-
-                val downloadStatus by viewModel.languageDownloadStatus.collectAsState()
                 Text(stringResource(R.string.language), style = MaterialTheme.typography.bodyMedium)
                 Spacer(modifier = Modifier.height(4.dp))
                 Row(
@@ -318,13 +259,13 @@ fun AdminSystemSettings(
                         selected = langCode == "he",
                         onClick = onHebrewClick,
                         label = { Text(stringResource(R.string.hebrew)) },
-                        enabled = downloadStatus is DownloadStatus.Idle || downloadStatus is DownloadStatus.Success || downloadStatus is DownloadStatus.Error
+                        enabled = state.canChangeLanguage
                     )
                     FilterChip(
                         selected = langCode == "en",
                         onClick = onEnglishClick,
                         label = { Text(stringResource(R.string.english)) },
-                        enabled = downloadStatus is DownloadStatus.Idle || downloadStatus is DownloadStatus.Success || downloadStatus is DownloadStatus.Error
+                        enabled = state.canChangeLanguage
                     )
 
                     if (
@@ -339,11 +280,11 @@ fun AdminSystemSettings(
                     }
                 }
 
-                when (val status = downloadStatus) {
+                when (downloadStatus) {
                     is DownloadStatus.Downloading -> Text(
                         stringResource(
                             R.string.downloading_lang,
-                            status.progress
+                            downloadStatus.progress
                         ),
                         style = MaterialTheme.typography.labelSmall,
                         color = MaterialTheme.colorScheme.primary
@@ -358,7 +299,7 @@ fun AdminSystemSettings(
                     is DownloadStatus.Error -> Text(
                         stringResource(
                             R.string.lang_download_failed,
-                            status.message
+                            downloadStatus.message
                         ),
                         style = MaterialTheme.typography.labelSmall,
                         color = MaterialTheme.colorScheme.error
@@ -383,6 +324,7 @@ fun AdminSystemSettings(
 
                 Button(
                     onClick = onSaveBackupClick,
+                    enabled = state.canRunBackupOperation,
                     modifier = Modifier.fillMaxWidth(),
                     shape = RoundedCornerShape(12.dp),
                 ) {
@@ -408,6 +350,7 @@ fun AdminSystemSettings(
 
                 OutlinedButton(
                     onClick = onExportClick,
+                    enabled = state.canRunBackupOperation,
                     modifier = Modifier.fillMaxWidth(),
                     shape = RoundedCornerShape(12.dp),
                 ) {
@@ -431,6 +374,7 @@ fun AdminSystemSettings(
 
                 OutlinedButton(
                     onClick = onImportClick,
+                    enabled = state.canRunBackupOperation,
                     modifier = Modifier.fillMaxWidth(),
                     shape = RoundedCornerShape(12.dp),
                 ) {
@@ -476,6 +420,7 @@ fun AdminSystemSettings(
 
                 TextButton(
                     onClick = onShowReset,
+                    enabled = !state.isBusy,
                     modifier = Modifier.fillMaxWidth(),
                     colors = ButtonDefaults.textButtonColors(contentColor = MaterialTheme.colorScheme.error)
                 ) {
