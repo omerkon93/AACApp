@@ -16,8 +16,8 @@ data class CommunicationState(
     val gridColumns: Int = 3,
     val gridRows: Int = 5,
 
-    val gridTileScale: Float = 1.35f,
-    val gridTileContainerScale: Float = 0.95f,
+    val gridTileScale: Float = 1.0f,
+    val gridTileContainerScale: Float = 1.0f,
 
     val barTileImageScale: Float = 1.0f,
     val barTileTitleScale: Float = 1.0f,
