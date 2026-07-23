@@ -595,22 +595,6 @@ class AACRepository(
         updateTile(databaseTile)
     }
 
-    override suspend fun removeAllAudio() {
-        val tiles = withContext(Dispatchers.IO) {
-            aacTileDao.getAllTilesSync()
-        }
-
-        tiles.forEach { tile ->
-            if (tile.audioUri != null) {
-                updateTile(
-                    tile.copy(
-                        audioUri = null,
-                    )
-                )
-            }
-        }
-    }
-
     suspend fun deleteTile(tile: AACTile) {
         val currentProfile = activeProfile.value ?: return
         val newLayout = currentProfile.layout.toMutableMap()

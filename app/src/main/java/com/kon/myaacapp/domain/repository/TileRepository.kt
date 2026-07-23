@@ -32,8 +32,6 @@ interface TileRepository {
         tile: CombinedTile,
     )
 
-    suspend fun removeAllAudio()
-
     suspend fun deleteTile(
         tile: CombinedTile,
     )
