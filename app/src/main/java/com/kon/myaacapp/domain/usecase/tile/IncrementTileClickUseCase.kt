@@ -8,7 +8,6 @@ class IncrementTileClickUseCase(
     suspend operator fun invoke(
         tileId: String,
         parentId: String?,
-        languageCode: String,
     ) {
         if (tileId.isBlank()) {
             return
@@ -17,7 +16,6 @@ class IncrementTileClickUseCase(
         tileRepository.incrementClickCount(
             id = tileId,
             parentId = parentId,
-            langCode = languageCode,
         )
     }
 }

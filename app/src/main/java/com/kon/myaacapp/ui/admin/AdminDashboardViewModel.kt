@@ -307,8 +307,6 @@ class AdminDashboardViewModel(
                     tileId = tileId,
                     parentId =
                         currentParentId.value,
-                    languageCode =
-                        languageCode.value,
                 )
             }.onFailure { error ->
                 showError(

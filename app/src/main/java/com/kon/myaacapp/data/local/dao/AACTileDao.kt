@@ -15,7 +15,6 @@ import kotlinx.coroutines.flow.Flow
 
 // OPTIMIZATION: Applied at the interface level to silence all unused warnings
 // for existing and future helper queries, keeping the API contract intact.
-@Suppress("unused")
 @Dao
 interface AACTileDao {
 

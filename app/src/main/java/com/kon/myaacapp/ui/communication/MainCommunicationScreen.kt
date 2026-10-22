@@ -104,7 +104,6 @@ fun MainCommunicationScreen(
         currentParentId =
             state.currentParentId,
         userGender = state.userGender,
-        langCode = state.languageCode,
 
         onSpeak = {
             onAction(
@@ -195,7 +194,6 @@ fun MainCommunicationScreenContent(
     sentence: List<CombinedTile>,
     currentParentId: String?,
     userGender: Gender,
-    langCode: String,
     onSpeak: () -> Unit,
     onClear: () -> Unit,
     onBackspace: () -> Unit,
@@ -742,11 +740,11 @@ fun TileUI(
     emoji: String?,
     backgroundColor: Color,
     tileType: TileType,
+    modifier: Modifier = Modifier,
     isHidden: Boolean = false,
     scale: Float = 1.0f,
-    modifier: Modifier = Modifier,
+    labelFontSize: TextUnit = 14.sp,
     onClick: () -> Unit,
-    labelFontSize: TextUnit = 14.sp
 ) {
     if (isHidden) return
 

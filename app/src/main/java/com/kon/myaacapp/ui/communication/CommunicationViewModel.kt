@@ -371,8 +371,6 @@ class CommunicationViewModel(
                 incrementTileClickUseCase(
                     tileId = tile.id,
                     parentId = tile.parentId,
-                    languageCode =
-                        languageCode.value,
                 )
             }.onFailure { error ->
                 _effects.emit(

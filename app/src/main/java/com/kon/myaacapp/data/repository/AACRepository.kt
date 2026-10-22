@@ -385,11 +385,9 @@ class AACRepository(
         profileRepository.updateActiveProfile(currentProfile.copy(layout = newLayout))
     }
 
-    @Suppress("UNUSED_PARAMETER")
     override suspend fun removeTileFromCategory(
         tileId: String,
         parentId: String?,
-        langCode: String,
     ) {
         val currentProfile = activeProfile.value ?: return
         val newLayout = currentProfile.layout.toMutableMap()
@@ -707,11 +705,9 @@ class AACRepository(
         )
     }
 
-    @Suppress("UNUSED_PARAMETER")
     override suspend fun incrementClickCount(
         id: String,
         parentId: String?,
-        langCode: String,
     ) {
         val currentProfile =
             activeProfile.value ?: return

@@ -147,73 +147,43 @@ class TileEditorViewModel(
     ) {
         when (action) {
             is TileEditorAction.LabelChanged -> {
-                updateState {
-                    copy(label = action.value)
-                }
+                updateState { it.copy(label = action.value) }
             }
 
             is TileEditorAction.TtsTextChanged -> {
-                updateState {
-                    copy(ttsText = action.value)
-                }
+                updateState { it.copy(ttsText = action.value) }
             }
 
             is TileEditorAction.LabelFeminineChanged -> {
-                updateState {
-                    copy(
-                        labelFeminine = action.value,
-                    )
-                }
+                updateState { it.copy(labelFeminine = action.value) }
             }
 
             is TileEditorAction.TtsTextFeminineChanged -> {
-                updateState {
-                    copy(
-                        ttsTextFeminine = action.value,
-                    )
-                }
+                updateState { it.copy(ttsTextFeminine = action.value) }
             }
 
             is TileEditorAction.EmojiChanged -> {
-                updateState {
-                    copy(emoji = action.value)
-                }
+                updateState { it.copy(emoji = action.value) }
             }
 
             is TileEditorAction.ImageUriChanged -> {
-                updateState {
-                    copy(imageUri = action.value)
-                }
+                updateState { it.copy(imageUri = action.value) }
             }
 
             is TileEditorAction.AudioUriChanged -> {
-                updateState {
-                    copy(audioUri = action.value)
-                }
+                updateState { it.copy(audioUri = action.value) }
             }
 
             is TileEditorAction.BackgroundColorChanged -> {
-                updateState {
-                    copy(
-                        backgroundColorHex = action.value,
-                    )
-                }
+                updateState { it.copy(backgroundColorHex = action.value) }
             }
 
             is TileEditorAction.PartOfSpeechChanged -> {
-                updateState {
-                    copy(
-                        partOfSpeech = action.value,
-                    )
-                }
+                updateState { it.copy(partOfSpeech = action.value) }
             }
 
             is TileEditorAction.GrammaticalGenderChanged -> {
-                updateState {
-                    copy(
-                        grammaticalGender = action.value,
-                    )
-                }
+                updateState { it.copy(grammaticalGender = action.value) }
             }
 
             is TileEditorAction.TileTypeChanged -> {
@@ -225,39 +195,26 @@ class TileEditorViewModel(
             }
 
             is TileEditorAction.LinkedCategoryIdChanged -> {
-                updateState {
-                    copy(
-                        linkedCategoryId = action.value,
-                    )
-                }
+                updateState { it.copy(linkedCategoryId = action.value) }
             }
 
             is TileEditorAction.CellIndexChanged -> {
-                updateState {
-                    copy(cellIndex = action.value)
-                }
+                updateState { it.copy(cellIndex = action.value) }
             }
 
             is TileEditorAction.HiddenChanged -> {
-                updateState {
-                    copy(isHidden = action.value)
-                }
+                updateState { it.copy(isHidden = action.value) }
             }
 
             is TileEditorAction.TileIdChanged -> {
-                updateState {
-                    copy(
-                        tileId = action.value.trim(),
-                    )
-                }
+                updateState { it.copy(tileId = action.value) }
             }
 
             is TileEditorAction.OccupiedCellSelected -> {
                 updateState {
-                    copy(
-                        pendingCellIndex =
-                            action.cellIndex,
+                    it.copy(
                         showOverwriteDialog = true,
+                        pendingCellIndex = action.cellIndex,
                     )
                 }
             }
@@ -279,36 +236,25 @@ class TileEditorViewModel(
             }
 
             TileEditorAction.ErrorConsumed -> {
-                updateState {
-                    copy(errorMessage = null)
-                }
+                updateState { it.copy(errorMessage = null) }
             }
         }
     }
 
     private fun updateState(
-        transform: TileEditorState.() -> TileEditorState,
+        transform: (TileEditorState) -> TileEditorState,
     ) {
         _state.update { currentState ->
-            currentState.transform()
+            transform(currentState)
         }
     }
 
     private fun handleTileTypeChanged(
         tileType: TileType,
     ) {
-        updateState {
-            copy(
+        updateState { currentState ->
+            currentState.copy(
                 tileType = tileType,
-                linkedCategoryId =
-                    if (
-                        tileType == TileType.FOLDER ||
-                        tileType == TileType.CONNECTOR
-                    ) {
-                        linkedCategoryId
-                    } else {
-                        null
-                    },
             )
         }
     }
@@ -316,19 +262,9 @@ class TileEditorViewModel(
     private fun handleParentIdChanged(
         parentId: String?,
     ) {
-        updateState {
-            val originalParentId =
-                existingTile?.layoutState?.parentId
-
-            copy(
+        updateState { currentState ->
+            currentState.copy(
                 parentId = parentId,
-                cellIndex =
-                    if (parentId != originalParentId) {
-                        ""
-                    } else {
-                        cellIndex
-                    },
-                tilesInParent = emptyList(),
             )
         }
 
@@ -339,9 +275,9 @@ class TileEditorViewModel(
     }
 
     private fun confirmOccupiedCell() {
-        updateState {
-            copy(
-                cellIndex = pendingCellIndex,
+        updateState { currentState ->
+            currentState.copy(
+                cellIndex = currentState.pendingCellIndex,
                 pendingCellIndex = "",
                 showOverwriteDialog = false,
             )
@@ -349,8 +285,8 @@ class TileEditorViewModel(
     }
 
     private fun dismissOccupiedCellDialog() {
-        updateState {
-            copy(
+        updateState { currentState ->
+            currentState.copy(
                 pendingCellIndex = "",
                 showOverwriteDialog = false,
             )

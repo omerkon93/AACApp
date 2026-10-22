@@ -58,7 +58,6 @@ interface TileRepository {
     suspend fun removeTileFromCategory(
         tileId: String,
         parentId: String?,
-        langCode: String,
     )
 
     suspend fun swapTilesByIndex(
@@ -70,7 +69,6 @@ interface TileRepository {
     suspend fun incrementClickCount(
         id: String,
         parentId: String?,
-        langCode: String,
     )
 
     fun observeUsageEvents(

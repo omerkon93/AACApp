@@ -262,7 +262,6 @@ fun TileEditDialogContent(
                                         .EmojiChanged(value)
                                 )
                             },
-                            imageUri = state.imageUri,
                             onImageUriChange = { value ->
                                 onAction(
                                     TileEditorAction

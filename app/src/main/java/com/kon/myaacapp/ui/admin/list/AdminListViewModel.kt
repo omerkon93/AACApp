@@ -73,14 +73,16 @@ class AdminListViewModel(
     ) {
         when (action) {
             is AdminListAction.SearchQueryChanged -> {
-                updateStateAndFilter {
-                    copy(searchQuery = action.value)
+                updateStateAndFilter { currentState ->
+                    currentState.copy(
+                        searchQuery = action.value,
+                    )
                 }
             }
 
             is AdminListAction.FilterActiveChanged -> {
-                updateStateAndFilter {
-                    copy(
+                updateStateAndFilter { currentState ->
+                    currentState.copy(
                         isFilterActive = action.value,
                     )
                 }
@@ -125,14 +127,11 @@ class AdminListViewModel(
             }
 
             AdminListAction.ClearFilters -> {
-                updateStateAndFilter {
-                    copy(
-                        selectedMediaFilters =
-                            emptySet(),
-                        selectedTypes =
-                            emptySet(),
-                        selectedUsageFilters =
-                            emptySet(),
+                updateStateAndFilter { currentState ->
+                    currentState.copy(
+                        selectedMediaFilters = emptySet(),
+                        selectedTypes = emptySet(),
+                        selectedUsageFilters = emptySet(),
                     )
                 }
             }
@@ -288,13 +287,13 @@ class AdminListViewModel(
         filter: MediaFilter,
         isSelected: Boolean,
     ) {
-        updateStateAndFilter {
-            copy(
+        updateStateAndFilter { currentState ->
+            currentState.copy(
                 selectedMediaFilters =
-                    selectedMediaFilters.updated(
+                    currentState.selectedMediaFilters.updated(
                         value = filter,
                         isSelected = isSelected,
-                    )
+                    ),
             )
         }
     }
@@ -303,13 +302,13 @@ class AdminListViewModel(
         tileType: TileType,
         isSelected: Boolean,
     ) {
-        updateStateAndFilter {
-            copy(
+        updateStateAndFilter { currentState ->
+            currentState.copy(
                 selectedTypes =
-                    selectedTypes.updated(
+                    currentState.selectedTypes.updated(
                         value = tileType,
                         isSelected = isSelected,
-                    )
+                    ),
             )
         }
     }
@@ -318,24 +317,23 @@ class AdminListViewModel(
         filter: UsageFilter,
         isSelected: Boolean,
     ) {
-        updateStateAndFilter {
-            copy(
+        updateStateAndFilter { currentState ->
+            currentState.copy(
                 selectedUsageFilters =
-                    selectedUsageFilters.updated(
+                    currentState.selectedUsageFilters.updated(
                         value = filter,
                         isSelected = isSelected,
-                    )
+                    ),
             )
         }
     }
 
     private fun updateStateAndFilter(
-        transform: AdminListState.() ->
-        AdminListState,
+        transform: (AdminListState) -> AdminListState,
     ) {
         _state.update { currentState ->
             val updatedState =
-                currentState.transform()
+                transform(currentState)
 
             updatedState.copy(
                 filteredTiles =

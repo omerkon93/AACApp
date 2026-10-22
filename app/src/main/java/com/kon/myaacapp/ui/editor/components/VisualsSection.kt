@@ -66,7 +66,6 @@ import com.kon.myaacapp.ui.theme.resolveFitzgeraldColor
 fun VisualsSection(
     emoji: String,
     onEmojiChange: (String) -> Unit,
-    imageUri: String?,
     onImageUriChange: (String?) -> Unit,
     partOfSpeech: String,
     onPartOfSpeechChange: (String) -> Unit

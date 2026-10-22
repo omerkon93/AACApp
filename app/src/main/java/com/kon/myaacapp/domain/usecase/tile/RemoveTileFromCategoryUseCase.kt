@@ -8,7 +8,6 @@ class RemoveTileFromCategoryUseCase(
     suspend operator fun invoke(
         tileId: String,
         parentId: String?,
-        languageCode: String,
     ) {
         require(tileId.isNotBlank()) {
             "Tile ID cannot be blank."
@@ -17,7 +16,6 @@ class RemoveTileFromCategoryUseCase(
         tileRepository.removeTileFromCategory(
             tileId = tileId,
             parentId = parentId,
-            langCode = languageCode,
         )
     }
 }
