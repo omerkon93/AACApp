@@ -38,11 +38,20 @@ class AACRepository(
     private val aacTileDao: AACTileDao,
     private val context: Context,
     private val profileRepository: ProfileRepository,
+    private val settingsRepository: SettingsRepository,
 ) : TileRepository {
     private val json = Json {
         ignoreUnknownKeys = true
         prettyPrint = true
         encodeDefaults = true
+    }
+
+    init {
+        profileRepository.scope.launch {
+            settingsRepository.tilesUseTtsFlow.collect {
+                loadAllDefinitions()
+            }
+        }
     }
 
     val activeProfile: StateFlow<UserProfile?> =
@@ -74,6 +83,8 @@ class AACRepository(
 
     override suspend fun loadAllDefinitions(): Unit =
         withContext(Dispatchers.IO) {
+        val tilesUseTts = settingsRepository.tilesUseTtsFlow.first()
+
         val tilesDir = File(
             context.filesDir,
             "tiles",
@@ -105,10 +116,16 @@ class AACRepository(
                  * User definitions override defaults only when both the tile ID
                  * and language code match.
                  */
-                fileDefinitions += mergeDictionaries(
+                var merged = mergeDictionaries(
                     defaultTiles = defaultDefinitions,
                     userTiles = userDefinitions,
                 )
+
+                if (tilesUseTts) {
+                    merged = merged.map { it.copy(audioUri = null) }
+                }
+
+                fileDefinitions += merged
             }
         }
 

@@ -23,6 +23,7 @@ import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Button
 import androidx.compose.material3.ButtonDefaults
 import androidx.compose.material3.Card
+import androidx.compose.material3.Checkbox
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.FilterChip
 import androidx.compose.material3.HorizontalDivider
@@ -51,6 +52,9 @@ fun AdminSystemSettings(
     val speakOnTilePress =
         state.speakOnTilePress
 
+    val tilesUseTts =
+        state.tilesUseTts
+
     val langCode =
         state.languageCode
 
@@ -72,6 +76,14 @@ fun AdminSystemSettings(
                 .SpeakOnTilePressChanged(
                     value = value,
                 )
+        )
+    }
+
+    val onToggleTilesUseTts: (Boolean) -> Unit = { value ->
+        onAction(
+            SystemSettingsAction.TilesUseTtsChanged(
+                value = value,
+            )
         )
     }
 
@@ -408,6 +420,21 @@ fun AdminSystemSettings(
                             vertical = 4.dp,
                         ),
                 )
+
+                Spacer(modifier = Modifier.height(8.dp))
+
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    verticalAlignment = Alignment.CenterVertically,
+                    horizontalArrangement = Arrangement.SpaceBetween
+                ) {
+                    Text(stringResource(R.string.tiles_use_tts))
+                    Checkbox(
+                        checked = tilesUseTts,
+                        onCheckedChange = onToggleTilesUseTts,
+                        enabled = !state.isBusy,
+                    )
+                }
 
                 Spacer(modifier = Modifier.height(8.dp))
 

@@ -44,6 +44,7 @@ class SettingsRepository(
 
     private object PreferencesKeys {
         val SPEAK_ON_TILE_PRESS = booleanPreferencesKey("speak_on_tile_press")
+        val TILES_USE_TTS = booleanPreferencesKey("tiles_use_tts")
         val USER_GENDER = stringPreferencesKey("user_gender")
         val LANGUAGE_CODE = stringPreferencesKey("language_code")
         val ACTIVE_PROFILE_ID = stringPreferencesKey("active_profile_id")
@@ -123,6 +124,12 @@ class SettingsRepository(
     val speakOnTilePressFlow: Flow<Boolean> = basePreferencesFlow
         .map { preferences ->
             preferences[PreferencesKeys.SPEAK_ON_TILE_PRESS] ?: true
+        }
+        .distinctUntilChanged()
+
+    val tilesUseTtsFlow: Flow<Boolean> = basePreferencesFlow
+        .map { preferences ->
+            preferences[PreferencesKeys.TILES_USE_TTS] ?: true
         }
         .distinctUntilChanged()
 
@@ -256,6 +263,12 @@ class SettingsRepository(
     suspend fun updateSpeakOnTilePress(speak: Boolean) {
         context.dataStore.edit { preferences ->
             preferences[PreferencesKeys.SPEAK_ON_TILE_PRESS] = speak
+        }
+    }
+
+    suspend fun updateTilesUseTts(value: Boolean) {
+        context.dataStore.edit { preferences ->
+            preferences[PreferencesKeys.TILES_USE_TTS] = value
         }
     }
 

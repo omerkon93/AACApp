@@ -69,6 +69,14 @@ class LanguageDownloadHelperTest {
             listener.onSuccess(result)
             task
         }
+
+        // Mock getSessionState for session IDs (Integers)
+        if (result is Int) {
+            val sessionStateTask = mock(Task::class.java) as Task<SplitInstallSessionState>
+            whenever(splitInstallManager.getSessionState(result)).thenReturn(sessionStateTask)
+            whenever(sessionStateTask.addOnSuccessListener(any())).thenReturn(sessionStateTask)
+        }
+
         return task
     }
 
@@ -127,7 +135,7 @@ class LanguageDownloadHelperTest {
         listener.onStateUpdate(successState)
         
         assertEquals(true, completionSuccess)
-        assertEquals(DownloadStatus.Idle, helper.downloadStatus.value)
+        assertEquals(DownloadStatus.Success, helper.downloadStatus.value)
     }
 
     @Test

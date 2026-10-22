@@ -7,6 +7,7 @@ import com.kon.myaacapp.domain.service.Gender
 @Immutable
 data class SystemSettingsState(
     val speakOnTilePress: Boolean = true,
+    val tilesUseTts: Boolean = true,
     val languageCode: String = "he",
     val userGender: Gender = Gender.MALE,
 

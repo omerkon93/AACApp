@@ -12,6 +12,10 @@ sealed interface SystemSettingsAction {
         val value: Boolean,
     ) : SystemSettingsAction
 
+    data class TilesUseTtsChanged(
+        val value: Boolean,
+    ) : SystemSettingsAction
+
     data class GenderChanged(
         val value: Gender,
     ) : SystemSettingsAction

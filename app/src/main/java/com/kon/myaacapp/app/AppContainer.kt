@@ -55,6 +55,7 @@ class AppContainer(
             aacTileDao = database.aacTileDao(),
             context = application,
             profileRepository = profileRepository,
+            settingsRepository = settingsRepository,
         )
 
     val backupService: BackupService =

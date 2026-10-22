@@ -69,15 +69,18 @@ class SystemSettingsViewModel(
     private val generalSettings =
         combine(
             settingsRepository.speakOnTilePressFlow,
+            settingsRepository.tilesUseTtsFlow,
             settingsRepository.languageCodeFlow,
             settingsRepository.userGenderFlow,
         ) {
                 speakOnTilePress,
+                tilesUseTts,
                 languageCode,
                 userGender ->
 
             GeneralSystemSettings(
                 speakOnTilePress = speakOnTilePress,
+                tilesUseTts = tilesUseTts,
                 languageCode =
                     LocaleHelper.normalize(languageCode),
                 userGender = userGender,
@@ -112,6 +115,9 @@ class SystemSettingsViewModel(
             SystemSettingsState(
                 speakOnTilePress =
                     settings.speakOnTilePress,
+
+                tilesUseTts =
+                    settings.tilesUseTts,
 
                 languageCode =
                     settings.languageCode,
@@ -164,6 +170,13 @@ class SystemSettingsViewModel(
             is SystemSettingsAction
             .SpeakOnTilePressChanged -> {
                 updateSpeakOnTilePress(
+                    value = action.value,
+                )
+            }
+
+            is SystemSettingsAction
+            .TilesUseTtsChanged -> {
+                updateTilesUseTts(
                     value = action.value,
                 )
             }
@@ -258,6 +271,23 @@ class SystemSettingsViewModel(
                 showError(
                     message = error.message
                         ?: "Failed to update speech setting.",
+                )
+            }
+        }
+    }
+
+    private fun updateTilesUseTts(
+        value: Boolean,
+    ) {
+        viewModelScope.launch {
+            runCatching {
+                settingsRepository
+                    .updateTilesUseTts(value)
+                aacRepository.reload()
+            }.onFailure { error ->
+                showError(
+                    message = error.message
+                        ?: "Failed to update TTS setting.",
                 )
             }
         }
@@ -552,6 +582,7 @@ class SystemSettingsViewModel(
 
 private data class GeneralSystemSettings(
     val speakOnTilePress: Boolean,
+    val tilesUseTts: Boolean,
     val languageCode: String,
     val userGender: Gender,
 )
