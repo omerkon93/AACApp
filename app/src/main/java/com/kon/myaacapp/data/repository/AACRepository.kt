@@ -103,7 +103,7 @@ class AACRepository(
                         languageDirectory,
                         "default_dictionary.json",
                     )
-                )
+                ).filter { definition -> definition.languageCode == languageDirectory.name }
 
                 val userDefinitions = loadDictionaryFile(
                     File(
