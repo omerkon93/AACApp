@@ -4,10 +4,14 @@ import androidx.lifecycle.ViewModel
 import androidx.lifecycle.ViewModelProvider
 import com.kon.myaacapp.data.repository.AACRepository
 import com.kon.myaacapp.data.repository.ProfileRepository
+import com.kon.myaacapp.domain.entitlement.FamilyEntitlementProvider
+import com.kon.myaacapp.domain.entitlement.StoreFamilyEntitlementProvider
 
 class ProfileManagerViewModelFactory(
     private val profileRepository: ProfileRepository,
     private val aacRepository: AACRepository,
+    private val familyEntitlementProvider: FamilyEntitlementProvider =
+        StoreFamilyEntitlementProvider(),
 ) : ViewModelProvider.Factory {
 
     override fun <T : ViewModel> create(
@@ -22,6 +26,7 @@ class ProfileManagerViewModelFactory(
             return ProfileManagerViewModel(
                 profileRepository = profileRepository,
                 aacRepository = aacRepository,
+                familyEntitlementProvider = familyEntitlementProvider,
             ) as T
         }
 

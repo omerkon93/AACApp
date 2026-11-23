@@ -1,6 +1,11 @@
 package com.kon.myaacapp.ui.profile
 
 import androidx.compose.runtime.Immutable
+import com.kon.myaacapp.domain.entitlement.BillingFeedback
+import com.kon.myaacapp.domain.entitlement.FamilyEntitlementState
+import com.kon.myaacapp.domain.entitlement.FamilyPlanOfferDetails
+import com.kon.myaacapp.domain.entitlement.ProfileLimitPolicy
+import com.kon.myaacapp.domain.entitlement.SubscriptionBillingState
 import com.kon.myaacapp.domain.model.ProfileCreationMode
 import com.kon.myaacapp.domain.model.UserProfile
 
@@ -10,6 +15,8 @@ data class ProfileManagerState(
     val activeProfile: UserProfile? = null,
 
     val showCreateDialog: Boolean = false,
+    val showLimitDialog: Boolean = false,
+    val showBillingUnavailableNotice: Boolean = false,
     val profileName: String = "",
 
     val creationMode: ProfileCreationMode =
@@ -22,12 +29,65 @@ data class ProfileManagerState(
     val isCreatingProfile: Boolean = false,
     val isSwitchingProfile: Boolean = false,
     val isDeletingProfile: Boolean = false,
+    val isUpdatingEntitlement: Boolean = false,
+
+    val entitlement: FamilyEntitlementState =
+        FamilyEntitlementState(),
 
     val errorMessage: String? = null,
 ) {
+    val savedProfileCount: Int
+        get() = profiles.size
+
+    val freeProfileLimit: Int
+        get() = entitlement.freeProfileLimit
+
+    val hasFamilyEntitlement: Boolean
+        get() = entitlement.hasFamilyEntitlement
+
+    val isProfileLimitEnforced: Boolean
+        get() = entitlement.isProfileCapEnforced
+
+    val isBillingConfigured: Boolean
+        get() = entitlement.isBillingConfigured
+
+    val subscriptionState: SubscriptionBillingState
+        get() = entitlement.subscriptionState
+
+    val offerDetails: FamilyPlanOfferDetails?
+        get() = entitlement.offerDetails
+
+    val isAutoRenewing: Boolean
+        get() = entitlement.isAutoRenewing
+
+    val hasPendingPurchase: Boolean
+        get() = entitlement.hasPendingPurchase
+
+    val lastBillingFeedback: BillingFeedback
+        get() = entitlement.lastBillingFeedback
+
+    val isCachedOfflineEntitlement: Boolean
+        get() = entitlement.isCachedOfflineEntitlement
+
+    val isLoadingStoreOffer: Boolean
+        get() = entitlement.isLoadingStoreOffer
+
+    val isFreeLimitReached: Boolean
+        get() = ProfileLimitPolicy.isFreeLimitReached(
+            savedProfileCount = profiles.size,
+            entitlement = entitlement,
+        )
+
+    val canCreateAnotherProfile: Boolean
+        get() = ProfileLimitPolicy.canCreateProfile(
+            savedProfileCount = profiles.size,
+            entitlement = entitlement,
+        )
+
     val canCreateProfile: Boolean
         get() =
             profileName.isNotBlank() &&
+                    canCreateAnotherProfile &&
                     !isBusy
 
     val canDeletePendingProfile: Boolean
@@ -40,5 +100,6 @@ data class ProfileManagerState(
         get() =
             isCreatingProfile ||
                     isSwitchingProfile ||
-                    isDeletingProfile
+                    isDeletingProfile ||
+                    isUpdatingEntitlement
 }

@@ -2,11 +2,18 @@ package com.kon.myaacapp.app
 
 import com.kon.myaacapp.domain.service.AppStartupCoordinator
 import com.kon.myaacapp.service.backup.BackupService
+import android.app.Activity
 import android.app.Application
+import com.kon.myaacapp.BuildConfig
+import com.kon.myaacapp.data.billing.AndroidPlayBillingGateway
+import com.kon.myaacapp.data.billing.PlayBillingFamilyEntitlementProvider
+import com.kon.myaacapp.data.billing.SharedPrefsFamilyEntitlementCache
 import com.kon.myaacapp.data.local.AACDatabase
 import com.kon.myaacapp.data.repository.AACRepository
 import com.kon.myaacapp.data.repository.ProfileRepository
 import com.kon.myaacapp.data.repository.SettingsRepository
+import com.kon.myaacapp.domain.entitlement.FamilyEntitlementProvider
+import java.lang.ref.WeakReference
 import com.kon.myaacapp.domain.repository.TileRepository
 import com.kon.myaacapp.domain.usecase.analytics.ObserveUsageEventsUseCase
 import com.kon.myaacapp.domain.usecase.tile.AddTileUseCase
@@ -37,17 +44,45 @@ class AppContainer(
     application: Application,
     applicationScope: CoroutineScope,
 ) {
+    @Volatile
+    private var currentActivityRef: WeakReference<Activity?> = WeakReference(null)
+
+    fun updateCurrentActivity(activity: Activity) {
+        currentActivityRef = WeakReference(activity)
+    }
+
+    fun clearCurrentActivityIfMatching(activity: Activity) {
+        if (currentActivityRef.get() === activity) {
+            currentActivityRef = WeakReference(null)
+        }
+    }
+
     private val database: AACDatabase =
         AACDatabase.getDatabase(application)
 
     val settingsRepository: SettingsRepository =
         SettingsRepository(application)
 
+    val familyEntitlementProvider: FamilyEntitlementProvider =
+        PlayBillingFamilyEntitlementProvider(
+            appPackageName = application.packageName,
+            productId = BuildConfig.FAMILY_SUBSCRIPTION_PRODUCT_ID,
+            preferredBasePlanId = BuildConfig.FAMILY_SUBSCRIPTION_BASE_PLAN_ID,
+            isProfileCapEnforced = BuildConfig.ENFORCE_PROFILE_CAP,
+            gateway = AndroidPlayBillingGateway(
+                context = application,
+                currentActivityProvider = { currentActivityRef.get() },
+            ),
+            cache = SharedPrefsFamilyEntitlementCache(application),
+            scope = applicationScope,
+        )
+
     val profileRepository: ProfileRepository =
         ProfileRepository(
-            application,
-            settingsRepository,
-            applicationScope,
+            context = application,
+            settingsRepository = settingsRepository,
+            scope = applicationScope,
+            familyEntitlementProvider = familyEntitlementProvider,
         )
 
     val aacRepository: AACRepository =
@@ -214,6 +249,7 @@ class AppContainer(
         ProfileManagerViewModelFactory(
             profileRepository = profileRepository,
             aacRepository = aacRepository,
+            familyEntitlementProvider = familyEntitlementProvider,
         )
 
     val systemSettingsViewModelFactory:

@@ -4,7 +4,13 @@ import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import com.kon.myaacapp.core.locale.LocaleHelper
 import com.kon.myaacapp.data.repository.AACRepository
+import com.kon.myaacapp.data.repository.CreateProfileResult
 import com.kon.myaacapp.data.repository.ProfileRepository
+import com.kon.myaacapp.domain.entitlement.BillingFeedback
+import com.kon.myaacapp.domain.entitlement.FamilyEntitlementProvider
+import com.kon.myaacapp.domain.entitlement.FamilyUpgradeOutcome
+import com.kon.myaacapp.domain.entitlement.ProfileLimitPolicy
+import com.kon.myaacapp.domain.entitlement.StoreFamilyEntitlementProvider
 import com.kon.myaacapp.domain.model.ProfileCreationMode
 import com.kon.myaacapp.domain.model.UserProfile
 import kotlinx.coroutines.flow.MutableSharedFlow
@@ -21,6 +27,8 @@ import kotlinx.coroutines.launch
 class ProfileManagerViewModel(
     private val profileRepository: ProfileRepository,
     private val aacRepository: AACRepository,
+    private val familyEntitlementProvider: FamilyEntitlementProvider =
+        StoreFamilyEntitlementProvider(),
 ) : ViewModel() {
 
     private val editorState =
@@ -39,11 +47,13 @@ class ProfileManagerViewModel(
         combine(
             profileRepository.profiles,
             profileRepository.activeProfile,
+            familyEntitlementProvider.entitlementState,
             editorState,
             operationState,
         ) {
                 profiles,
                 activeProfile,
+                entitlement,
                 editor,
                 operation ->
 
@@ -53,6 +63,12 @@ class ProfileManagerViewModel(
 
                 showCreateDialog =
                     editor.showCreateDialog,
+
+                showLimitDialog =
+                    editor.showLimitDialog && !entitlement.hasFamilyEntitlement,
+
+                showBillingUnavailableNotice =
+                    editor.showBillingUnavailableNotice,
 
                 profileName =
                     editor.profileName,
@@ -75,24 +91,76 @@ class ProfileManagerViewModel(
                 isDeletingProfile =
                     operation.isDeletingProfile,
 
+                isUpdatingEntitlement =
+                    operation.isUpdatingEntitlement,
+
+                entitlement = entitlement,
+
                 errorMessage =
                     operation.errorMessage,
             )
         }.asStateFlow(
             scope = viewModelScope,
-            initialValue = ProfileManagerState(),
+            initialValue = ProfileManagerState(
+                entitlement = familyEntitlementProvider.currentEntitlement(),
+            ),
         )
 
     fun onAction(
         action: ProfileManagerAction,
     ) {
         when (action) {
+            ProfileManagerAction.RefreshBillingState -> {
+                viewModelScope.launch {
+                    runCatching {
+                        familyEntitlementProvider.refreshEntitlements()
+                    }
+                }
+            }
+
             ProfileManagerAction.OpenCreateDialog -> {
                 openCreateDialog()
             }
 
             ProfileManagerAction.CloseCreateDialog -> {
                 closeCreateDialog()
+            }
+
+            ProfileManagerAction.DismissLimitDialog -> {
+                familyEntitlementProvider.clearBillingFeedback()
+                editorState.update { currentState ->
+                    currentState.copy(
+                        showLimitDialog = false,
+                        showBillingUnavailableNotice = false,
+                    )
+                }
+            }
+
+            ProfileManagerAction.DismissBillingUnavailableNotice -> {
+                familyEntitlementProvider.clearBillingFeedback()
+                editorState.update { currentState ->
+                    currentState.copy(
+                        showBillingUnavailableNotice = false,
+                    )
+                }
+            }
+
+            ProfileManagerAction.UpgradeToFamilyClicked -> {
+                handleFamilyUpgradeAction(restoreOnly = false)
+            }
+
+            ProfileManagerAction.RestoreFamilyPurchaseClicked -> {
+                handleFamilyUpgradeAction(restoreOnly = true)
+            }
+
+            ProfileManagerAction.ManageSubscriptionClicked -> {
+                viewModelScope.launch {
+                    _effects.emit(
+                        ProfileManagerEffect.OpenSubscriptionManagement(
+                            uri = familyEntitlementProvider.getSubscriptionManagementUri(),
+                        ),
+                    )
+                }
             }
 
             is ProfileManagerAction.ProfileNameChanged -> {
@@ -165,6 +233,18 @@ class ProfileManagerViewModel(
             return
         }
 
+        val entitlement = familyEntitlementProvider.currentEntitlement()
+        val savedCount = profileRepository.profiles.value.size
+        if (!ProfileLimitPolicy.canCreateProfile(savedCount, entitlement)) {
+            editorState.update { currentState ->
+                currentState.copy(
+                    showLimitDialog = true,
+                    showBillingUnavailableNotice = false,
+                )
+            }
+            return
+        }
+
         val defaultBoardLanguage = state.value.activeProfile
             ?.activeLanguageCode
             ?.let { LocaleHelper.normalize(it) }
@@ -174,6 +254,7 @@ class ProfileManagerViewModel(
         editorState.update { currentState ->
             currentState.copy(
                 showCreateDialog = true,
+                showLimitDialog = false,
                 profileName = "",
                 creationMode =
                     ProfileCreationMode.BLANK,
@@ -221,34 +302,61 @@ class ProfileManagerViewModel(
 
         viewModelScope.launch {
             runCatching {
-                profileRepository.createProfile(
+                val result = profileRepository.createProfile(
                     name = normalizedName,
                     creationMode =
                         currentEditorState.creationMode,
                     boardLanguageCode =
                         currentEditorState.boardLanguageCode,
                 )
-                aacRepository.reload()
-            }.onSuccess {
+                if (result is CreateProfileResult.Success) {
+                    aacRepository.reload()
+                }
+                result
+            }.onSuccess { result ->
                 operationState.update { currentState ->
                     currentState.copy(
                         isCreatingProfile = false,
                     )
                 }
 
-                editorState.update { currentState ->
-                    currentState.copy(
-                        showCreateDialog = false,
-                        profileName = "",
-                        creationMode =
-                            ProfileCreationMode.BLANK,
-                        boardLanguageCode = DEFAULT_LANGUAGE_CODE,
-                    )
-                }
+                when (result) {
+                    is CreateProfileResult.Success -> {
+                        editorState.update { currentState ->
+                            currentState.copy(
+                                showCreateDialog = false,
+                                showLimitDialog = false,
+                                showBillingUnavailableNotice = false,
+                                profileName = "",
+                                creationMode =
+                                    ProfileCreationMode.BLANK,
+                                boardLanguageCode = DEFAULT_LANGUAGE_CODE,
+                            )
+                        }
 
-                _effects.emit(
-                    ProfileManagerEffect.ProfileCreated
-                )
+                        _effects.emit(
+                            ProfileManagerEffect.ProfileCreated
+                        )
+                    }
+
+                    is CreateProfileResult.LimitReached -> {
+                        editorState.update { currentState ->
+                            currentState.copy(
+                                showCreateDialog = false,
+                                showLimitDialog = true,
+                                showBillingUnavailableNotice = false,
+                            )
+                        }
+                    }
+
+                    CreateProfileResult.InvalidName -> {
+                        showError("Profile name cannot be empty.")
+                    }
+
+                    CreateProfileResult.SaveFailed -> {
+                        showError("Failed to create profile.")
+                    }
+                }
             }.onFailure { error ->
                 operationState.update { currentState ->
                     currentState.copy(
@@ -260,6 +368,94 @@ class ProfileManagerViewModel(
                     message =
                         error.message
                             ?: "Failed to create profile.",
+                )
+            }
+        }
+    }
+
+    private fun handleFamilyUpgradeAction(restoreOnly: Boolean) {
+        if (operationState.value.isBusy) {
+            return
+        }
+
+        operationState.update { currentState ->
+            currentState.copy(
+                isUpdatingEntitlement = true,
+                errorMessage = null,
+            )
+        }
+
+        viewModelScope.launch {
+            runCatching {
+                if (restoreOnly) {
+                    familyEntitlementProvider.restoreFamilyPurchase()
+                } else {
+                    familyEntitlementProvider.requestFamilyUpgrade()
+                }
+            }.onSuccess { outcome ->
+                operationState.update { currentState ->
+                    currentState.copy(
+                        isUpdatingEntitlement = false,
+                    )
+                }
+
+                when (outcome) {
+                    FamilyUpgradeOutcome.Activated -> {
+                        editorState.update { currentState ->
+                            currentState.copy(
+                                showLimitDialog = false,
+                                showBillingUnavailableNotice = false,
+                            )
+                        }
+                    }
+
+                    FamilyUpgradeOutcome.LaunchedCheckout,
+                    FamilyUpgradeOutcome.Pending,
+                    FamilyUpgradeOutcome.UserCanceled,
+                    FamilyUpgradeOutcome.ProductUnavailable,
+                    FamilyUpgradeOutcome.NoPurchaseFound,
+                    -> {
+                        editorState.update { currentState ->
+                            currentState.copy(
+                                showBillingUnavailableNotice = false,
+                            )
+                        }
+                    }
+
+                    FamilyUpgradeOutcome.BillingUnavailable -> {
+                        editorState.update { currentState ->
+                            currentState.copy(
+                                showBillingUnavailableNotice = true,
+                            )
+                        }
+                    }
+
+                    is FamilyUpgradeOutcome.Failed -> {
+                        editorState.update { currentState ->
+                            currentState.copy(
+                                showBillingUnavailableNotice = false,
+                            )
+                        }
+                        if (familyEntitlementProvider.currentEntitlement().lastBillingFeedback == BillingFeedback.NONE) {
+                            showError(
+                                message =
+                                    outcome.reason
+                                        ?: "Failed to update Family plan.",
+                            )
+                        }
+                    }
+                }
+            }.onFailure { error ->
+                operationState.update { currentState ->
+                    currentState.copy(
+                        isUpdatingEntitlement = false,
+                    )
+                }
+
+                showError(
+                    message =
+                        error.message
+                            ?: "Failed to update Family plan.",
                 )
             }
         }
@@ -441,6 +637,8 @@ class ProfileManagerViewModel(
 
 private data class ProfileEditorState(
     val showCreateDialog: Boolean = false,
+    val showLimitDialog: Boolean = false,
+    val showBillingUnavailableNotice: Boolean = false,
     val profileName: String = "",
     val creationMode: ProfileCreationMode =
         ProfileCreationMode.BLANK,
@@ -452,13 +650,15 @@ private data class ProfileOperationState(
     val isCreatingProfile: Boolean = false,
     val isSwitchingProfile: Boolean = false,
     val isDeletingProfile: Boolean = false,
+    val isUpdatingEntitlement: Boolean = false,
     val errorMessage: String? = null,
 ) {
     val isBusy: Boolean
         get() =
             isCreatingProfile ||
                     isSwitchingProfile ||
-                    isDeletingProfile
+                    isDeletingProfile ||
+                    isUpdatingEntitlement
 }
 
 private fun <T> kotlinx.coroutines.flow.Flow<T>.asStateFlow(

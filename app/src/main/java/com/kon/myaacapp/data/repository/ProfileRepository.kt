@@ -4,6 +4,9 @@ import android.content.Context
 import android.util.Log
 import com.kon.myaacapp.R
 import com.kon.myaacapp.core.locale.LocaleHelper
+import com.kon.myaacapp.domain.entitlement.FamilyEntitlementProvider
+import com.kon.myaacapp.domain.entitlement.ProfileLimitPolicy
+import com.kon.myaacapp.domain.entitlement.StoreFamilyEntitlementProvider
 import com.kon.myaacapp.domain.model.ProfileCreationMode
 import com.kon.myaacapp.domain.model.TileDefinition
 import com.kon.myaacapp.domain.model.UserProfile
@@ -20,6 +23,8 @@ import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.flow.map
 import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.sync.Mutex
+import kotlinx.coroutines.sync.withLock
 import kotlinx.coroutines.withContext
 import kotlinx.serialization.json.Json
 import java.io.File
@@ -27,10 +32,27 @@ import java.io.FileOutputStream
 import java.util.UUID
 import java.util.zip.ZipInputStream
 
+sealed interface CreateProfileResult {
+    data class Success(
+        val profile: UserProfile,
+    ) : CreateProfileResult
+
+    data class LimitReached(
+        val savedProfileCount: Int,
+        val freeProfileLimit: Int,
+    ) : CreateProfileResult
+
+    data object InvalidName : CreateProfileResult
+
+    data object SaveFailed : CreateProfileResult
+}
+
 class ProfileRepository(
     private val context: Context,
     internal val settingsRepository: SettingsRepository,
     internal val scope: CoroutineScope,
+    private val familyEntitlementProvider: FamilyEntitlementProvider =
+        StoreFamilyEntitlementProvider(),
 ) {
     companion object {
         private const val TAG = "ProfileRepository"
@@ -54,6 +76,8 @@ class ProfileRepository(
         context.filesDir,
         "profiles",
     )
+
+    private val profileMutex = Mutex()
 
     private val _profiles =
         MutableStateFlow<List<UserProfile>>(emptyList())
@@ -93,11 +117,13 @@ class ProfileRepository(
 
     suspend fun reload() =
         withContext(Dispatchers.IO) {
-            ensureProfilesDirectory()
-            loadProfilesSync()
-            bootstrapDefaultProfileSync()
-            ensureValidActiveProfile()
-            _activeProfile.value = resolveCurrentActiveProfile()
+            profileMutex.withLock {
+                ensureProfilesDirectory()
+                loadProfilesSync()
+                bootstrapDefaultProfileSync()
+                ensureValidActiveProfile()
+                _activeProfile.value = resolveCurrentActiveProfile()
+            }
         }
 
     private fun ensureProfilesDirectory() {
@@ -241,195 +267,217 @@ class ProfileRepository(
         name: String,
         creationMode: ProfileCreationMode,
         boardLanguageCode: String = DEFAULT_LANGUAGE_CODE,
-    ) = withContext(Dispatchers.IO) {
+    ): CreateProfileResult = withContext(Dispatchers.IO) {
         val normalizedName = name.trim()
 
         if (normalizedName.isBlank()) {
-            return@withContext
+            return@withContext CreateProfileResult.InvalidName
         }
 
-        val currentProfile = resolveCurrentActiveProfile()
+        profileMutex.withLock {
+            ensureProfilesDirectory()
+            loadProfilesSync()
 
-        val defaultProfile = _profiles.value.find { profile ->
-            profile.profileId == DEFAULT_PROFILE_ID
-        }
-
-        val initialLanguageCode = when (creationMode) {
-            ProfileCreationMode.DUPLICATE_CURRENT -> {
-                normalizeSupportedLanguageOrNull(currentProfile?.activeLanguageCode)
-                    ?: DEFAULT_LANGUAGE_CODE
+            val currentProfiles = _profiles.value
+            val entitlement = familyEntitlementProvider.currentEntitlement()
+            if (!ProfileLimitPolicy.canCreateProfile(currentProfiles.size, entitlement)) {
+                return@withLock CreateProfileResult.LimitReached(
+                    savedProfileCount = currentProfiles.size,
+                    freeProfileLimit = entitlement.freeProfileLimit,
+                )
             }
 
-            ProfileCreationMode.DEFAULT_TEMPLATE,
-            ProfileCreationMode.BLANK,
-            -> {
-                normalizeSupportedLanguageOrNull(boardLanguageCode)
-                    ?: DEFAULT_LANGUAGE_CODE
-            }
-        }
+            val currentProfile = resolveCurrentActiveProfile()
 
-        val initialLayout = when (creationMode) {
-            ProfileCreationMode.DUPLICATE_CURRENT -> {
-                currentProfile?.layout?.toMap().orEmpty()
+            val defaultProfile = currentProfiles.find { profile ->
+                profile.profileId == DEFAULT_PROFILE_ID
             }
 
-            ProfileCreationMode.DEFAULT_TEMPLATE -> {
-                val factoryLayout = loadFactoryDefaultProfile()
-                    ?.layout
-                    ?.mapValues { (_, layoutState) ->
+            val initialLanguageCode = when (creationMode) {
+                ProfileCreationMode.DUPLICATE_CURRENT -> {
+                    normalizeSupportedLanguageOrNull(currentProfile?.activeLanguageCode)
+                        ?: DEFAULT_LANGUAGE_CODE
+                }
+
+                ProfileCreationMode.DEFAULT_TEMPLATE,
+                ProfileCreationMode.BLANK,
+                -> {
+                    normalizeSupportedLanguageOrNull(boardLanguageCode)
+                        ?: DEFAULT_LANGUAGE_CODE
+                }
+            }
+
+            val initialLayout = when (creationMode) {
+                ProfileCreationMode.DUPLICATE_CURRENT -> {
+                    currentProfile?.layout?.toMap().orEmpty()
+                }
+
+                ProfileCreationMode.DEFAULT_TEMPLATE -> {
+                    val factoryLayout = loadFactoryDefaultProfile()
+                        ?.layout
+                        ?.mapValues { (_, layoutState) ->
+                            layoutState.copy(
+                                clickCount = 0,
+                                isHidden = false,
+                            )
+                        }
+
+                    factoryLayout ?: defaultProfile?.layout?.mapValues { (_, layoutState) ->
                         layoutState.copy(
                             clickCount = 0,
                             isHidden = false,
                         )
-                    }
+                    }.orEmpty()
+                }
 
-                factoryLayout ?: defaultProfile?.layout?.mapValues { (_, layoutState) ->
-                    layoutState.copy(
-                        clickCount = 0,
-                        isHidden = false,
-                    )
-                }.orEmpty()
+                ProfileCreationMode.BLANK -> {
+                    emptyMap()
+                }
             }
 
-            ProfileCreationMode.BLANK -> {
-                emptyMap()
+            if (creationMode != ProfileCreationMode.DUPLICATE_CURRENT) {
+                ensureStarterDictionaryForLanguageSync(initialLanguageCode)
             }
+
+            val newProfile = UserProfile(
+                profileId = UUID.randomUUID().toString(),
+                profileName = normalizedName,
+                activeLanguageCode = initialLanguageCode,
+                layout = initialLayout,
+            )
+
+            if (!saveProfileInternal(newProfile)) {
+                return@withLock CreateProfileResult.SaveFailed
+            }
+
+            _profiles.update { existing ->
+                existing + newProfile
+            }
+
+            settingsRepository.updateActiveProfileId(
+                newProfile.profileId
+            )
+            _activeProfile.value = newProfile
+
+            CreateProfileResult.Success(newProfile)
         }
-
-        if (creationMode != ProfileCreationMode.DUPLICATE_CURRENT) {
-            ensureStarterDictionaryForLanguageSync(initialLanguageCode)
-        }
-
-        val newProfile = UserProfile(
-            profileId = UUID.randomUUID().toString(),
-            profileName = normalizedName,
-            activeLanguageCode = initialLanguageCode,
-            layout = initialLayout,
-        )
-
-        if (!saveProfileInternal(newProfile)) {
-            return@withContext
-        }
-
-        _profiles.update { currentProfiles ->
-            currentProfiles + newProfile
-        }
-
-        settingsRepository.updateActiveProfileId(
-            newProfile.profileId
-        )
-        _activeProfile.value = newProfile
     }
 
     suspend fun switchProfile(
         profileId: String,
-    ) {
-        val targetProfile = _profiles.value.find { profile ->
-            profile.profileId == profileId
-        }
+    ) = withContext(Dispatchers.IO) {
+        profileMutex.withLock {
+            val targetProfile = _profiles.value.find { profile ->
+                profile.profileId == profileId
+            }
 
-        if (targetProfile != null) {
-            settingsRepository.updateActiveProfileId(profileId)
-            _activeProfile.value = targetProfile
+            if (targetProfile != null) {
+                settingsRepository.updateActiveProfileId(profileId)
+                _activeProfile.value = targetProfile
+            }
         }
     }
 
     suspend fun deleteProfile(
         profileId: String,
     ) = withContext(Dispatchers.IO) {
-        /*
-         * Keep the default profile available as a reliable fallback.
-         */
-        if (profileId == DEFAULT_PROFILE_ID) {
-            return@withContext
-        }
-
-        val profileFile = profileFile(profileId)
-
-        if (profileFile.exists() && !profileFile.delete()) {
-            Log.e(
-                TAG,
-                "Failed to delete profile: $profileId",
-            )
-
-            return@withContext
-        }
-
-        _profiles.update { currentProfiles ->
-            currentProfiles.filterNot { profile ->
-                profile.profileId == profileId
+        profileMutex.withLock {
+            /*
+             * Keep the default profile available as a reliable fallback.
+             */
+            if (profileId == DEFAULT_PROFILE_ID) {
+                return@withLock
             }
-        }
 
-        if (resolveCurrentActiveProfile()?.profileId == profileId ||
-            _activeProfile.value?.profileId == profileId
-        ) {
-            val fallbackProfile = _profiles.value.firstOrNull()
-            val fallbackProfileId =
-                fallbackProfile?.profileId ?: DEFAULT_PROFILE_ID
+            val profileFile = profileFile(profileId)
 
-            settingsRepository.updateActiveProfileId(
-                fallbackProfileId
-            )
-            _activeProfile.value = fallbackProfile
-        } else {
-            _activeProfile.value = resolveCurrentActiveProfile()
+            if (profileFile.exists() && !profileFile.delete()) {
+                Log.e(
+                    TAG,
+                    "Failed to delete profile: $profileId",
+                )
+
+                return@withLock
+            }
+
+            _profiles.update { currentProfiles ->
+                currentProfiles.filterNot { profile ->
+                    profile.profileId == profileId
+                }
+            }
+
+            if (resolveCurrentActiveProfile()?.profileId == profileId ||
+                _activeProfile.value?.profileId == profileId
+            ) {
+                val fallbackProfile = _profiles.value.firstOrNull()
+                val fallbackProfileId =
+                    fallbackProfile?.profileId ?: DEFAULT_PROFILE_ID
+
+                settingsRepository.updateActiveProfileId(
+                    fallbackProfileId
+                )
+                _activeProfile.value = fallbackProfile
+            } else {
+                _activeProfile.value = resolveCurrentActiveProfile()
+            }
         }
     }
 
     suspend fun resetActiveProfileToDefault(): Boolean =
         withContext(Dispatchers.IO) {
-            val currentProfile =
-                resolveCurrentActiveProfile() ?: return@withContext false
+            profileMutex.withLock {
+                val currentProfile =
+                    resolveCurrentActiveProfile() ?: return@withLock false
 
-            val factoryProfile =
-                loadFactoryDefaultProfile()
-                    ?: return@withContext false
+                val factoryProfile =
+                    loadFactoryDefaultProfile()
+                        ?: return@withLock false
 
-            /*
-             * Reset only the active profile's layout.
-             *
-             * Preserve:
-             * - profile ID
-             * - profile name
-             * - currently selected language
-             *
-             * Replace:
-             * - tile placement
-             * - visibility
-             * - aggregate click counts
-             * - category links and quick-fire layout state
-             */
-            val resetProfile = currentProfile.copy(
-                activeLanguageCode =
-                    currentProfile.activeLanguageCode,
-                layout = factoryProfile.layout.mapValues { (_, layoutState) ->
-                    layoutState.copy(
-                        clickCount = 0,
-                        isHidden = false,
-                    )
-                },
-            )
+                /*
+                 * Reset only the active profile's layout.
+                 *
+                 * Preserve:
+                 * - profile ID
+                 * - profile name
+                 * - currently selected language
+                 *
+                 * Replace:
+                 * - tile placement
+                 * - visibility
+                 * - aggregate click counts
+                 * - category links and quick-fire layout state
+                 */
+                val resetProfile = currentProfile.copy(
+                    activeLanguageCode =
+                        currentProfile.activeLanguageCode,
+                    layout = factoryProfile.layout.mapValues { (_, layoutState) ->
+                        layoutState.copy(
+                            clickCount = 0,
+                            isHidden = false,
+                        )
+                    },
+                )
 
-            if (!saveProfileInternal(resetProfile)) {
-                return@withContext false
-            }
+                if (!saveProfileInternal(resetProfile)) {
+                    return@withLock false
+                }
 
-            _profiles.update { currentProfiles ->
-                currentProfiles.map { profile ->
-                    if (
-                        profile.profileId ==
-                        resetProfile.profileId
-                    ) {
-                        resetProfile
-                    } else {
-                        profile
+                _profiles.update { currentProfiles ->
+                    currentProfiles.map { profile ->
+                        if (
+                            profile.profileId ==
+                            resetProfile.profileId
+                        ) {
+                            resetProfile
+                        } else {
+                            profile
+                        }
                     }
                 }
-            }
-            _activeProfile.value = resetProfile
+                _activeProfile.value = resetProfile
 
-            true
+                true
+            }
         }
 
     private fun loadFactoryDefaultProfile():
@@ -487,34 +535,36 @@ class ProfileRepository(
     suspend fun updateActiveProfile(
         updatedProfile: UserProfile,
     ) = withContext(Dispatchers.IO) {
-        if (!saveProfileInternal(updatedProfile)) {
-            return@withContext
-        }
-
-        val existingProfileFound =
-            _profiles.value.any { profile ->
-                profile.profileId == updatedProfile.profileId
+        profileMutex.withLock {
+            if (!saveProfileInternal(updatedProfile)) {
+                return@withLock
             }
 
-        if (existingProfileFound) {
-            _profiles.update { currentProfiles ->
-                currentProfiles.map { profile ->
-                    if (
-                        profile.profileId ==
-                        updatedProfile.profileId
-                    ) {
-                        updatedProfile
-                    } else {
-                        profile
+            val existingProfileFound =
+                _profiles.value.any { profile ->
+                    profile.profileId == updatedProfile.profileId
+                }
+
+            if (existingProfileFound) {
+                _profiles.update { currentProfiles ->
+                    currentProfiles.map { profile ->
+                        if (
+                            profile.profileId ==
+                            updatedProfile.profileId
+                        ) {
+                            updatedProfile
+                        } else {
+                            profile
+                        }
                     }
                 }
+            } else {
+                _profiles.update { currentProfiles ->
+                    currentProfiles + updatedProfile
+                }
             }
-        } else {
-            _profiles.update { currentProfiles ->
-                currentProfiles + updatedProfile
-            }
+            _activeProfile.value = resolveCurrentActiveProfile()
         }
-        _activeProfile.value = resolveCurrentActiveProfile()
     }
 
     suspend fun repairProfilesLanguageForLegacyMigration(
@@ -522,35 +572,37 @@ class ProfileRepository(
         hasExplicitLegacyPreference: Boolean,
         activeProfileId: String?,
     ) = withContext(Dispatchers.IO) {
-        val normalizedLegacy = normalizeSupportedLanguageOrNull(legacyLanguageCode)
-            ?: DEFAULT_LANGUAGE_CODE
-        val currentProfiles = _profiles.value
-        if (currentProfiles.isEmpty()) {
-            return@withContext
-        }
-
-        val updatedProfiles = currentProfiles.map { profile ->
-            val currentCanonical = normalizeSupportedLanguageOrNull(profile.activeLanguageCode)
-            val isTargetActiveProfile =
-                (activeProfileId != null && profile.profileId == activeProfileId) ||
-                    (activeProfileId == null && currentProfiles.size == 1)
-
-            val desiredLanguage = when {
-                isTargetActiveProfile && hasExplicitLegacyPreference -> normalizedLegacy
-                currentCanonical != null -> currentCanonical
-                else -> normalizedLegacy
+        profileMutex.withLock {
+            val normalizedLegacy = normalizeSupportedLanguageOrNull(legacyLanguageCode)
+                ?: DEFAULT_LANGUAGE_CODE
+            val currentProfiles = _profiles.value
+            if (currentProfiles.isEmpty()) {
+                return@withLock
             }
 
-            if (profile.activeLanguageCode == desiredLanguage) {
-                profile
-            } else {
-                val updated = profile.copy(activeLanguageCode = desiredLanguage)
-                if (saveProfileInternal(updated)) updated else profile
-            }
-        }
+            val updatedProfiles = currentProfiles.map { profile ->
+                val currentCanonical = normalizeSupportedLanguageOrNull(profile.activeLanguageCode)
+                val isTargetActiveProfile =
+                    (activeProfileId != null && profile.profileId == activeProfileId) ||
+                        (activeProfileId == null && currentProfiles.size == 1)
 
-        _profiles.value = updatedProfiles
-        _activeProfile.value = resolveCurrentActiveProfile()
+                val desiredLanguage = when {
+                    isTargetActiveProfile && hasExplicitLegacyPreference -> normalizedLegacy
+                    currentCanonical != null -> currentCanonical
+                    else -> normalizedLegacy
+                }
+
+                if (profile.activeLanguageCode == desiredLanguage) {
+                    profile
+                } else {
+                    val updated = profile.copy(activeLanguageCode = desiredLanguage)
+                    if (saveProfileInternal(updated)) updated else profile
+                }
+            }
+
+            _profiles.value = updatedProfiles
+            _activeProfile.value = resolveCurrentActiveProfile()
+        }
     }
 
     private fun ensureStarterDictionaryForLanguageSync(languageCode: String) {

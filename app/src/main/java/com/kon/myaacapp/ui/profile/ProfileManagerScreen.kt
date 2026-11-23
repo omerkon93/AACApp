@@ -4,6 +4,7 @@ import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.FlowRow
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
@@ -31,6 +32,7 @@ import androidx.compose.material3.FloatingActionButton
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
+import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.RadioButton
 import androidx.compose.material3.Scaffold
@@ -44,6 +46,9 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import com.kon.myaacapp.R
 import com.kon.myaacapp.core.locale.LocaleHelper
+import com.kon.myaacapp.domain.entitlement.BillingFeedback
+import com.kon.myaacapp.domain.entitlement.FamilyPlanOfferDetails
+import com.kon.myaacapp.domain.entitlement.SubscriptionBillingState
 import com.kon.myaacapp.domain.model.ProfileCreationMode
 import com.kon.myaacapp.domain.model.UserProfile
 
@@ -54,6 +59,9 @@ fun ProfileManagerScreen(
     onAction: (ProfileManagerAction) -> Unit,
     onNavigateBack: () -> Unit,
 ) {
+    val isCreateBlocked = !state.canCreateAnotherProfile
+    val fabMuted = state.isBusy || isCreateBlocked
+
     Scaffold(
         topBar = {
             CenterAlignedTopAppBar(
@@ -92,7 +100,7 @@ fun ProfileManagerScreen(
                     }
                 },
                 containerColor =
-                    if (state.isBusy) {
+                    if (fabMuted) {
                         MaterialTheme
                             .colorScheme
                             .surfaceVariant
@@ -102,7 +110,7 @@ fun ProfileManagerScreen(
                             .primaryContainer
                     },
                 contentColor =
-                    if (state.isBusy) {
+                    if (fabMuted) {
                         MaterialTheme
                             .colorScheme
                             .onSurfaceVariant
@@ -129,6 +137,27 @@ fun ProfileManagerScreen(
             verticalArrangement =
                 Arrangement.spacedBy(8.dp),
         ) {
+            item(key = "profile_plan_summary") {
+                ProfilePlanSummaryCard(
+                    state = state,
+                    onUpgradeClick = {
+                        onAction(
+                            ProfileManagerAction.UpgradeToFamilyClicked
+                        )
+                    },
+                    onRestoreClick = {
+                        onAction(
+                            ProfileManagerAction.RestoreFamilyPurchaseClicked
+                        )
+                    },
+                    onManageSubscriptionClick = {
+                        onAction(
+                            ProfileManagerAction.ManageSubscriptionClicked
+                        )
+                    },
+                )
+            }
+
             items(
                 items = state.profiles,
                 key = { profile ->
@@ -208,6 +237,21 @@ fun ProfileManagerScreen(
         )
     }
 
+    if (state.showLimitDialog) {
+        ProfileLimitReachedDialog(
+            state = state,
+            onUpgrade = {
+                onAction(ProfileManagerAction.UpgradeToFamilyClicked)
+            },
+            onRestore = {
+                onAction(ProfileManagerAction.RestoreFamilyPurchaseClicked)
+            },
+            onDismiss = {
+                onAction(ProfileManagerAction.DismissLimitDialog)
+            },
+        )
+    }
+
     state.profilePendingDeletion?.let {
             selectedProfile ->
 
@@ -282,6 +326,460 @@ fun ProfileManagerScreen(
     }
 }
 
+@Composable
+private fun ProfilePlanSummaryCard(
+    state: ProfileManagerState,
+    onUpgradeClick: () -> Unit,
+    onRestoreClick: () -> Unit,
+    onManageSubscriptionClick: () -> Unit,
+) {
+    val containerColor = when {
+        state.hasFamilyEntitlement ->
+            MaterialTheme.colorScheme.secondaryContainer
+
+        state.isFreeLimitReached ->
+            MaterialTheme.colorScheme.tertiaryContainer
+
+        else ->
+            MaterialTheme.colorScheme.surfaceVariant
+    }
+    val formattedOfferPrice = state.offerDetails?.let { formatOfferPriceAndPeriod(it) }
+    val trialNote = state.offerDetails?.freeTrialPeriodIso8601?.let { formatBillingPeriod(it) }
+    val feedbackText = resolveBillingFeedbackMessage(state)
+
+    Card(
+        modifier = Modifier.fillMaxWidth(),
+        colors = CardDefaults.cardColors(
+            containerColor = containerColor,
+        ),
+    ) {
+        Column(
+            modifier = Modifier
+                .fillMaxWidth()
+                .padding(14.dp),
+            verticalArrangement = Arrangement.spacedBy(6.dp),
+        ) {
+            when {
+                state.hasFamilyEntitlement -> {
+                    val isCanceledPendingExpiry =
+                        state.subscriptionState == SubscriptionBillingState.CANCELED_PENDING_EXPIRY
+
+                    Text(
+                        text = stringResource(
+                            if (isCanceledPendingExpiry) {
+                                R.string.profile_plan_family_canceled_active_title
+                            } else {
+                                R.string.profile_plan_family_active
+                            },
+                        ),
+                        style = MaterialTheme.typography.titleSmall,
+                        fontWeight = FontWeight.Bold,
+                    )
+                    Text(
+                        text = stringResource(
+                            R.string.profile_plan_family_summary,
+                            state.savedProfileCount,
+                        ),
+                        style = MaterialTheme.typography.bodySmall,
+                    )
+                    if (isCanceledPendingExpiry) {
+                        Text(
+                            text = stringResource(R.string.profile_plan_family_canceled_active_body),
+                            style = MaterialTheme.typography.bodySmall,
+                        )
+                    }
+                    if (formattedOfferPrice != null) {
+                        Text(
+                            text = stringResource(
+                                R.string.profile_plan_price_summary,
+                                formattedOfferPrice,
+                            ),
+                            style = MaterialTheme.typography.bodySmall,
+                        )
+                    }
+                    if (state.isCachedOfflineEntitlement) {
+                        Text(
+                            text = stringResource(R.string.profile_plan_cached_offline_notice),
+                            style = MaterialTheme.typography.bodySmall,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant,
+                        )
+                    }
+                    if (state.isBillingConfigured) {
+                        OutlinedButton(
+                            onClick = onManageSubscriptionClick,
+                            enabled = !state.isBusy,
+                        ) {
+                            Text(text = stringResource(R.string.profile_manage_subscription))
+                        }
+                    }
+                }
+
+                state.isProfileLimitEnforced -> {
+                    val countLabel = if (state.savedProfileCount > state.freeProfileLimit) {
+                        stringResource(
+                            R.string.profile_plan_free_over_limit_count,
+                            state.savedProfileCount,
+                            state.freeProfileLimit,
+                        )
+                    } else {
+                        stringResource(
+                            R.string.profile_plan_free_count,
+                            state.savedProfileCount,
+                            state.freeProfileLimit,
+                        )
+                    }
+                    Text(
+                        text = countLabel,
+                        style = MaterialTheme.typography.titleSmall,
+                        fontWeight = FontWeight.Bold,
+                    )
+
+                    if (state.isFreeLimitReached) {
+                        Text(
+                            text = stringResource(R.string.profile_plan_limit_reached_title),
+                            style = MaterialTheme.typography.bodyMedium,
+                            fontWeight = FontWeight.SemiBold,
+                        )
+                        Text(
+                            text = stringResource(
+                                R.string.profile_plan_limit_reached_body,
+                                state.freeProfileLimit,
+                                state.savedProfileCount,
+                            ),
+                            style = MaterialTheme.typography.bodySmall,
+                        )
+                    } else {
+                        Text(
+                            text = stringResource(R.string.profile_plan_free_hint),
+                            style = MaterialTheme.typography.bodySmall,
+                        )
+                    }
+
+                    if (state.subscriptionState == SubscriptionBillingState.EXPIRED) {
+                        Text(
+                            text = stringResource(
+                                R.string.profile_plan_family_expired_notice,
+                                state.freeProfileLimit,
+                            ),
+                            style = MaterialTheme.typography.bodySmall,
+                            fontWeight = FontWeight.Medium,
+                        )
+                    }
+
+                    if (formattedOfferPrice != null) {
+                        Text(
+                            text = stringResource(
+                                R.string.profile_plan_price_summary,
+                                formattedOfferPrice,
+                            ),
+                            style = MaterialTheme.typography.bodySmall,
+                            fontWeight = FontWeight.Medium,
+                        )
+                        if (trialNote != null) {
+                            Text(
+                                text = stringResource(
+                                    R.string.profile_plan_free_trial_note,
+                                    trialNote,
+                                ),
+                                style = MaterialTheme.typography.bodySmall,
+                                color = MaterialTheme.colorScheme.onSurfaceVariant,
+                            )
+                        }
+                    } else if (state.isLoadingStoreOffer) {
+                        Text(
+                            text = stringResource(R.string.profile_plan_loading_offer),
+                            style = MaterialTheme.typography.bodySmall,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant,
+                        )
+                    }
+
+                    FlowRow(
+                        horizontalArrangement = Arrangement.spacedBy(8.dp),
+                        verticalArrangement = Arrangement.spacedBy(8.dp),
+                    ) {
+                        Button(
+                            onClick = onUpgradeClick,
+                            enabled = !state.isBusy,
+                        ) {
+                            Text(
+                                text = if (formattedOfferPrice != null) {
+                                    stringResource(
+                                        R.string.profile_upgrade_to_family_with_price,
+                                        formattedOfferPrice,
+                                    )
+                                } else {
+                                    stringResource(R.string.profile_upgrade_to_family)
+                                },
+                            )
+                        }
+
+                        OutlinedButton(
+                            onClick = onRestoreClick,
+                            enabled = !state.isBusy,
+                        ) {
+                            Text(text = stringResource(R.string.profile_restore_family_purchase))
+                        }
+                    }
+
+                    if (feedbackText != null && !state.showLimitDialog) {
+                        Text(
+                            text = feedbackText,
+                            style = MaterialTheme.typography.bodySmall,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant,
+                        )
+                    }
+                }
+
+                else -> {
+                    Text(
+                        text = stringResource(
+                            R.string.profile_plan_cap_disabled_summary,
+                            state.savedProfileCount,
+                        ),
+                        style = MaterialTheme.typography.titleSmall,
+                        fontWeight = FontWeight.Bold,
+                    )
+                    Text(
+                        text = stringResource(R.string.profile_plan_free_hint),
+                        style = MaterialTheme.typography.bodySmall,
+                    )
+                }
+            }
+        }
+    }
+}
+
+@Composable
+private fun ProfileLimitReachedDialog(
+    state: ProfileManagerState,
+    onUpgrade: () -> Unit,
+    onRestore: () -> Unit,
+    onDismiss: () -> Unit,
+) {
+    val formattedOfferPrice = state.offerDetails?.let { formatOfferPriceAndPeriod(it) }
+    val trialNote = state.offerDetails?.freeTrialPeriodIso8601?.let { formatBillingPeriod(it) }
+    val feedbackText = resolveBillingFeedbackMessage(state)
+
+    AlertDialog(
+        onDismissRequest = {
+            if (!state.isUpdatingEntitlement) {
+                onDismiss()
+            }
+        },
+        title = {
+            Text(
+                text = stringResource(
+                    R.string.profile_plan_limit_reached_title
+                ),
+            )
+        },
+        text = {
+            Column(
+                modifier = Modifier.verticalScroll(rememberScrollState()),
+                verticalArrangement = Arrangement.spacedBy(10.dp),
+            ) {
+                Text(
+                    text = stringResource(
+                        R.string.profile_plan_limit_reached_body,
+                        state.freeProfileLimit,
+                        state.savedProfileCount,
+                    ),
+                )
+                if (state.subscriptionState == SubscriptionBillingState.EXPIRED) {
+                    Text(
+                        text = stringResource(
+                            R.string.profile_plan_family_expired_notice,
+                            state.freeProfileLimit,
+                        ),
+                        style = MaterialTheme.typography.bodySmall,
+                        fontWeight = FontWeight.Medium,
+                    )
+                }
+                if (formattedOfferPrice != null) {
+                    Text(
+                        text = stringResource(
+                            R.string.profile_plan_price_summary,
+                            formattedOfferPrice,
+                        ),
+                        style = MaterialTheme.typography.bodySmall,
+                        fontWeight = FontWeight.SemiBold,
+                    )
+                    if (trialNote != null) {
+                        Text(
+                            text = stringResource(
+                                R.string.profile_plan_free_trial_note,
+                                trialNote,
+                            ),
+                            style = MaterialTheme.typography.bodySmall,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant,
+                        )
+                    }
+                } else if (state.isLoadingStoreOffer) {
+                    Text(
+                        text = stringResource(R.string.profile_plan_loading_offer),
+                        style = MaterialTheme.typography.bodySmall,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    )
+                }
+                if (feedbackText != null) {
+                    Text(
+                        text = feedbackText,
+                        style = MaterialTheme.typography.bodySmall,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    )
+                }
+            }
+        },
+        confirmButton = {
+            Button(
+                onClick = onUpgrade,
+                enabled = !state.isUpdatingEntitlement,
+            ) {
+                Text(
+                    text = if (formattedOfferPrice != null) {
+                        stringResource(
+                            R.string.profile_upgrade_to_family_with_price,
+                            formattedOfferPrice,
+                        )
+                    } else {
+                        stringResource(R.string.profile_upgrade_to_family)
+                    },
+                )
+            }
+        },
+        dismissButton = {
+            Row(
+                horizontalArrangement = Arrangement.spacedBy(8.dp),
+            ) {
+                TextButton(
+                    onClick = onRestore,
+                    enabled = !state.isUpdatingEntitlement,
+                ) {
+                    Text(
+                        text = stringResource(
+                            R.string.profile_restore_family_purchase
+                        ),
+                    )
+                }
+                TextButton(
+                    onClick = onDismiss,
+                    enabled = !state.isUpdatingEntitlement,
+                ) {
+                    Text(
+                        text = stringResource(
+                            R.string.close
+                        ),
+                    )
+                }
+            }
+        },
+    )
+}
+
+@Composable
+private fun formatOfferPriceAndPeriod(
+    offer: FamilyPlanOfferDetails,
+): String {
+    val periodLabel = formatBillingPeriod(offer.billingPeriodIso8601)
+    return if (periodLabel != null) {
+        stringResource(
+            R.string.profile_plan_price_period,
+            offer.formattedPrice,
+            periodLabel,
+        )
+    } else {
+        offer.formattedPrice
+    }
+}
+
+@Composable
+private fun formatBillingPeriod(isoPeriod: String): String? {
+    val trimmed = isoPeriod.trim().uppercase()
+    if (!trimmed.startsWith("P") || trimmed.length < 3) {
+        return null
+    }
+    val unit = trimmed.last()
+    val count = trimmed.substring(1, trimmed.length - 1).toIntOrNull() ?: return null
+    if (count <= 0) return null
+
+    return when (unit) {
+        'D' -> if (count == 1) {
+            stringResource(R.string.profile_period_day)
+        } else {
+            stringResource(R.string.profile_period_days, count)
+        }
+
+        'W' -> if (count == 1) {
+            stringResource(R.string.profile_period_week)
+        } else {
+            stringResource(R.string.profile_period_weeks, count)
+        }
+
+        'M' -> if (count == 1) {
+            stringResource(R.string.profile_period_month)
+        } else {
+            stringResource(R.string.profile_period_months, count)
+        }
+
+        'Y' -> if (count == 1) {
+            stringResource(R.string.profile_period_year)
+        } else {
+            stringResource(R.string.profile_period_years, count)
+        }
+
+        else -> null
+    }
+}
+
+@Composable
+private fun resolveBillingFeedbackMessage(state: ProfileManagerState): String? {
+    if (state.hasPendingPurchase || state.lastBillingFeedback == BillingFeedback.PURCHASE_PENDING) {
+        return stringResource(R.string.profile_billing_feedback_pending)
+    }
+    return when (state.lastBillingFeedback) {
+        BillingFeedback.NONE -> {
+            if (state.showBillingUnavailableNotice) {
+                if (state.isBillingConfigured) {
+                    stringResource(R.string.profile_billing_play_unavailable_message)
+                } else {
+                    stringResource(R.string.profile_billing_unavailable_message)
+                }
+            } else {
+                null
+            }
+        }
+
+        BillingFeedback.PURCHASE_PENDING ->
+            stringResource(R.string.profile_billing_feedback_pending)
+
+        BillingFeedback.CHECKOUT_CANCELED ->
+            stringResource(R.string.profile_billing_feedback_canceled)
+
+        BillingFeedback.PAYMENT_DECLINED_INSUFFICIENT_FUNDS ->
+            stringResource(R.string.profile_billing_feedback_insufficient_funds)
+
+        BillingFeedback.USER_INELIGIBLE ->
+            stringResource(R.string.profile_billing_feedback_user_ineligible)
+
+        BillingFeedback.PRODUCT_UNAVAILABLE ->
+            stringResource(R.string.profile_billing_feedback_product_unavailable)
+
+        BillingFeedback.TEMPORARY_ERROR ->
+            stringResource(R.string.profile_billing_feedback_temporary_error)
+
+        BillingFeedback.BILLING_UNAVAILABLE -> {
+            if (state.isBillingConfigured) {
+                stringResource(R.string.profile_billing_play_unavailable_message)
+            } else {
+                stringResource(R.string.profile_billing_unavailable_message)
+            }
+        }
+
+        BillingFeedback.RESTORED_NO_ACTIVE_PURCHASE ->
+            stringResource(R.string.profile_billing_feedback_no_purchase_found)
+    }
+}
+
 // FIX: Modified signature to accept parameters in the lambdas.
 // This allows the parent to pass stable function references.
 @Composable
@@ -348,12 +846,14 @@ fun ProfileItem(
                             contentDescription = stringResource(R.string.switch_profile)
                         )
                     }
-                    IconButton(onClick = { onDelete(profile) }) {
-                        Icon(
-                            Icons.Default.Delete,
-                            contentDescription = stringResource(R.string.delete_profile),
-                            tint = MaterialTheme.colorScheme.error
-                        )
+                    if (profile.profileId != "default") {
+                        IconButton(onClick = { onDelete(profile) }) {
+                            Icon(
+                                Icons.Default.Delete,
+                                contentDescription = stringResource(R.string.delete_profile),
+                                tint = MaterialTheme.colorScheme.error
+                            )
+                        }
                     }
                 }
             }

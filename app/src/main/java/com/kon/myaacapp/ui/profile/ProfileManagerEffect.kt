@@ -11,6 +11,10 @@ sealed interface ProfileManagerEffect {
     data object ProfileDeleted :
         ProfileManagerEffect
 
+    data class OpenSubscriptionManagement(
+        val uri: String,
+    ) : ProfileManagerEffect
+
     data class ShowError(
         val message: String,
     ) : ProfileManagerEffect

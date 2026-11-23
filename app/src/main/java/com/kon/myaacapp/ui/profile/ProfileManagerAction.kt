@@ -5,10 +5,28 @@ import com.kon.myaacapp.domain.model.UserProfile
 
 sealed interface ProfileManagerAction {
 
+    data object RefreshBillingState :
+        ProfileManagerAction
+
     data object OpenCreateDialog :
         ProfileManagerAction
 
     data object CloseCreateDialog :
+        ProfileManagerAction
+
+    data object DismissLimitDialog :
+        ProfileManagerAction
+
+    data object DismissBillingUnavailableNotice :
+        ProfileManagerAction
+
+    data object UpgradeToFamilyClicked :
+        ProfileManagerAction
+
+    data object RestoreFamilyPurchaseClicked :
+        ProfileManagerAction
+
+    data object ManageSubscriptionClicked :
         ProfileManagerAction
 
     data class ProfileNameChanged(
