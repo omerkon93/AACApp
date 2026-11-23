@@ -228,7 +228,7 @@
     <string name="profile_plan_limit_reached_body">התוכנית החינמית מאפשרת יצירת עד %1$d פרופילים (כרגע שמורים %2$d). כל הפרופילים הקיימים, התקשורת, העריכה, ההקלטות והגיבויים ממשיכים לעבוד כרגיל. ניתן למחוק פרופיל עד שיישארו פחות מ-%1$d, או לשדרג לתוכנית משפחה כדי להוסיף פרופילים.</string>
     <string name="profile_plan_family_active">תוכנית משפחה פעילה</string>
     <string name="profile_plan_family_summary">%1$d פרופילים שמורים • יצירת פרופילים ללא הגבלה</string>
-    <string name="profile_plan_cap_disabled_summary">%1$d פרופילים שמורים • מגבלת הפרופילים מושהית עד להפעלת חיוב בחנות</string>
+    <string name="profile_plan_saved_count">פרופילים שמורים (%1$d)</string>
     <string name="profile_upgrade_to_family">שדרוג לתוכנית משפחה</string>
     <string name="profile_upgrade_to_family_with_price">שדרוג לתוכנית משפחה (%1$s)</string>
     <string name="profile_restore_family_purchase">שחזור רכישה</string>
@@ -257,7 +257,7 @@
     <string name="profile_billing_feedback_user_ineligible">חשבון Google Play זה אינו זכאי להצעת משפחה זו.</string>
     <string name="profile_billing_feedback_product_unavailable">מנוי תוכנית המשפחה עדיין אינו זמין בגרסה זו או בחשבון Google Play זה.</string>
     <string name="profile_billing_feedback_temporary_error">לא ניתן להתחבר ל-Google Play Billing כרגע. הלוחות הקיימים והסטטוס השמור זמינים ללא אינטרנט—נסה שוב מאוחר יותר.</string>
-    <string name="profile_billing_feedback_no_purchase_found">לא נמצא מנוי משפחה פעיל בחשבון Google Play זה.</string>
+    <string name="profile_billing_feedback_no_purchase_found">לא נמצא מנוי משפחה פעיל בחשבון Google Play זה. יש לבדוק שהמכשיר מחובר לחשבון Google Play שבאמצעותו נרכשה תוכנית המשפחה.</string>
 
     <!-- Layout Settings -->
     <string name="admin_tab_layout">תצוגה</string>

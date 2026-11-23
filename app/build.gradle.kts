@@ -1,4 +1,7 @@
 @file:Suppress("UnstableApiUsage")
+
+import java.util.Properties
+
 plugins {
     alias(libs.plugins.android.application)
     alias(libs.plugins.kotlin.compose)
@@ -22,16 +25,99 @@ val enableProfileCapTestConfig =
         ?.toBooleanStrictOrNull()
         ?: false
 
+val appVersionCode =
+    (project.findProperty("myaac.versionCode") as? String)
+        ?.trim()
+        ?.toIntOrNull()
+        ?: 1
+
+val appVersionName =
+    (project.findProperty("myaac.versionName") as? String)
+        ?.trim()
+        ?.takeIf { it.isNotEmpty() }
+        ?: "1.0"
+
+val requireUploadSigning =
+    (project.findProperty("myaac.requireUploadSigning") as? String)
+        ?.toBooleanStrictOrNull()
+        ?: false
+
+val keystorePropertiesFile = rootProject.file("keystore.properties")
+val keystoreProperties = Properties().apply {
+    if (keystorePropertiesFile.isFile) {
+        keystorePropertiesFile.inputStream().use(::load)
+    }
+}
+
+fun resolveSigningValue(
+    propertyKey: String,
+    keystoreKey: String,
+    envKey: String,
+): String? {
+    return (project.findProperty(propertyKey) as? String)?.trim()?.takeIf { it.isNotEmpty() }
+        ?: keystoreProperties.getProperty(keystoreKey)?.trim()?.takeIf { it.isNotEmpty() }
+        ?: System.getenv(envKey)?.trim()?.takeIf { it.isNotEmpty() }
+}
+
+val uploadStoreFilePath = resolveSigningValue(
+    propertyKey = "myaac.uploadStoreFile",
+    keystoreKey = "storeFile",
+    envKey = "MYAAC_UPLOAD_STORE_FILE",
+)
+val uploadStorePassword = resolveSigningValue(
+    propertyKey = "myaac.uploadStorePassword",
+    keystoreKey = "storePassword",
+    envKey = "MYAAC_UPLOAD_STORE_PASSWORD",
+)
+val uploadKeyAlias = resolveSigningValue(
+    propertyKey = "myaac.uploadKeyAlias",
+    keystoreKey = "keyAlias",
+    envKey = "MYAAC_UPLOAD_KEY_ALIAS",
+)
+val uploadKeyPassword = resolveSigningValue(
+    propertyKey = "myaac.uploadKeyPassword",
+    keystoreKey = "keyPassword",
+    envKey = "MYAAC_UPLOAD_KEY_PASSWORD",
+)
+val resolvedUploadStoreFile = uploadStoreFilePath?.let { rawPath ->
+    val direct = file(rawPath)
+    if (direct.isAbsolute) direct else rootProject.file(rawPath)
+}
+val hasUploadSigning =
+    resolvedUploadStoreFile?.isFile == true &&
+        !uploadStorePassword.isNullOrEmpty() &&
+        !uploadKeyAlias.isNullOrEmpty() &&
+        !uploadKeyPassword.isNullOrEmpty()
+
+if (requireUploadSigning && !hasUploadSigning) {
+    throw GradleException(
+        "Upload signing is required (-Pmyaac.requireUploadSigning=true), but upload keystore " +
+            "settings were not found. Provide keystore.properties at repo root (storeFile, " +
+            "storePassword, keyAlias, keyPassword) or MYAAC_UPLOAD_* env vars.",
+    )
+}
+
 android {
     namespace = "com.kon.myaacapp"
     compileSdk = 37
+
+    signingConfigs {
+        if (hasUploadSigning) {
+            create("upload") {
+                storeFile = resolvedUploadStoreFile
+                storePassword = uploadStorePassword
+                keyAlias = uploadKeyAlias
+                keyPassword = uploadKeyPassword
+            }
+        }
+    }
 
     defaultConfig {
         applicationId = "com.kon.myaacapp"
         minSdk = 26
         targetSdk = 37
-        versionCode = 1
-        versionName = "1.0"
+        versionCode = appVersionCode
+        versionName = appVersionName
 
         testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
 
@@ -61,13 +147,20 @@ android {
                 getDefaultProguardFile("proguard-android-optimize.txt"),
                 "proguard-rules.pro",
             )
+            if (hasUploadSigning) {
+                signingConfig = signingConfigs.getByName("upload")
+            }
             // Keep production cap disabled until Play Console & backend verification are approved.
             buildConfigField("boolean", "ENFORCE_PROFILE_CAP", "false")
         }
         create("internalTest") {
             initWith(getByName("release"))
             matchingFallbacks += listOf("release")
-            signingConfig = signingConfigs.getByName("debug")
+            signingConfig = if (hasUploadSigning) {
+                signingConfigs.getByName("upload")
+            } else {
+                signingConfigs.getByName("debug")
+            }
             buildConfigField("boolean", "ENFORCE_PROFILE_CAP", "true")
         }
     }

@@ -533,7 +533,7 @@ private fun ProfilePlanSummaryCard(
                 else -> {
                     Text(
                         text = stringResource(
-                            R.string.profile_plan_cap_disabled_summary,
+                            R.string.profile_plan_saved_count,
                             state.savedProfileCount,
                         ),
                         style = MaterialTheme.typography.titleSmall,

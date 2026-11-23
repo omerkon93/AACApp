@@ -338,6 +338,24 @@ class PlayBillingFamilyEntitlementProviderTest {
                 provider.currentEntitlement().lastBillingFeedback,
             )
 
+            // Temporary connection failure replaces NoPurchaseFound with TEMPORARY_ERROR
+            gateway.connectResult = GatewayBillingResult(
+                responseCode = BillingClient.BillingResponseCode.NETWORK_ERROR,
+            )
+            assertTrue(provider.restoreFamilyPurchase() is FamilyUpgradeOutcome.Failed)
+            assertEquals(
+                BillingFeedback.TEMPORARY_ERROR,
+                provider.currentEntitlement().lastBillingFeedback,
+            )
+
+            // Switching back online without purchase cleanly restores RESTORED_NO_ACTIVE_PURCHASE
+            gateway.connectResult = GatewayBillingResult(BillingClient.BillingResponseCode.OK)
+            assertEquals(FamilyUpgradeOutcome.NoPurchaseFound, provider.restoreFamilyPurchase())
+            assertEquals(
+                BillingFeedback.RESTORED_NO_ACTIVE_PURCHASE,
+                provider.currentEntitlement().lastBillingFeedback,
+            )
+
             // Account owns subscription -> restore activates Family & unlocks 3rd profile
             gateway.ownedPurchases = listOf(
                 GatewayPurchase(

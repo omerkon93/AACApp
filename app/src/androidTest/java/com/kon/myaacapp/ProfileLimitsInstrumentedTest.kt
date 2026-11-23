@@ -689,6 +689,150 @@ class ProfileLimitsInstrumentedTest {
         }
     }
 
+    @Test
+    fun backupFromFamilyDoesNotUnlockFamilyOnDifferentPlayAccountAndDistinguishesNoPurchaseFromConnectionError() {
+        val sourceFamilyProvider = ConfigurableFamilyEntitlementProvider(
+            FamilyEntitlementState(
+                tier = ProfilePlanTier.FAMILY,
+                isBillingConfigured = true,
+                isProfileCapEnforced = true,
+            ),
+        )
+        val sourceStack = createStack("backup_family_source", sourceFamilyProvider)
+        val backupZip = File(testRootDir, "family_account_backup.zip")
+
+        runBlocking {
+            assertTrue(sourceStack.coordinator.initialize())
+            assertTrue(
+                sourceStack.profileRepository.createProfile(
+                    "Child Two",
+                    ProfileCreationMode.DEFAULT_TEMPLATE,
+                    "en",
+                ) is CreateProfileResult.Success,
+            )
+            assertTrue(
+                sourceStack.profileRepository.createProfile(
+                    "Child Three",
+                    ProfileCreationMode.BLANK,
+                    "he",
+                ) is CreateProfileResult.Success,
+            )
+            sourceStack.backupManager.exportDatabase(
+                uri = Uri.fromFile(backupZip),
+                contentResolver = targetContext.contentResolver,
+            )
+            assertTrue(sourceStack.backupManager.result.filterNotNull().first().isSuccess)
+        }
+
+        // Verify ZIP contains zero entitlement/shared_prefs files
+        java.util.zip.ZipFile(backupZip).use { zip ->
+            val entryNames = zip.entries().toList().map { it.name.lowercase() }
+            assertFalse(entryNames.any { it.contains("shared_prefs") || it.contains("entitlement") || it.contains("billing") })
+        }
+
+        // Destination installation belongs to a DIFFERENT Play account with no Family purchase
+        var simulateConnectionFailure = false
+        val noPurchasePlayProvider = ConfigurableFamilyEntitlementProvider(
+            initialState = FamilyEntitlementState(
+                tier = ProfilePlanTier.FREE,
+                isBillingConfigured = true,
+                isProfileCapEnforced = true,
+            ),
+        )
+        val destProvider = object : FamilyEntitlementProvider by noPurchasePlayProvider {
+            override suspend fun restoreFamilyPurchase(): com.kon.myaacapp.domain.entitlement.FamilyUpgradeOutcome {
+                return if (simulateConnectionFailure) {
+                    noPurchasePlayProvider.updateState {
+                        it.copy(
+                            lastBillingFeedback = com.kon.myaacapp.domain.entitlement.BillingFeedback.TEMPORARY_ERROR,
+                        )
+                    }
+                    com.kon.myaacapp.domain.entitlement.FamilyUpgradeOutcome.Failed(
+                        reason = "Offline",
+                        feedback = com.kon.myaacapp.domain.entitlement.BillingFeedback.TEMPORARY_ERROR,
+                    )
+                } else {
+                    noPurchasePlayProvider.updateState {
+                        it.copy(
+                            lastBillingFeedback = com.kon.myaacapp.domain.entitlement.BillingFeedback.RESTORED_NO_ACTIVE_PURCHASE,
+                        )
+                    }
+                    com.kon.myaacapp.domain.entitlement.FamilyUpgradeOutcome.NoPurchaseFound
+                }
+            }
+        }
+        val destStack = createStack("different_play_account_dest", destProvider)
+        lateinit var destVm: ProfileManagerViewModel
+
+        runBlocking {
+            assertTrue(destStack.coordinator.initialize())
+            destStack.backupManager.importDatabase(
+                uri = Uri.fromFile(backupZip),
+                contentResolver = targetContext.contentResolver,
+            )
+            assertTrue(destStack.backupManager.result.filterNotNull().first().isSuccess)
+            assertEquals(3, destStack.profileRepository.profiles.value.size)
+            assertFalse(destProvider.currentEntitlement().hasFamilyEntitlement)
+            assertTrue(
+                destStack.profileRepository.createProfile(
+                    "Fourth Should Be Blocked",
+                    ProfileCreationMode.BLANK,
+                    "en",
+                ) is CreateProfileResult.LimitReached,
+            )
+            destVm = ProfileManagerViewModel(
+                profileRepository = destStack.profileRepository,
+                aacRepository = destStack.aacRepository,
+                familyEntitlementProvider = destProvider,
+            )
+        }
+
+        val enContext = LocaleHelper.wrap(targetContext, "en")
+        composeRule.setContent {
+            val wrappedContext = LocaleHelper.wrap(targetContext, "en")
+            val profileState by destVm.state.collectAsState()
+            MyAACAppTheme {
+                CompositionLocalProvider(
+                    LocalContext provides wrappedContext,
+                    LocalResources provides wrappedContext.resources,
+                    LocalConfiguration provides wrappedContext.resources.configuration,
+                    LocalLayoutDirection provides LayoutDirection.Ltr,
+                ) {
+                    ProfileManagerScreen(
+                        state = profileState,
+                        onAction = destVm::onAction,
+                        onNavigateBack = {},
+                    )
+                }
+            }
+        }
+
+        // Restore purchase with no Family on this Play account -> prompt to check Play account
+        composeRule.onNodeWithText(enContext.getString(R.string.profile_restore_family_purchase))
+            .performClick()
+        composeRule.waitUntil(timeoutMillis = 3_000L) {
+            composeRule.onAllNodesWithText(
+                enContext.getString(R.string.profile_billing_feedback_no_purchase_found),
+            ).fetchSemanticsNodes().isNotEmpty()
+        }
+        assertFalse(destVm.state.value.hasFamilyEntitlement)
+
+        // Distinguish from temporary connection failure
+        simulateConnectionFailure = true
+        composeRule.onNodeWithText(enContext.getString(R.string.profile_restore_family_purchase))
+            .performClick()
+        composeRule.waitUntil(timeoutMillis = 3_000L) {
+            composeRule.onAllNodesWithText(
+                enContext.getString(R.string.profile_billing_feedback_temporary_error),
+            ).fetchSemanticsNodes().isNotEmpty()
+        }
+        assertTrue(
+            composeRule.onAllNodesWithText(
+                enContext.getString(R.string.profile_billing_feedback_no_purchase_found),
+            ).fetchSemanticsNodes().isEmpty(),
+        )
+    }
+
     private fun createTestWavBytes(): ByteArray {
         val sampleRate = 44100
         val sampleCount = 2205

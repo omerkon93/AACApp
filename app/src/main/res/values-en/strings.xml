@@ -228,7 +228,7 @@
     <string name="profile_plan_limit_reached_body">The Free plan allows creating up to %1$d profiles (currently %2$d saved). All existing profiles, communication, editing, recordings, and backups still work. Delete a profile until fewer than %1$d remain, or upgrade to Family to add more.</string>
     <string name="profile_plan_family_active">Family plan active</string>
     <string name="profile_plan_family_summary">%1$d saved profiles • Unlimited profile creation</string>
-    <string name="profile_plan_cap_disabled_summary">%1$d saved profiles • Profile limit paused until store billing is enabled</string>
+    <string name="profile_plan_saved_count">Saved profiles (%1$d)</string>
     <string name="profile_upgrade_to_family">Upgrade to Family</string>
     <string name="profile_upgrade_to_family_with_price">Upgrade to Family (%1$s)</string>
     <string name="profile_restore_family_purchase">Restore purchase</string>
@@ -257,7 +257,7 @@
     <string name="profile_billing_feedback_user_ineligible">This Google Play account is not eligible for this Family offer.</string>
     <string name="profile_billing_feedback_product_unavailable">The Family subscription is not yet available for this build or Google Play account.</string>
     <string name="profile_billing_feedback_temporary_error">Could not reach Google Play Billing right now. Existing boards and cached status stay available offline—please try again later.</string>
-    <string name="profile_billing_feedback_no_purchase_found">No active Family subscription was found on this Google Play account.</string>
+    <string name="profile_billing_feedback_no_purchase_found">No active Family subscription was found on this Google Play account. Check that you are signed in to the Google Play account that bought Family.</string>
 
     <!-- Layout Settings -->
     <string name="admin_tab_layout">Layout</string>

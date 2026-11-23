@@ -17,3 +17,6 @@
 local.properties
 /*.png
 *.bak
+keystore.properties
+*.jks
+*.keystore

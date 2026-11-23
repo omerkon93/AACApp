@@ -74,6 +74,7 @@ class PlayBillingFamilyEntitlementProvider(
 
     override suspend fun requestFamilyUpgrade(): FamilyUpgradeOutcome =
         operationMutex.withLock {
+            _entitlementState.update { it.copy(lastBillingFeedback = BillingFeedback.NONE) }
             val connectionResult = gateway.ensureConnected()
             if (!connectionResult.isOk) {
                 val feedback = mapErrorFeedback(connectionResult)
@@ -171,6 +172,7 @@ class PlayBillingFamilyEntitlementProvider(
 
     override suspend fun restoreFamilyPurchase(): FamilyUpgradeOutcome =
         operationMutex.withLock {
+            _entitlementState.update { it.copy(lastBillingFeedback = BillingFeedback.NONE) }
             val connectionResult = gateway.ensureConnected()
             if (!connectionResult.isOk) {
                 val feedback = mapErrorFeedback(connectionResult)
