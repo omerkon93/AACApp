@@ -6,122 +6,347 @@ import android.media.AudioFormat
 import android.media.AudioRecord
 import android.media.MediaPlayer
 import android.media.MediaRecorder
+import android.net.Uri
 import android.util.Log
 import com.kon.myaacapp.core.locale.LocaleHelper
 import com.kon.myaacapp.domain.model.CombinedTile
 import com.kon.myaacapp.domain.service.AACTileService
 import kotlinx.coroutines.CoroutineScope
+import kotlinx.coroutines.Deferred
 import kotlinx.coroutines.Dispatchers
-import kotlinx.coroutines.Job
+import kotlinx.coroutines.SupervisorJob
+import kotlinx.coroutines.async
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.suspendCancellableCoroutine
+import kotlinx.coroutines.withContext
 import java.io.File
+import java.io.FileInputStream
 import java.io.FileOutputStream
 import java.io.OutputStream
+import java.util.UUID
 import kotlin.coroutines.resume
 import kotlin.math.abs
 import kotlin.time.Duration.Companion.milliseconds
 
-class AudioRecordingService(private val context: Context) {
+enum class RecordingFailureReason {
+    NOT_RECORDING,
+    ALREADY_RECORDING,
+    INITIALIZATION_FAILED,
+    IO_ERROR,
+    INVALID_OUTPUT,
+}
 
-    private var mediaPlayer: MediaPlayer? = null
+sealed interface RecordingResult {
+    data class Success(val filePath: String) : RecordingResult
+    data object Silent : RecordingResult
+    data object Cancelled : RecordingResult
+    data class Failed(
+        val reason: RecordingFailureReason,
+        val cause: Throwable? = null,
+    ) : RecordingResult
+}
+
+interface PcmAudioRecorder {
+    fun initialize(sampleRate: Int, channelConfig: Int, audioFormat: Int): Int?
+    fun start(): Boolean
+    fun read(buffer: ShortArray, offset: Int, size: Int): Int
+    fun stopAndRelease()
+}
+
+private class AndroidPcmRecorder : PcmAudioRecorder {
     private var audioRecord: AudioRecord? = null
 
-    // OPTIMIZATION: @Volatile ensures the IO thread instantly sees when the Main thread stops recording
+    @SuppressLint("MissingPermission")
+    override fun initialize(sampleRate: Int, channelConfig: Int, audioFormat: Int): Int? {
+        val bufferSize = AudioRecord.getMinBufferSize(sampleRate, channelConfig, audioFormat)
+        if (bufferSize == AudioRecord.ERROR || bufferSize == AudioRecord.ERROR_BAD_VALUE || bufferSize <= 0) {
+            return null
+        }
+
+        val record = try {
+            AudioRecord(
+                MediaRecorder.AudioSource.MIC,
+                sampleRate,
+                channelConfig,
+                audioFormat,
+                bufferSize,
+            )
+        } catch (e: Exception) {
+            Log.e("AudioRecordingService", "Failed to construct AudioRecord", e)
+            return null
+        }
+
+        if (record.state != AudioRecord.STATE_INITIALIZED) {
+            runCatching { record.release() }
+            return null
+        }
+
+        audioRecord = record
+        return bufferSize
+    }
+
+    override fun start(): Boolean {
+        val record = audioRecord ?: return false
+        return try {
+            record.startRecording()
+            true
+        } catch (e: Exception) {
+            Log.e("AudioRecordingService", "AudioRecord.startRecording() failed", e)
+            false
+        }
+    }
+
+    override fun read(buffer: ShortArray, offset: Int, size: Int): Int {
+        return audioRecord?.read(buffer, offset, size) ?: -1
+    }
+
+    override fun stopAndRelease() {
+        val record = audioRecord
+        audioRecord = null
+        record?.apply {
+            runCatching {
+                if (recordingState == AudioRecord.RECORDSTATE_RECORDING) {
+                    stop()
+                }
+            }
+            runCatching { release() }
+        }
+    }
+}
+
+class AudioRecordingService(
+    private val context: Context,
+    private val pcmRecorderFactory: () -> PcmAudioRecorder = { AndroidPcmRecorder() },
+) : AudioClipPlayer {
+
+    private val serviceScope = CoroutineScope(SupervisorJob() + Dispatchers.IO)
+
+    private var mediaPlayer: MediaPlayer? = null
+    private var activeRecorder: PcmAudioRecorder? = null
+
     @Volatile
     private var isRecording = false
-    private var recordingJob: Job? = null
+
+    @Volatile
+    private var isCancelled = false
+
+    private var recordingDeferred: Deferred<RecordingResult>? = null
+    private var pendingTempFile: File? = null
+    private var pendingOutputFile: File? = null
 
     companion object {
+        private const val TAG = "AudioRecordingService"
         private const val SAMPLE_RATE = 44100
         private const val CHANNEL_CONFIG = AudioFormat.CHANNEL_IN_MONO
         private const val AUDIO_FORMAT = AudioFormat.ENCODING_PCM_16BIT
         private const val SILENCE_THRESHOLD = 1500
+        internal const val WAV_HEADER_SIZE_BYTES = 44L
     }
 
     private fun resolveAudioPath(audioUri: String): String {
-        return if (audioUri.startsWith("/") || audioUri.startsWith("content://") || audioUri.startsWith("file://")) {
-            audioUri
-        } else {
-            File(context.filesDir, audioUri).absolutePath
+        return when {
+            audioUri.startsWith("file://") ->
+                runCatching { java.net.URI(audioUri).path }.getOrNull()
+                    ?: audioUri.removePrefix("file://")
+            audioUri.startsWith("/") || audioUri.startsWith("content://") || File(audioUri).isAbsolute -> audioUri
+            else -> File(context.filesDir, audioUri).absolutePath
         }
     }
 
+    private fun resolveLocalFile(audioUri: String): File? {
+        val trimmed = audioUri.trim()
+        if (trimmed.isEmpty() || trimmed.startsWith("content://")) {
+            return null
+        }
+        val path = resolveAudioPath(trimmed)
+        return File(path)
+    }
+
+    override fun canPlayAudio(audioUri: String): Boolean {
+        val trimmed = audioUri.trim()
+        if (trimmed.isEmpty()) return false
+
+        if (trimmed.startsWith("content://")) {
+            return runCatching {
+                context.contentResolver.openAssetFileDescriptor(Uri.parse(trimmed), "r")?.use {
+                    true
+                } ?: false
+            }.getOrDefault(false)
+        }
+
+        val file = resolveLocalFile(trimmed) ?: return false
+        if (!file.exists() || !file.isFile || !file.canRead() || file.length() <= 0L) {
+            return false
+        }
+
+        if (file.extension.equals("wav", ignoreCase = true)) {
+            return isValidWavFile(file)
+        }
+
+        return true
+    }
+
+    internal fun isValidWavFile(file: File): Boolean {
+        if (!file.exists() || !file.isFile || !file.canRead() || file.length() <= WAV_HEADER_SIZE_BYTES) {
+            return false
+        }
+        return runCatching {
+            val header = ByteArray(12)
+            FileInputStream(file).use { input ->
+                val read = input.read(header)
+                if (read < 12) return@use false
+                header[0] == 'R'.code.toByte() &&
+                    header[1] == 'I'.code.toByte() &&
+                    header[2] == 'F'.code.toByte() &&
+                    header[3] == 'F'.code.toByte() &&
+                    header[8] == 'W'.code.toByte() &&
+                    header[9] == 'A'.code.toByte() &&
+                    header[10] == 'V'.code.toByte() &&
+                    header[11] == 'E'.code.toByte()
+            }
+        }.getOrDefault(false)
+    }
+
     @SuppressLint("MissingPermission")
-    fun startRecording(tileId: String, languageCode: String): String? {
+    fun startRecording(tileId: String, languageCode: String): Boolean {
+        if (isRecording || recordingDeferred?.isActive == true) {
+            Log.w(TAG, "startRecording called while a recording is already active")
+            return false
+        }
+
         val normalizedLang = LocaleHelper.normalize(languageCode)
         val outputDir = File(context.filesDir, "audio_tiles/$normalizedLang")
-        if (!outputDir.exists()) {
-            outputDir.mkdirs()
+        if (!outputDir.exists() && !outputDir.mkdirs()) {
+            Log.e(TAG, "Failed to create audio output directory: ${outputDir.absolutePath}")
+            return false
         }
 
-        val outputFile = File(outputDir, "audio_$tileId.wav")
+        val sanitizedId = tileId
+            .replace(Regex("[^a-zA-Z0-9_-]"), "_")
+            .ifBlank { "tile" }
+        val uniqueSuffix = UUID.randomUUID().toString().take(8)
+        val outputFile = File(outputDir, "audio_${sanitizedId}_$uniqueSuffix.wav")
+        val tempFile = File(outputDir, ".recording_${sanitizedId}_$uniqueSuffix.wav.tmp")
 
-        val bufferSize = AudioRecord.getMinBufferSize(SAMPLE_RATE, CHANNEL_CONFIG, AUDIO_FORMAT)
-        if ((bufferSize == AudioRecord.ERROR) || (bufferSize == AudioRecord.ERROR_BAD_VALUE)) {
-            Log.e("AudioRecordingService", "Invalid buffer size")
-            return null
+        val recorder = pcmRecorderFactory()
+        val bufferSize = recorder.initialize(SAMPLE_RATE, CHANNEL_CONFIG, AUDIO_FORMAT)
+        if (bufferSize == null || bufferSize <= 0) {
+            Log.e(TAG, "AudioRecord initialization failed")
+            recorder.stopAndRelease()
+            return false
         }
 
-        audioRecord = AudioRecord(
-            MediaRecorder.AudioSource.MIC,
-            SAMPLE_RATE,
-            CHANNEL_CONFIG,
-            AUDIO_FORMAT,
-            bufferSize,
-        )
-
-        if (audioRecord?.state != AudioRecord.STATE_INITIALIZED) {
-            Log.e("AudioRecordingService", "AudioRecord initialization failed")
-            return null
+        if (!recorder.start()) {
+            Log.e(TAG, "AudioRecord start failed")
+            recorder.stopAndRelease()
+            return false
         }
 
-        audioRecord?.startRecording()
+        activeRecorder = recorder
+        pendingTempFile = tempFile
+        pendingOutputFile = outputFile
+        isCancelled = false
         isRecording = true
 
-        recordingJob = CoroutineScope(Dispatchers.IO).launch {
-            // OPTIMIZATION: Replaced MutableList<Short> with a pure primitive array.
-            // This eliminates 100% of object boxing (converting primitive short -> Short Object),
-            // saving massive amounts of memory and preventing GC thrashing during long recordings.
+        recordingDeferred = serviceScope.async {
             var audioData = ShortArray(bufferSize * 10)
             var totalShorts = 0
             val readBuffer = ShortArray(bufferSize)
 
-            while (isRecording) {
-                val readCount = audioRecord?.read(readBuffer, 0, bufferSize) ?: 0
-                if (readCount > 0) {
-                    // Amortized O(1) array doubling to handle infinite recording length
-                    if (totalShorts + readCount > audioData.size) {
-                        audioData = audioData.copyOf(audioData.size * 2)
+            try {
+                while (isRecording && !isCancelled) {
+                    val readCount = recorder.read(readBuffer, 0, bufferSize)
+                    if (readCount > 0) {
+                        if (totalShorts + readCount > audioData.size) {
+                            val newSize = maxOf(audioData.size * 2, totalShorts + readCount)
+                            audioData = audioData.copyOf(newSize)
+                        }
+                        System.arraycopy(readBuffer, 0, audioData, totalShorts, readCount)
+                        totalShorts += readCount
+                    } else if (readCount < 0) {
+                        break
                     }
-                    System.arraycopy(readBuffer, 0, audioData, totalShorts, readCount)
-                    totalShorts += readCount
+                }
+            } finally {
+                recorder.stopAndRelease()
+            }
+
+            if (isCancelled) {
+                runCatching { tempFile.delete() }
+                runCatching { outputFile.delete() }
+                RecordingResult.Cancelled
+            } else {
+                saveTrimmedWav(
+                    rawShorts = audioData,
+                    totalSize = totalShorts,
+                    tempFile = tempFile,
+                    outputFile = outputFile,
+                )
+            }
+        }
+
+        return true
+    }
+
+    suspend fun stopRecording(): RecordingResult {
+        val deferred = recordingDeferred
+            ?: return RecordingResult.Failed(RecordingFailureReason.NOT_RECORDING)
+
+        isRecording = false
+        val result = try {
+            withContext(Dispatchers.IO) {
+                deferred.await()
+            }
+        } catch (e: Exception) {
+            Log.e(TAG, "stopRecording failed", e)
+            cleanupPendingRecordingFiles()
+            RecordingResult.Failed(RecordingFailureReason.IO_ERROR, e)
+        } finally {
+            activeRecorder?.stopAndRelease()
+            activeRecorder = null
+            recordingDeferred = null
+            pendingTempFile = null
+            pendingOutputFile = null
+        }
+
+        return result
+    }
+
+    suspend fun cancelRecording() {
+        isCancelled = true
+        isRecording = false
+        activeRecorder?.stopAndRelease()
+        val deferred = recordingDeferred
+        if (deferred != null) {
+            runCatching {
+                withContext(Dispatchers.IO) {
+                    deferred.await()
                 }
             }
-
-            processAndSaveAudio(audioData, totalShorts, outputFile)
         }
-
-        return outputFile.absolutePath
+        cleanupPendingRecordingFiles()
+        activeRecorder = null
+        recordingDeferred = null
+        pendingTempFile = null
+        pendingOutputFile = null
     }
 
-    suspend fun stopRecording() {
-        isRecording = false
-        audioRecord?.apply {
-            if (recordingState == AudioRecord.RECORDSTATE_RECORDING) {
-                stop()
-            }
-            release()
-        }
-        audioRecord = null
-        recordingJob?.join()
-        recordingJob = null
+    private fun cleanupPendingRecordingFiles() {
+        runCatching { pendingTempFile?.delete() }
+        runCatching { pendingOutputFile?.delete() }
     }
 
-    // Adjusted signature to accept our new memory-optimized primitive array
-    private fun processAndSaveAudio(rawShorts: ShortArray, totalSize: Int, outputFile: File) {
-        if (totalSize == 0) return
+    internal fun saveTrimmedWav(
+        rawShorts: ShortArray,
+        totalSize: Int,
+        tempFile: File,
+        outputFile: File,
+    ): RecordingResult {
+        if (totalSize <= 0) {
+            runCatching { tempFile.delete() }
+            return RecordingResult.Silent
+        }
 
         var startIdx = 0
         while (startIdx < totalSize && abs(rawShorts[startIdx].toInt()) < SILENCE_THRESHOLD) {
@@ -134,29 +359,33 @@ class AudioRecordingService(private val context: Context) {
         }
 
         if (startIdx >= endIdx) {
-            Log.w("AudioRecordingService", "Recording was all silence")
-            return
+            Log.w(TAG, "Recording was all silence")
+            runCatching { tempFile.delete() }
+            return RecordingResult.Silent
         }
 
         val trimmedSize = endIdx - startIdx + 1
 
-        try {
-            FileOutputStream(outputFile).use { fos ->
+        return try {
+            tempFile.parentFile?.let { parent ->
+                if (!parent.exists() && !parent.mkdirs()) {
+                    return RecordingResult.Failed(RecordingFailureReason.IO_ERROR)
+                }
+            }
+
+            FileOutputStream(tempFile).use { fos ->
                 val totalAudioLen = (trimmedSize * 2).toLong()
                 val totalDataLen = totalAudioLen + 36
 
                 writeWavHeader(fos, totalAudioLen, totalDataLen)
 
-                // OPTIMIZATION: Bitwise chunk writing.
-                // Instead of allocating `ByteBuffer.allocate(2048)` repeatedly, we use a single
-                // primitive ByteArray and bit-shift the data. This writes straight to disk at maximum speed.
                 val buffer = ByteArray(4096)
                 var bufIndex = 0
 
                 for (i in startIdx..endIdx) {
                     val sample = rawShorts[i].toInt()
-                    buffer[bufIndex++] = (sample and 0x00FF).toByte()         // Little Endian Low
-                    buffer[bufIndex++] = ((sample and 0xFF00) shr 8).toByte() // Little Endian High
+                    buffer[bufIndex++] = (sample and 0x00FF).toByte()
+                    buffer[bufIndex++] = ((sample and 0xFF00) shr 8).toByte()
 
                     if (bufIndex == 4096) {
                         fos.write(buffer)
@@ -164,14 +393,41 @@ class AudioRecordingService(private val context: Context) {
                     }
                 }
 
-                // Flush remainder
                 if (bufIndex > 0) {
                     fos.write(buffer, 0, bufIndex)
                 }
+                fos.fd.sync()
             }
-            Log.d("AudioRecordingService", "Saved trimmed WAV to ${outputFile.absolutePath}")
+
+            if (!isValidWavFile(tempFile)) {
+                runCatching { tempFile.delete() }
+                return RecordingResult.Failed(RecordingFailureReason.INVALID_OUTPUT)
+            }
+
+            if (outputFile.exists() && !outputFile.delete()) {
+                runCatching { tempFile.delete() }
+                return RecordingResult.Failed(RecordingFailureReason.IO_ERROR)
+            }
+
+            val moved = tempFile.renameTo(outputFile) || run {
+                tempFile.copyTo(outputFile, overwrite = true)
+                tempFile.delete()
+                true
+            }
+
+            if (!moved || !isValidWavFile(outputFile)) {
+                runCatching { tempFile.delete() }
+                runCatching { outputFile.delete() }
+                return RecordingResult.Failed(RecordingFailureReason.INVALID_OUTPUT)
+            }
+
+            Log.d(TAG, "Saved verified WAV to ${outputFile.absolutePath} (${outputFile.length()} bytes)")
+            RecordingResult.Success(outputFile.absolutePath)
         } catch (e: Exception) {
-            Log.e("AudioRecordingService", "Failed to save WAV file", e)
+            Log.e(TAG, "Failed to save WAV file", e)
+            runCatching { tempFile.delete() }
+            runCatching { outputFile.delete() }
+            RecordingResult.Failed(RecordingFailureReason.IO_ERROR, e)
         }
     }
 
@@ -201,93 +457,148 @@ class AudioRecordingService(private val context: Context) {
         out.write(header, 0, 44)
     }
 
-    fun playRecording(audioUri: String) {
-        try {
-            // FIX: Ensure the old player is stopped AND released, fixing native memory leaks.
+    override fun playRecording(audioUri: String, onError: (() -> Unit)?) {
+        if (!canPlayAudio(audioUri)) {
+            Log.w(TAG, "Audio file missing or unreadable: $audioUri")
             stopPlayback()
-            val actualPath = resolveAudioPath(audioUri)
+            onError?.invoke()
+            return
+        }
 
-            mediaPlayer = MediaPlayer().apply {
-                setDataSource(actualPath)
-                // OPTIMIZATION: Non-blocking preparation. This instantly returns the thread
-                // back to the UI, while Android loads the audio file in the hardware background.
-                setOnPreparedListener { it.start() }
-                prepareAsync()
+        try {
+            stopPlayback()
+            val player = MediaPlayer()
+            mediaPlayer = player
+            var errorReported = false
+            val reportError = {
+                if (!errorReported) {
+                    errorReported = true
+                    stopPlayback()
+                    onError?.invoke()
+                }
             }
+
+            player.setOnCompletionListener {
+                stopPlayback()
+            }
+            player.setOnErrorListener { _, what, extra ->
+                Log.e(TAG, "MediaPlayer error: $what, $extra for $audioUri")
+                reportError()
+                true
+            }
+            if (audioUri.startsWith("content://")) {
+                player.setDataSource(context, Uri.parse(audioUri))
+            } else {
+                player.setDataSource(resolveAudioPath(audioUri))
+            }
+            player.setOnPreparedListener {
+                try {
+                    it.start()
+                } catch (e: Exception) {
+                    Log.e(TAG, "MediaPlayer start() failed", e)
+                    reportError()
+                }
+            }
+            player.prepareAsync()
         } catch (e: Exception) {
-            e.printStackTrace()
+            Log.e(TAG, "playRecording() failed for $audioUri", e)
+            stopPlayback()
+            onError?.invoke()
         }
     }
 
-    suspend fun playRecordingSuspend(path: String) = suspendCancellableCoroutine { continuation ->
-        stopPlayback()
-        val player = MediaPlayer()
-        mediaPlayer = player
-        try {
-            val actualPath = resolveAudioPath(path)
-            player.setDataSource(actualPath)
-            player.setOnCompletionListener {
-                stopPlayback()
-                if (continuation.isActive) continuation.resume(Unit)
-            }
-            player.setOnErrorListener { _, what, extra ->
-                Log.e("AudioRecordingService", "MediaPlayer error: $what, $extra")
-                stopPlayback()
-                if (continuation.isActive) continuation.resume(Unit)
-                true
-            }
-            // OPTIMIZATION: Same non-blocking async pattern applied to the suspend version
-            player.setOnPreparedListener { it.start() }
-            player.prepareAsync()
-        } catch (e: Exception) {
-            Log.e("AudioRecordingService", "playRecordingSuspend() failed", e)
+    override suspend fun playRecordingSuspend(path: String): Boolean {
+        if (!canPlayAudio(path)) {
+            Log.w(TAG, "Suspend playback skipped; file missing or unreadable: $path")
             stopPlayback()
-            if (continuation.isActive) continuation.resume(Unit)
+            return false
         }
 
-        continuation.invokeOnCancellation {
+        return suspendCancellableCoroutine { continuation ->
             stopPlayback()
+            val player = MediaPlayer()
+            mediaPlayer = player
+            try {
+                player.setOnCompletionListener {
+                    stopPlayback()
+                    if (continuation.isActive) continuation.resume(true)
+                }
+                player.setOnErrorListener { _, what, extra ->
+                    Log.e(TAG, "MediaPlayer error: $what, $extra for $path")
+                    stopPlayback()
+                    if (continuation.isActive) continuation.resume(false)
+                    true
+                }
+                if (path.startsWith("content://")) {
+                    player.setDataSource(context, Uri.parse(path))
+                } else {
+                    player.setDataSource(resolveAudioPath(path))
+                }
+                player.setOnPreparedListener {
+                    try {
+                        it.start()
+                    } catch (e: Exception) {
+                        Log.e(TAG, "MediaPlayer start() failed", e)
+                        stopPlayback()
+                        if (continuation.isActive) continuation.resume(false)
+                    }
+                }
+                player.prepareAsync()
+            } catch (e: Exception) {
+                Log.e(TAG, "playRecordingSuspend() failed for $path", e)
+                stopPlayback()
+                if (continuation.isActive) continuation.resume(false)
+            }
+
+            continuation.invokeOnCancellation {
+                stopPlayback()
+            }
         }
     }
 
     suspend fun speakSentence(
         sentence: List<CombinedTile>,
         ttsHelper: TextToSpeechHelper,
-        tileService: AACTileService
+        tileService: AACTileService,
+        tilesUseTts: Boolean = false,
+        speechPlayer: TileSpeechPlayer = TileSpeechPlayer(this, ttsHelper),
     ) {
         for (tile in sentence) {
-            if (tile.audioUri != null) {
-                playRecordingSuspend(tile.audioUri!!)
-            } else {
-                val text = tileService.getTTSText(tile)
-                ttsHelper.speakSuspend(text)
-            }
+            speechPlayer.speakTileSuspend(
+                tileId = tile.id,
+                ttsText = tileService.getTTSText(tile),
+                audioUri = tile.audioUri,
+                isCustomAudio = tile.isCustomAudio,
+                tilesUseTts = tilesUseTts,
+            )
             delay(150.milliseconds)
         }
     }
 
-    fun stopPlayback() {
-        mediaPlayer?.apply {
-            if (isPlaying) {
-                stop()
-            }
-            // FIX: Release actually destroys the C++ layer audio decoder.
-            release()
-        }
+    override fun stopPlayback() {
+        val player = mediaPlayer
         mediaPlayer = null
+        player?.apply {
+            runCatching {
+                if (isPlaying) {
+                    stop()
+                }
+            }
+            runCatching {
+                release()
+            }
+        }
     }
 
     fun deleteRecording(path: String) {
-        // OPTIMIZATION: Fire-and-forget deletion on the IO thread so UI isn't blocked.
-        CoroutineScope(Dispatchers.IO).launch {
+        serviceScope.launch {
             try {
-                val actualPath = resolveAudioPath(path)
-                val file = File(actualPath)
-                if (file.exists()) {
+                val file = resolveLocalFile(path)
+                if (file != null && file.exists()) {
                     file.delete()
                 }
             } catch (e: Exception) {
-                Log.e("AudioRecordingService", "Failed to delete file", e)
+                Log.e(TAG, "Failed to delete file", e)
             }
         }
     }

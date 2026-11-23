@@ -4,6 +4,7 @@ import android.app.Application
 import androidx.lifecycle.AndroidViewModel
 import androidx.lifecycle.viewModelScope
 import com.kon.myaacapp.core.locale.LocaleHelper
+import com.kon.myaacapp.data.repository.ProfileRepository
 import com.kon.myaacapp.data.repository.SettingsRepository
 import com.kon.myaacapp.domain.model.CombinedTile
 import com.kon.myaacapp.domain.model.TileType
@@ -13,19 +14,25 @@ import com.kon.myaacapp.domain.usecase.tile.IncrementTileClickUseCase
 import com.kon.myaacapp.domain.usecase.tile.ObserveTilesUseCase
 import com.kon.myaacapp.service.audio.AudioRecordingService
 import com.kon.myaacapp.service.audio.TextToSpeechHelper
+import com.kon.myaacapp.service.audio.TilePlaybackEvent
+import com.kon.myaacapp.service.audio.TileSpeechPlayer
 import kotlinx.coroutines.ExperimentalCoroutinesApi
-import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.MutableSharedFlow
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.SharingStarted
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asSharedFlow
 import kotlinx.coroutines.flow.combine
+import kotlinx.coroutines.flow.distinctUntilChanged
+import kotlinx.coroutines.flow.drop
+import kotlinx.coroutines.flow.filterNotNull
+import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.flow.flatMapLatest
 import kotlinx.coroutines.flow.map
 import kotlinx.coroutines.flow.onEach
 import kotlinx.coroutines.flow.stateIn
 import kotlinx.coroutines.launch
+import java.util.Locale
 
 @OptIn(ExperimentalCoroutinesApi::class)
 class CommunicationViewModel(
@@ -34,13 +41,10 @@ class CommunicationViewModel(
     private val observeTilesUseCase: ObserveTilesUseCase,
     private val incrementTileClickUseCase: IncrementTileClickUseCase,
     private val communicationSessionController: CommunicationSessionController,
+    private val audioService: AudioRecordingService = AudioRecordingService(application),
+    private val textToSpeechHelper: TextToSpeechHelper = TextToSpeechHelper(application),
+    private val profileRepository: ProfileRepository? = null,
 ) : AndroidViewModel(application) {
-
-    private val audioService =
-        AudioRecordingService(application)
-
-    private val textToSpeechHelper =
-        TextToSpeechHelper(application)
 
     private val tileService =
         AACTileService(
@@ -48,12 +52,34 @@ class CommunicationViewModel(
             scope = viewModelScope,
         )
 
+    private val tileSpeechPlayer =
+        TileSpeechPlayer(
+            audioPlayer = audioService,
+            speechSynthesizer = textToSpeechHelper,
+        )
+
+    val lastPlaybackEvent: StateFlow<TilePlaybackEvent?> =
+        tileSpeechPlayer.lastPlaybackEvent
+
+    val lastRequestedTtsLocale: StateFlow<Locale?> =
+        textToSpeechHelper.lastRequestedLocale
+
+    private val tilesUseTts =
+        MutableStateFlow<Boolean?>(null)
+
     private val sentenceManager =
         SentenceManager(
             audioService = audioService,
             ttsHelper = textToSpeechHelper,
             tileService = tileService,
             scope = viewModelScope,
+            tileSpeechPlayer = tileSpeechPlayer,
+            tilesUseTtsProvider = {
+                tilesUseTts.value
+                    ?: settingsRepository.tilesUseTtsFlow.first().also {
+                        tilesUseTts.value = it
+                    }
+            },
         )
 
     private val currentParentId =
@@ -69,7 +95,7 @@ class CommunicationViewModel(
         _effects.asSharedFlow()
 
     private val languageCode =
-        settingsRepository.languageCodeFlow
+        (profileRepository?.activeBoardLanguage ?: settingsRepository.languageCodeFlow)
             .map { value ->
                 LocaleHelper.normalize(value)
             }
@@ -79,7 +105,11 @@ class CommunicationViewModel(
             .stateIn(
                 scope = viewModelScope,
                 started = SharingStarted.Eagerly,
-                initialValue = "he",
+                initialValue = LocaleHelper.normalize(
+                    profileRepository?.activeProfile?.value?.activeLanguageCode
+                        ?.takeIf { it.isNotBlank() }
+                        ?: "he"
+                ),
             )
 
     private val speakOnTilePress =
@@ -269,12 +299,32 @@ class CommunicationViewModel(
 
     init {
         viewModelScope.launch {
+            settingsRepository.tilesUseTtsFlow.collect { enabled ->
+                tilesUseTts.value = enabled
+            }
+        }
+
+        viewModelScope.launch {
             communicationSessionController
                 .resetVersion
                 .collect {
                     sentenceManager.clear()
                     resetToHome()
                 }
+        }
+
+        profileRepository?.let { repo ->
+            viewModelScope.launch {
+                repo.activeProfile
+                    .map { it?.profileId }
+                    .filterNotNull()
+                    .distinctUntilChanged()
+                    .drop(1)
+                    .collect {
+                        sentenceManager.clear()
+                        resetToHome()
+                    }
+            }
         }
     }
 
@@ -296,6 +346,7 @@ class CommunicationViewModel(
 
             CommunicationAction
                 .SpeakSentenceClicked -> {
+                textToSpeechHelper.setLanguage(languageCode.value)
                 sentenceManager.speak()
             }
 
@@ -387,16 +438,32 @@ class CommunicationViewModel(
     private fun speakTile(
         tile: CombinedTile,
     ) {
-        val text =
-            tileService.getTTSText(tile)
+        textToSpeechHelper.setLanguage(languageCode.value)
+        val text = tileService.getTTSText(tile)
+        val audioUri = tile.definition.audioUri
+        val isCustomAudio = tile.definition.isCustomAudio
+        val cachedTilesUseTts = tilesUseTts.value
 
-        val audioUri =
-            tile.definition.audioUri
-
-        if (!audioUri.isNullOrBlank()) {
-            audioService.playRecording(audioUri)
-        } else if (text.isNotBlank()) {
-            textToSpeechHelper.speak(text)
+        if (cachedTilesUseTts != null) {
+            tileSpeechPlayer.speakTile(
+                tileId = tile.id,
+                ttsText = text,
+                audioUri = audioUri,
+                isCustomAudio = isCustomAudio,
+                tilesUseTts = cachedTilesUseTts,
+            )
+        } else {
+            viewModelScope.launch {
+                val useTts = settingsRepository.tilesUseTtsFlow.first()
+                tilesUseTts.value = useTts
+                tileSpeechPlayer.speakTile(
+                    tileId = tile.id,
+                    ttsText = text,
+                    audioUri = audioUri,
+                    isCustomAudio = isCustomAudio,
+                    tilesUseTts = useTts,
+                )
+            }
         }
     }
 

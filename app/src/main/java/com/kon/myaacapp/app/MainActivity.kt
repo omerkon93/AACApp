@@ -40,11 +40,11 @@ class MainActivity : ComponentActivity() {
     override fun attachBaseContext(newBase: Context) {
         val settingsRepository = SettingsRepository(newBase)
 
-        val languageCode = runBlocking(Dispatchers.IO) {
-            settingsRepository.languageCodeFlow.first()
+        val interfaceLanguageCode = runBlocking(Dispatchers.IO) {
+            settingsRepository.interfaceLanguageCodeFlow.first()
         }
 
-        super.attachBaseContext(LocaleHelper.wrap(newBase, languageCode))
+        super.attachBaseContext(LocaleHelper.wrap(newBase, interfaceLanguageCode))
         SplitCompat.installActivity(this)
     }
 
@@ -56,16 +56,22 @@ class MainActivity : ComponentActivity() {
             val application =
                 applicationContext as MyApplication
 
+            val initialInterfaceLang = remember(resources) {
+                val localeList = resources.configuration.locales
+                val raw = if (!localeList.isEmpty) localeList[0].language else "he"
+                LocaleHelper.normalize(raw)
+            }
+
             val langCode by remember(application) {
                 application
                     .appContainer
                     .settingsRepository
-                    .languageCodeFlow
+                    .interfaceLanguageCodeFlow
                     .map { languageCode ->
                         LocaleHelper.normalize(languageCode)
                     }
             }.collectAsState(
-                initial = "he",
+                initial = initialInterfaceLang,
             )
 
             val layoutDir = remember(langCode) {

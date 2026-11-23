@@ -60,8 +60,10 @@ class AppContainer(
 
     val backupService: BackupService =
         BackupService(
-            application,
-            aacRepository,
+            context = application,
+            repository = aacRepository,
+            database = database,
+            settingsRepository = settingsRepository,
         )
 
     val startupCoordinator:
@@ -71,6 +73,7 @@ class AppContainer(
             backupService = backupService,
             repository = aacRepository,
             profileRepository = profileRepository,
+            settingsRepository = settingsRepository,
         )
 
     val tileRepository: TileRepository =
@@ -87,6 +90,7 @@ class AppContainer(
             settingsRepository = settingsRepository,
             scope = applicationScope,
             audioService = audioRecordingService,
+            profileRepository = profileRepository,
         )
 
     val observeTilesUseCase: ObserveTilesUseCase =
@@ -219,6 +223,7 @@ class AppContainer(
             settingsRepository = settingsRepository,
             aacRepository = aacRepository,
             profileRepository = profileRepository,
+            backupService = backupService,
         )
 
     val communicationViewModelFactory:
@@ -232,5 +237,6 @@ class AppContainer(
                 incrementTileClickUseCase,
             communicationSessionController =
                 communicationSessionController,
+            profileRepository = profileRepository,
         )
 }

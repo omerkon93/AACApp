@@ -6,12 +6,14 @@ import androidx.lifecycle.ViewModelProvider
 import com.kon.myaacapp.data.repository.AACRepository
 import com.kon.myaacapp.data.repository.ProfileRepository
 import com.kon.myaacapp.data.repository.SettingsRepository
+import com.kon.myaacapp.service.backup.BackupService
 
 class SystemSettingsViewModelFactory(
     private val application: Application,
     private val settingsRepository: SettingsRepository,
     private val aacRepository: AACRepository,
     private val profileRepository: ProfileRepository,
+    private val backupService: BackupService,
 ) : ViewModelProvider.Factory {
 
     override fun <T : ViewModel> create(
@@ -30,6 +32,7 @@ class SystemSettingsViewModelFactory(
                 aacRepository = aacRepository,
                 profileRepository =
                     profileRepository,
+                backupService = backupService,
             ) as T
         }
 

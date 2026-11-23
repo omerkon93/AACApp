@@ -1,16 +1,28 @@
 package com.kon.myaacapp.core.locale
 
 import android.content.Context
+import android.content.res.Configuration
 import com.google.android.play.core.splitinstall.SplitInstallManager
 import com.google.android.play.core.splitinstall.SplitInstallManagerFactory
 import com.google.android.play.core.splitinstall.SplitInstallRequest
 import com.google.android.play.core.splitinstall.SplitInstallStateUpdatedListener
 import com.google.android.play.core.splitinstall.model.SplitInstallSessionStatus
+import com.kon.myaacapp.R
+import kotlinx.coroutines.CoroutineScope
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.Job
+import kotlinx.coroutines.SupervisorJob
+import kotlinx.coroutines.cancel
+import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
+import kotlinx.coroutines.launch
 import java.util.Locale
 import java.util.concurrent.ConcurrentHashMap
+import java.util.concurrent.atomic.AtomicBoolean
+import java.util.concurrent.atomic.AtomicInteger
+import kotlin.time.Duration.Companion.milliseconds
 
 sealed class DownloadStatus {
     object Idle : DownloadStatus()
@@ -20,7 +32,12 @@ sealed class DownloadStatus {
     data class Error(val message: String) : DownloadStatus()
 }
 
-class LanguageDownloadHelper(context: Context) {
+class LanguageDownloadHelper(
+    private val context: Context,
+    private val installTimeoutMs: Long = DEFAULT_INSTALL_TIMEOUT_MS,
+    private val localResourceChecker: (Context, String) -> Boolean = ::defaultHasBundledResources,
+    private val scope: CoroutineScope = CoroutineScope(SupervisorJob() + Dispatchers.Main.immediate),
+) {
 
     private val splitInstallManager: SplitInstallManager =
         SplitInstallManagerFactory.create(context)
@@ -28,10 +45,21 @@ class LanguageDownloadHelper(context: Context) {
     private val _downloadStatus = MutableStateFlow<DownloadStatus>(DownloadStatus.Idle)
     val downloadStatus: StateFlow<DownloadStatus> = _downloadStatus.asStateFlow()
 
-    // OPTIMIZATION: Replaced standard mutableMapOf with ConcurrentHashMap.
-    // Play Core broadcasts arrive on arbitrary background Binder threads.
-    // This ensures thread-safe mutation and prevents ConcurrentModificationException crashes.
-    private val onCompleteCallbacks = ConcurrentHashMap<Int, (Boolean) -> Unit>()
+    private val onCompleteCallbacks = ConcurrentHashMap<Int, PendingDownload>()
+    private val activeTimeouts = ConcurrentHashMap<Int, Job>()
+
+    private data class PendingDownload(
+        val completed: AtomicBoolean,
+        val timeoutJob: Job?,
+        val callback: (Boolean) -> Unit,
+    ) {
+        fun finish(success: Boolean) {
+            if (completed.compareAndSet(false, true)) {
+                timeoutJob?.cancel()
+                callback(success)
+            }
+        }
+    }
 
     private val listener = SplitInstallStateUpdatedListener { state ->
         val sessionId = state.sessionId()
@@ -49,29 +77,30 @@ class LanguageDownloadHelper(context: Context) {
             }
 
             SplitInstallSessionStatus.INSTALLED -> {
-                // FIX: Actually emit Success. The previous code immediately overwrote
-                // this with Idle, causing StateFlow to swallow the success state entirely.
                 _downloadStatus.value = DownloadStatus.Success
-                onCompleteCallbacks.remove(sessionId)?.invoke(true)
+                activeTimeouts.remove(sessionId)?.cancel()
+                onCompleteCallbacks.remove(sessionId)?.finish(true)
             }
 
             SplitInstallSessionStatus.FAILED -> {
                 _downloadStatus.value =
                     DownloadStatus.Error("Installation failed: ${state.errorCode()}")
-                onCompleteCallbacks.remove(sessionId)?.invoke(false)
+                activeTimeouts.remove(sessionId)?.cancel()
+                onCompleteCallbacks.remove(sessionId)?.finish(false)
             }
 
             SplitInstallSessionStatus.CANCELED -> {
-                _downloadStatus.value = DownloadStatus.Idle
-                onCompleteCallbacks.remove(sessionId)?.invoke(false)
+                _downloadStatus.value = DownloadStatus.Error("Language download was cancelled")
+                activeTimeouts.remove(sessionId)?.cancel()
+                onCompleteCallbacks.remove(sessionId)?.finish(false)
             }
 
             SplitInstallSessionStatus.PENDING -> {
-                // Just wait
+                // Handled by listener and timeout guard
             }
 
             else -> {
-                // Handle other statuses if necessary
+                // Ignore intermediate or unknown statuses; timeout guard protects against hangs
             }
         }
     }
@@ -82,24 +111,34 @@ class LanguageDownloadHelper(context: Context) {
 
     fun unregister() {
         splitInstallManager.unregisterListener(listener)
-        // OPTIMIZATION: Aggressive memory leak prevention.
-        // If the user leaves the screen before a download finishes, this severs the
-        // lambda's hard reference to the Activity/Context, allowing the GC to clean it up.
+        activeTimeouts.values.forEach { it.cancel() }
+        activeTimeouts.clear()
         onCompleteCallbacks.clear()
+        scope.cancel()
+    }
+
+    fun clearError() {
+        if (_downloadStatus.value is DownloadStatus.Error) {
+            _downloadStatus.value = DownloadStatus.Idle
+        }
     }
 
     fun isLanguageInstalled(languageCode: String): Boolean {
         val normalizedCode = LocaleHelper.forSplitInstall(languageCode)
-        return splitInstallManager.installedLanguages.contains(normalizedCode) ||
-                splitInstallManager.installedLanguages.contains(languageCode)
+        val installedLanguages = runCatching {
+            splitInstallManager.installedLanguages
+        }.getOrDefault(emptySet())
+
+        return installedLanguages.contains(normalizedCode) ||
+            installedLanguages.contains(languageCode) ||
+            localResourceChecker(context, languageCode)
     }
 
     fun downloadLanguage(
         languageCode: String,
         onComplete: (Boolean) -> Unit,
     ) {
-        val normalizedCode =
-            LocaleHelper.forSplitInstall(languageCode)
+        val normalizedCode = LocaleHelper.forSplitInstall(languageCode)
 
         if (isLanguageInstalled(normalizedCode)) {
             _downloadStatus.value = DownloadStatus.Success
@@ -109,15 +148,49 @@ class LanguageDownloadHelper(context: Context) {
 
         _downloadStatus.value = DownloadStatus.Downloading(0)
 
+        val completedFlag = AtomicBoolean(false)
+        val trackedSessionId = AtomicInteger(NO_SESSION_ID)
+
+        val timeoutJob = if (installTimeoutMs > 0L) {
+            scope.launch {
+                delay(installTimeoutMs.milliseconds)
+                if (completedFlag.compareAndSet(false, true)) {
+                    val sessionId = trackedSessionId.get()
+                    if (sessionId != NO_SESSION_ID) {
+                        onCompleteCallbacks.remove(sessionId)
+                        activeTimeouts.remove(sessionId)
+                        runCatching { splitInstallManager.cancelInstall(sessionId) }
+                    }
+                    _downloadStatus.value = DownloadStatus.Error(TIMEOUT_ERROR_MESSAGE)
+                    onComplete(false)
+                }
+            }
+        } else {
+            null
+        }
+
+        val pending = PendingDownload(
+            completed = completedFlag,
+            timeoutJob = timeoutJob,
+            callback = onComplete,
+        )
+
         val request = SplitInstallRequest.newBuilder()
-            .addLanguage(
-                Locale.forLanguageTag(normalizedCode)
-            )
+            .addLanguage(Locale.forLanguageTag(normalizedCode))
             .build()
 
         splitInstallManager.startInstall(request)
             .addOnSuccessListener { sessionId ->
-                onCompleteCallbacks[sessionId] = onComplete
+                if (completedFlag.get()) {
+                    runCatching { splitInstallManager.cancelInstall(sessionId) }
+                    return@addOnSuccessListener
+                }
+
+                trackedSessionId.set(sessionId)
+                onCompleteCallbacks[sessionId] = pending
+                if (timeoutJob != null) {
+                    activeTimeouts[sessionId] = timeoutJob
+                }
 
                 /*
                  * The INSTALLED event may arrive before the callback is added.
@@ -126,25 +199,65 @@ class LanguageDownloadHelper(context: Context) {
                 splitInstallManager
                     .getSessionState(sessionId)
                     .addOnSuccessListener { state ->
-                        if (
-                            state.status() ==
-                            SplitInstallSessionStatus.INSTALLED
-                        ) {
+                        if (state.status() == SplitInstallSessionStatus.INSTALLED) {
+                            _downloadStatus.value = DownloadStatus.Success
+                            activeTimeouts.remove(sessionId)?.cancel()
+                            onCompleteCallbacks.remove(sessionId)?.finish(true)
+                        } else if (state.status() == SplitInstallSessionStatus.FAILED) {
                             _downloadStatus.value =
-                                DownloadStatus.Success
-
-                            onCompleteCallbacks
-                                .remove(sessionId)
-                                ?.invoke(true)
+                                DownloadStatus.Error("Installation failed: ${state.errorCode()}")
+                            activeTimeouts.remove(sessionId)?.cancel()
+                            onCompleteCallbacks.remove(sessionId)?.finish(false)
                         }
                     }
             }
             .addOnFailureListener { exception ->
-                _downloadStatus.value = DownloadStatus.Error(
-                    exception.message ?: "Unknown error"
-                )
-
-                onComplete(false)
+                timeoutJob?.cancel()
+                if (completedFlag.compareAndSet(false, true)) {
+                    _downloadStatus.value = DownloadStatus.Error(
+                        exception.message ?: UNAVAILABLE_ERROR_MESSAGE
+                    )
+                    onComplete(false)
+                }
             }
+    }
+
+    companion object {
+        const val DEFAULT_INSTALL_TIMEOUT_MS = 10_000L
+        private const val NO_SESSION_ID = -1
+        private const val TIMEOUT_ERROR_MESSAGE =
+            "Language download timed out while offline or Play Store was unavailable."
+        private const val UNAVAILABLE_ERROR_MESSAGE =
+            "Required language resources are unavailable."
+
+        fun defaultHasBundledResources(
+            context: Context,
+            languageCode: String,
+        ): Boolean {
+            val normalized = LocaleHelper.normalize(languageCode)
+            if (normalized != "he" && normalized != "en") {
+                return false
+            }
+
+            return runCatching {
+                val resources = context.resources ?: return@runCatching false
+                val targetLocale = Locale.forLanguageTag(normalized)
+                val config = Configuration(resources.configuration).apply {
+                    setLocale(targetLocale)
+                }
+                val localizedContext =
+                    context.createConfigurationContext(config) ?: return@runCatching false
+                val localizedLabel = localizedContext.resources.getString(R.string.language)
+                when (normalized) {
+                    "en" -> localizedLabel == "Language" ||
+                        localizedLabel.none { it in '\u0590'..'\u05FF' }
+
+                    "he" -> localizedLabel == "שפה" ||
+                        localizedLabel.any { it in '\u0590'..'\u05FF' }
+
+                    else -> false
+                }
+            }.getOrDefault(false)
+        }
     }
 }

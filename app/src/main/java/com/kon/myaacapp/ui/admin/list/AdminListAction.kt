@@ -58,12 +58,18 @@ sealed interface AdminListAction {
     data object MicrophonePermissionDenied :
         AdminListAction
 
-    data class RecordingStarted(
-        val temporaryAudioPath: String,
-    ) : AdminListAction
+    data object RecordingStarted : AdminListAction
 
     data object StopRecordingClicked :
         AdminListAction
+
+    data class RecordingCompleted(
+        val audioPath: String,
+    ) : AdminListAction
+
+    data class RecordingFailed(
+        val message: String,
+    ) : AdminListAction
 
     data object RecordingStopped :
         AdminListAction

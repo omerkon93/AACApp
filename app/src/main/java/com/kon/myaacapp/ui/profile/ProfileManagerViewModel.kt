@@ -2,6 +2,7 @@ package com.kon.myaacapp.ui.profile
 
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
+import com.kon.myaacapp.core.locale.LocaleHelper
 import com.kon.myaacapp.data.repository.AACRepository
 import com.kon.myaacapp.data.repository.ProfileRepository
 import com.kon.myaacapp.domain.model.ProfileCreationMode
@@ -59,6 +60,9 @@ class ProfileManagerViewModel(
                 creationMode =
                     editor.creationMode,
 
+                boardLanguageCode =
+                    editor.boardLanguageCode,
+
                 profilePendingDeletion =
                     editor.profilePendingDeletion,
 
@@ -107,6 +111,17 @@ class ProfileManagerViewModel(
                 }
             }
 
+            is ProfileManagerAction.BoardLanguageChanged -> {
+                val normalized = LocaleHelper.normalize(action.value)
+                if (normalized == "he" || normalized == "en") {
+                    editorState.update { currentState ->
+                        currentState.copy(
+                            boardLanguageCode = normalized,
+                        )
+                    }
+                }
+            }
+
             ProfileManagerAction.CreateProfileClicked -> {
                 createProfile()
             }
@@ -150,12 +165,19 @@ class ProfileManagerViewModel(
             return
         }
 
+        val defaultBoardLanguage = state.value.activeProfile
+            ?.activeLanguageCode
+            ?.let { LocaleHelper.normalize(it) }
+            ?.takeIf { it == "he" || it == "en" }
+            ?: DEFAULT_LANGUAGE_CODE
+
         editorState.update { currentState ->
             currentState.copy(
                 showCreateDialog = true,
                 profileName = "",
                 creationMode =
                     ProfileCreationMode.BLANK,
+                boardLanguageCode = defaultBoardLanguage,
             )
         }
     }
@@ -171,6 +193,7 @@ class ProfileManagerViewModel(
                 profileName = "",
                 creationMode =
                     ProfileCreationMode.BLANK,
+                boardLanguageCode = DEFAULT_LANGUAGE_CODE,
             )
         }
     }
@@ -202,7 +225,10 @@ class ProfileManagerViewModel(
                     name = normalizedName,
                     creationMode =
                         currentEditorState.creationMode,
+                    boardLanguageCode =
+                        currentEditorState.boardLanguageCode,
                 )
+                aacRepository.reload()
             }.onSuccess {
                 operationState.update { currentState ->
                     currentState.copy(
@@ -216,6 +242,7 @@ class ProfileManagerViewModel(
                         profileName = "",
                         creationMode =
                             ProfileCreationMode.BLANK,
+                        boardLanguageCode = DEFAULT_LANGUAGE_CODE,
                     )
                 }
 
@@ -408,6 +435,7 @@ class ProfileManagerViewModel(
 
     private companion object {
         const val DEFAULT_PROFILE_ID = "default"
+        const val DEFAULT_LANGUAGE_CODE = "he"
     }
 }
 
@@ -416,6 +444,7 @@ private data class ProfileEditorState(
     val profileName: String = "",
     val creationMode: ProfileCreationMode =
         ProfileCreationMode.BLANK,
+    val boardLanguageCode: String = "he",
     val profilePendingDeletion: UserProfile? = null,
 )
 

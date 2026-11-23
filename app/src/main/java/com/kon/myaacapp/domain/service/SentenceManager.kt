@@ -3,6 +3,7 @@ package com.kon.myaacapp.domain.service
 import com.kon.myaacapp.domain.model.CombinedTile
 import com.kon.myaacapp.service.audio.AudioRecordingService
 import com.kon.myaacapp.service.audio.TextToSpeechHelper
+import com.kon.myaacapp.service.audio.TileSpeechPlayer
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
@@ -14,6 +15,8 @@ class SentenceManager(
     private val ttsHelper: TextToSpeechHelper,
     private val tileService: AACTileService,
     private val scope: CoroutineScope,
+    private val tileSpeechPlayer: TileSpeechPlayer = TileSpeechPlayer(audioService, ttsHelper),
+    private val tilesUseTtsProvider: suspend () -> Boolean = { false },
 ) {
     private val _selectedSentence =
         MutableStateFlow<List<CombinedTile>>(emptyList())
@@ -54,6 +57,8 @@ class SentenceManager(
                 sentence = sentenceSnapshot,
                 ttsHelper = ttsHelper,
                 tileService = tileService,
+                tilesUseTts = tilesUseTtsProvider(),
+                speechPlayer = tileSpeechPlayer,
             )
         }
     }
@@ -61,15 +66,14 @@ class SentenceManager(
     fun playPreview(
         ttsText: String,
         audioUri: String?,
+        isCustomAudio: Boolean = true,
+        tilesUseTts: Boolean = false,
     ) {
-        when {
-            !audioUri.isNullOrBlank() -> {
-                audioService.playRecording(audioUri)
-            }
-
-            ttsText.isNotBlank() -> {
-                ttsHelper.speak(ttsText)
-            }
-        }
+        tileSpeechPlayer.speakTile(
+            ttsText = ttsText,
+            audioUri = audioUri,
+            isCustomAudio = isCustomAudio,
+            tilesUseTts = tilesUseTts,
+        )
     }
 }

@@ -43,6 +43,8 @@ import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.platform.LocalConfiguration
+import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.text.style.TextOverflow
@@ -52,11 +54,12 @@ import androidx.compose.ui.unit.sp
 import androidx.compose.ui.zIndex
 import androidx.core.graphics.toColorInt
 import coil.compose.rememberAsyncImagePainter
+import com.kon.myaacapp.R
 import com.kon.myaacapp.domain.model.CombinedTile
 import com.kon.myaacapp.domain.model.TileType
+import com.kon.myaacapp.service.image.ImageStorageService
 import com.kon.myaacapp.ui.theme.FitzgeraldTileContent
 import com.kon.myaacapp.ui.theme.resolveFitzgeraldColor
-import java.io.File
 
 @Composable
 fun AdminEditableGridScreen(
@@ -336,16 +339,9 @@ fun AdminTileUI(
 ) {
     val isFolder = tileType == TileType.FOLDER
 
-    val imageModel = remember(imageUri) {
-        imageUri?.let { uri ->
-            val file = File(uri)
-
-            if (file.exists()) {
-                file
-            } else {
-                uri
-            }
-        }
+    val context = LocalContext.current
+    val imageModel = remember(imageUri, context) {
+        ImageStorageService.resolveImageModel(context, imageUri)
     }
 
     Card(
@@ -476,7 +472,7 @@ fun AdminTileUI(
                     contentAlignment = Alignment.Center
                 ) {
                     Text(
-                        text = "מוסתר",
+                        text = stringResource(R.string.tile_hidden),
                         color = Color.White,
                         fontSize = 12.sp,
                         fontWeight = FontWeight.Bold

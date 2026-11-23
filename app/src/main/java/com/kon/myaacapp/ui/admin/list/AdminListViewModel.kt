@@ -182,8 +182,6 @@ class AdminListViewModel(
                 _state.update { currentState ->
                     currentState.copy(
                         isRecording = true,
-                        temporaryAudioPath =
-                            action.temporaryAudioPath,
                         errorMessage = null,
                     )
                 }
@@ -193,6 +191,25 @@ class AdminListViewModel(
                 if (_state.value.isRecording) {
                     emitEffect(
                         AdminListEffect.StopRecording
+                    )
+                }
+            }
+
+            is AdminListAction.RecordingCompleted -> {
+                _state.update { currentState ->
+                    currentState.copy(
+                        isRecording = false,
+                        temporaryAudioPath = action.audioPath,
+                        errorMessage = null,
+                    )
+                }
+            }
+
+            is AdminListAction.RecordingFailed -> {
+                _state.update { currentState ->
+                    currentState.copy(
+                        isRecording = false,
+                        errorMessage = action.message,
                     )
                 }
             }
@@ -614,7 +631,7 @@ class AdminListViewModel(
 
         if (wasRecording) {
             emitEffect(
-                AdminListEffect.StopRecording
+                AdminListEffect.CancelRecording
             )
         }
 

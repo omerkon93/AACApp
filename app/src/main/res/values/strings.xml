@@ -31,11 +31,15 @@
     <string name="general_settings">הגדרות כלליות</string>
     <string name="speak_on_press">הקרא בלחיצה על אריח</string>
     <string name="language">שפה</string>
+    <string name="interface_language_hint">שפת ממשק המטפל והתפריטים</string>
     <string name="hebrew">עברית</string>
     <string name="english">אנגלית</string>
     <string name="downloading_lang">מוריד שפה (%1$d%%)…</string>
     <string name="installing_lang">מתקין שפה…</string>
     <string name="lang_download_failed">הורדת שפה נכשלה: %1$s</string>
+    <string name="retry">נסה שוב</string>
+    <string name="wrong_pin">PIN שגוי</string>
+    <string name="tile_hidden">מוסתר</string>
     <string name="grammatical_gender">מגדר דקדוקי</string>
     <string name="male">זכר</string>
     <string name="female">נקבה</string>
@@ -48,6 +52,7 @@
     <string name="export_success">מסד הנתונים יוצא בהצלחה</string>
     <string name="export_failed">ייצוא נכשל</string>
     <string name="import_success">מסד הנתונים יובא בהצלחה</string>
+    <string name="import_success_with_missing_media">הגיבוי יובא, אך %1$d קובצי מדיה היו חסרים בארכיון ולא שוחזרו.</string>
     <string name="import_failed">ייבוא נכשל</string>
 
     <!-- Factory Resets & Data Clearing -->
@@ -115,6 +120,14 @@
     <string name="section_audio">חלק 3: שמע</string>
     <string name="custom_voice_recording">הקלטת קול מותאמת</string>
     <string name="stop_recording">עצור (%1$sש\')</string>
+    <string name="recording_silent_error">לא זוהה קול בהקלטה. בדוק את המיקרופון ונסה שוב.</string>
+    <string name="recording_silent_kept_previous">לא זוהה קול בהקלטה. ההקלטה הקודמת נשמרה.</string>
+    <string name="recording_save_failed_error">שמירת ההקלטה נכשלה. אנא נסה שוב.</string>
+    <string name="recording_save_failed_kept_previous">שמירת ההקלטה נכשלה. ההקלטה הקודמת נשמרה.</string>
+    <string name="recording_cancelled_error">ההקלטה בוטלה.</string>
+    <string name="recording_cancelled_kept_previous">ההקלטה בוטלה. ההקלטה הקודמת נשמרה.</string>
+    <string name="recording_start_failed_error">לא ניתן להתחיל הקלטה. בדוק את הרשאות המיקרופון ונסה שוב.</string>
+    <string name="recording_permission_denied">נדרשת הרשאת מיקרופון כדי להקליט שמע.</string>
     <string name="section_advanced">חלק 4: מתקדם</string>
     <string name="parent_category_label">הוספה לקטגוריה (תיקיית אם)</string>
     <string name="root_home">בית (ראשי)</string>
@@ -205,6 +218,9 @@
     <string name="profile_mode_default_description">שימוש בלוח התקשורת המקורי של האפליקציה.</string>
     <string name="profile_mode_blank">התחלה מלוח ריק</string>
     <string name="profile_mode_blank_description">יצירת לוח ריק והוספת אריחים באופן ידני.</string>
+    <string name="profile_board_language">שפת הלוח</string>
+    <string name="profile_board_language_hint">שפת האריחים והדיבור בפרופיל החדש, ללא תלות בשפת התפריטים.</string>
+    <string name="profile_duplicate_keeps_language">שפת הלוח תישמר מהפרופיל הפעיל (%1$s).</string>
 
     <!-- Layout Settings -->
     <string name="admin_tab_layout">תצוגה</string>
@@ -228,4 +244,19 @@
     <string name="setting_grid_rows">מספר שורות במסך הראשי</string>
     <string name="save_layout_as_default">שמור הגדרות כברירת מחדל</string>
     <string name="restore_default_layout_settings">שחזר הגדרות ברירת מחדל</string>
+    <string name="layout_preview_title">תצוגה מקדימה</string>
+    <string name="layout_preview_sentence_bar">סרגל משפטים</string>
+    <string name="layout_preview_tile_size">גודל הכפתור והתמונה</string>
+    <string name="layout_preview_action_button_size">גודל כפתור הפעולה</string>
+    <string name="layout_preview_sample_i">אני</string>
+    <string name="layout_preview_sample_want">רוצה</string>
+    <string name="layout_preview_sample_more">עוד</string>
+    <string name="quick_record_title">הקלטה מהירה עבור: %1$s</string>
+    <string name="quick_record_recording_hint">מקליט כעת... לחץ לעצירה</string>
+    <string name="quick_record_idle_hint">לחץ על המיקרופון כדי להתחיל להקליט</string>
+    <string name="preview_recording_button">השמע בדיקה</string>
+    <string name="save_recording_button">שמור הקלטה</string>
+    <string name="total_words_info_desc">סך כל הפעמים שהמשתמש לחץ על מילים להשמעה.</string>
+    <string name="avg_time_info_desc">זמן משוער שהאפליקציה הייתה פתוחה ופעילה.</string>
+    <string name="active_sessions_info_desc">מספר הימים שבהם תועד שימוש באפליקציה.</string>
 </resources>

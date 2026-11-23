@@ -24,6 +24,9 @@ sealed interface SystemSettingsAction {
         val languageCode: String,
     ) : SystemSettingsAction
 
+    data object RetryLanguageChange :
+        SystemSettingsAction
+
     data object SaveBackupClicked :
         SystemSettingsAction
 

@@ -4,17 +4,24 @@ import android.content.Context
 import android.speech.tts.TextToSpeech
 import android.speech.tts.UtteranceProgressListener
 import android.util.Log
+import com.kon.myaacapp.core.locale.LocaleHelper
 import kotlinx.coroutines.CancellableContinuation
+import kotlinx.coroutines.flow.MutableStateFlow
+import kotlinx.coroutines.flow.StateFlow
+import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.suspendCancellableCoroutine
 import java.util.Locale
 import java.util.UUID
 import java.util.concurrent.ConcurrentHashMap
 import kotlin.coroutines.resume
 
-class TextToSpeechHelper(context: Context) {
+class TextToSpeechHelper(context: Context) : SpeechSynthesizer {
     private var tts: TextToSpeech? = null
     private var isInitialized = false
     private var currentLanguageCode: String? = null
+
+    private val _lastRequestedLocale = MutableStateFlow<Locale?>(null)
+    val lastRequestedLocale: StateFlow<Locale?> = _lastRequestedLocale.asStateFlow()
 
     // OPTIMIZATION: Multiplexer map for coroutines.
     // This allows multiple TTS requests to safely resolve their specific coroutines
@@ -64,23 +71,20 @@ class TextToSpeechHelper(context: Context) {
     }
 
     fun setLanguage(languageCode: String) {
-        currentLanguageCode = languageCode
+        val normalized = LocaleHelper.normalize(languageCode)
+        currentLanguageCode = normalized
+        val locale = resolveLocale(normalized)
+        _lastRequestedLocale.value = locale
         if (!isInitialized) return
 
-        val locale = if (languageCode == "he") {
-            Locale.forLanguageTag("he-IL")
-        } else {
-            // Standardize generic locale parsing safely
-            Locale.forLanguageTag(languageCode)
-        }
-
         val result = tts?.setLanguage(locale)
+        Log.i("TTS", "setLanguage($normalized) -> locale=${locale.toLanguageTag()}, result=$result")
         if (result == TextToSpeech.LANG_MISSING_DATA || result == TextToSpeech.LANG_NOT_SUPPORTED) {
-            Log.e("TTS", "Language $languageCode is not supported or missing data")
+            Log.e("TTS", "Language $normalized is not supported or missing data")
         }
     }
 
-    fun speak(text: String) {
+    override fun speak(text: String) {
         if (isInitialized) {
             tts?.speak(text, TextToSpeech.QUEUE_FLUSH, null, null)
         } else {
@@ -88,7 +92,7 @@ class TextToSpeechHelper(context: Context) {
         }
     }
 
-    suspend fun speakSuspend(text: String) = suspendCancellableCoroutine { continuation ->
+    override suspend fun speakSuspend(text: String) = suspendCancellableCoroutine { continuation ->
         if (!isInitialized) {
             Log.e("TTS", "TTS not initialized yet")
             continuation.resume(Unit)
@@ -114,12 +118,25 @@ class TextToSpeechHelper(context: Context) {
         }
     }
 
-    fun shutdown() {
-        // Clear dangling coroutines
+    override fun stop() {
         activeContinuations.values.forEach { if (it.isActive) it.resume(Unit) }
         activeContinuations.clear()
+        runCatching { tts?.stop() }
+    }
 
-        tts?.stop()
-        tts?.shutdown()
+    fun shutdown() {
+        stop()
+        runCatching { tts?.shutdown() }
+    }
+
+    companion object {
+        fun resolveLocale(languageCode: String): Locale {
+            val normalized = LocaleHelper.normalize(languageCode)
+            return if (normalized == "he") {
+                Locale.forLanguageTag("he-IL")
+            } else {
+                Locale.forLanguageTag(normalized)
+            }
+        }
     }
 }

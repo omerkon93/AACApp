@@ -4,10 +4,11 @@ import android.content.Context
 import android.util.Log
 import com.kon.myaacapp.data.repository.AACRepository
 import com.kon.myaacapp.data.repository.ProfileRepository
+import com.kon.myaacapp.data.repository.SettingsRepository
 import com.kon.myaacapp.service.backup.BackupService
 import kotlinx.coroutines.Dispatchers
-import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.flow.filterNotNull
+import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.withContext
 import java.io.File
 
@@ -16,6 +17,7 @@ class AppStartupCoordinator(
     private val backupService: BackupService,
     private val repository: AACRepository,
     private val profileRepository: ProfileRepository,
+    private val settingsRepository: SettingsRepository = profileRepository.settingsRepository,
 ) {
     private val applicationContext =
         context.applicationContext
@@ -23,7 +25,26 @@ class AppStartupCoordinator(
     suspend fun initialize(): Boolean =
         withContext(Dispatchers.IO) {
             runCatching {
-                installInitialDataIfRequired()
+                val recovered =
+                    backupService.recoverIncompleteRestoreIfNeeded()
+                if (!recovered) {
+                    error("Failed to recover incomplete backup restore")
+                }
+
+                val firstBootFlag = File(
+                    applicationContext.filesDir,
+                    FIRST_BOOT_FLAG,
+                )
+                val isFirstBoot = !firstBootFlag.exists()
+
+                if (isFirstBoot) {
+                    installInitialDataIfRequired(firstBootFlag)
+                } else {
+                    val synced = backupService.syncStarterDataFromAssetsIfNeeded(INITIAL_DATA_ASSET)
+                    if (!synced) {
+                        Log.w(TAG, "Starter data sync did not complete; using existing dictionaries")
+                    }
+                }
 
                 /*
                  * The imported profile JSON is authoritative for layout,
@@ -39,17 +60,17 @@ class AppStartupCoordinator(
                 Log.d(
                     TAG,
                     "Initial active profile: ${loadedProfile.profileId}, " +
-                            "layout entries: ${loadedProfile.layout.size}",
+                        "layout entries: ${loadedProfile.layout.size}",
                 )
 
                 repository.completeLegacyMigration()
-
 
                 /*
                  * Legacy migration may have updated the profile on disk.
                  */
                 profileRepository.reload()
 
+                migrateLanguageSeparationIfNeeded(isFirstBoot = isFirstBoot)
 
                 val finalProfile =
                     profileRepository.activeProfile
@@ -59,7 +80,8 @@ class AppStartupCoordinator(
                 Log.d(
                     TAG,
                     "Final active profile: ${finalProfile.profileId}, " +
-                            "layout entries: ${finalProfile.layout.size}",
+                        "board language: ${finalProfile.activeLanguageCode}, " +
+                        "layout entries: ${finalProfile.layout.size}",
                 )
 
                 /*
@@ -70,7 +92,7 @@ class AppStartupCoordinator(
                 Log.d(
                     TAG,
                     "Definitions loaded: " +
-                            "${repository.baseDefinitions.value.size}",
+                        "${repository.baseDefinitions.value.size}",
                 )
 
                 true
@@ -85,40 +107,65 @@ class AppStartupCoordinator(
             }
         }
 
-    private suspend fun installInitialDataIfRequired() =
-        withContext(Dispatchers.IO) {
-            val firstBootFlag = File(
-                applicationContext.filesDir,
-                FIRST_BOOT_FLAG,
+    private suspend fun migrateLanguageSeparationIfNeeded(
+        isFirstBoot: Boolean,
+    ) {
+        if (settingsRepository.isLanguageSeparationMigratedFlow.first()) {
+            return
+        }
+
+        if (settingsRepository.hasExplicitInterfaceLanguagePreference()) {
+            val currentInterfaceLanguage = settingsRepository.interfaceLanguageCodeFlow.first()
+            settingsRepository.markLanguageSeparationMigrated(currentInterfaceLanguage)
+            return
+        }
+
+        val hasLegacyPref = settingsRepository.hasExplicitLegacyLanguagePreference()
+        val effectiveLegacyLanguage = settingsRepository.readLegacyLanguageCodeForMigration()
+        val activeProfileId = profileRepository.activeProfile.value?.profileId
+            ?: settingsRepository.activeProfileIdFlow.first()
+
+        if (!isFirstBoot || hasLegacyPref) {
+            profileRepository.repairProfilesLanguageForLegacyMigration(
+                legacyLanguageCode = effectiveLegacyLanguage,
+                hasExplicitLegacyPreference = hasLegacyPref,
+                activeProfileId = activeProfileId,
+            )
+        }
+
+        settingsRepository.markLanguageSeparationMigrated(effectiveLegacyLanguage)
+    }
+
+    private suspend fun installInitialDataIfRequired(
+        firstBootFlag: File,
+    ) = withContext(Dispatchers.IO) {
+        if (firstBootFlag.exists()) {
+            return@withContext
+        }
+
+        val importSucceeded =
+            backupService.importFromAssets(
+                INITIAL_DATA_ASSET
             )
 
-            if (firstBootFlag.exists()) {
-                return@withContext
-            }
-
-            val importSucceeded =
-                backupService.importFromAssets(
-                    INITIAL_DATA_ASSET
-                )
-
-            if (!importSucceeded) {
-                error(
-                    "Failed to import $INITIAL_DATA_ASSET"
-                )
-            }
-
-            val flagCreated =
-                firstBootFlag.createNewFile()
-
-            if (
-                !flagCreated &&
-                !firstBootFlag.exists()
-            ) {
-                error(
-                    "Failed to create $FIRST_BOOT_FLAG"
-                )
-            }
+        if (!importSucceeded) {
+            error(
+                "Failed to import $INITIAL_DATA_ASSET"
+            )
         }
+
+        val flagCreated =
+            firstBootFlag.createNewFile()
+
+        if (
+            !flagCreated &&
+            !firstBootFlag.exists()
+        ) {
+            error(
+                "Failed to create $FIRST_BOOT_FLAG"
+            )
+        }
+    }
 
     private companion object {
         const val TAG = "AppStartupCoordinator"

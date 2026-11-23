@@ -405,7 +405,7 @@ fun LayoutPreview(
         verticalArrangement = Arrangement.spacedBy(16.dp)
     ) {
         Text(
-            text = "תצוגה מקדימה",
+            text = stringResource(R.string.layout_preview_title),
             style = MaterialTheme.typography.titleMedium,
             fontWeight = FontWeight.Bold,
             color = Color.White
@@ -416,7 +416,7 @@ fun LayoutPreview(
             verticalArrangement = Arrangement.spacedBy(6.dp)
         ) {
             Text(
-                text = "סרגל משפטים",
+                text = stringResource(R.string.layout_preview_sentence_bar),
                 style = MaterialTheme.typography.labelMedium,
                 color = Color.LightGray
             )
@@ -446,7 +446,7 @@ fun LayoutPreview(
                             contentAlignment = Alignment.Center
                         ) {
                             Text(
-                                text = "אני",
+                                text = stringResource(R.string.layout_preview_sample_i),
                                 fontSize = 12.sp,
                                 fontWeight = FontWeight.Bold,
                                 color = Color.DarkGray
@@ -466,7 +466,7 @@ fun LayoutPreview(
                             contentAlignment = Alignment.Center
                         ) {
                             Text(
-                                text = "רוצה",
+                                text = stringResource(R.string.layout_preview_sample_want),
                                 fontSize = 11.sp,
                                 fontWeight = FontWeight.Bold,
                                 color = Color.DarkGray
@@ -495,7 +495,7 @@ fun LayoutPreview(
                     contentAlignment = Alignment.Center
                 ) {
                     Text(
-                        text = "מוסתר",
+                        text = stringResource(R.string.tile_hidden),
                         style = MaterialTheme.typography.bodyMedium,
                         color = Color.LightGray
                     )
@@ -513,7 +513,7 @@ fun LayoutPreview(
                 verticalArrangement = Arrangement.spacedBy(8.dp)
             ) {
                 Text(
-                    text = "גודל הכפתור והתמונה",
+                    text = stringResource(R.string.layout_preview_tile_size),
                     style = MaterialTheme.typography.labelMedium,
                     color = Color.LightGray
                 )
@@ -525,7 +525,7 @@ fun LayoutPreview(
                     contentAlignment = Alignment.Center
                 ) {
                     TileUI(
-                        label = "עוד",
+                        label = stringResource(R.string.layout_preview_sample_more),
                         imageUri = null,
                         emoji = "➕",
                         backgroundColor = Color(0xFF90CAF9),
@@ -545,7 +545,7 @@ fun LayoutPreview(
                 verticalArrangement = Arrangement.spacedBy(8.dp)
             ) {
                 Text(
-                    text = "גודל כפתור הפעולה",
+                    text = stringResource(R.string.layout_preview_action_button_size),
                     style = MaterialTheme.typography.labelMedium,
                     color = Color.LightGray
                 )

@@ -46,14 +46,6 @@ class AACRepository(
         encodeDefaults = true
     }
 
-    init {
-        profileRepository.scope.launch {
-            settingsRepository.tilesUseTtsFlow.collect {
-                loadAllDefinitions()
-            }
-        }
-    }
-
     val activeProfile: StateFlow<UserProfile?> =
         profileRepository.activeProfile
 
@@ -65,6 +57,14 @@ class AACRepository(
 
     private val diskMutex = Mutex()
     private val profileMutex = Mutex()
+
+    init {
+        profileRepository.scope.launch {
+            settingsRepository.tilesUseTtsFlow.collect {
+                loadAllDefinitions()
+            }
+        }
+    }
 
     override suspend fun reload() {
         loadAllDefinitions()
@@ -83,14 +83,13 @@ class AACRepository(
 
     override suspend fun loadAllDefinitions(): Unit =
         withContext(Dispatchers.IO) {
-        val tilesUseTts = settingsRepository.tilesUseTtsFlow.first()
-
         val tilesDir = File(
             context.filesDir,
             "tiles",
         )
 
         val fileDefinitions = mutableListOf<TileDefinition>()
+        val defaultTilesByKey = mutableMapOf<Pair<String, String>, TileDefinition>()
 
         diskMutex.withLock {
             val languageDirs = tilesDir.listFiles { file ->
@@ -105,34 +104,60 @@ class AACRepository(
                     )
                 ).filter { definition -> definition.languageCode == languageDirectory.name }
 
+                defaultDefinitions.forEach { defaultTile ->
+                    defaultTilesByKey[defaultTile.languageCode to defaultTile.id] = defaultTile
+                }
+
                 val userDefinitions = loadDictionaryFile(
                     File(
                         languageDirectory,
                         "export_user_defined.json",
                     )
-                )
+                ).map { userTile ->
+                    val defaultTile =
+                        defaultTilesByKey[userTile.languageCode to userTile.id]
+                    userTile.copy(
+                        isCustomAudio = resolveIsCustomAudio(
+                            audioUri = userTile.audioUri,
+                            explicitIsCustomAudio = userTile.isCustomAudio,
+                            defaultAudioUri = defaultTile?.audioUri,
+                            hasDefaultDefinition = defaultTile != null,
+                        )
+                    )
+                }
 
                 /*
                  * User definitions override defaults only when both the tile ID
-                 * and language code match.
+                 * and language code match. Preserve custom recording references
+                 * regardless of tilesUseTts; playback precedence resolves TTS vs audio.
                  */
-                var merged = mergeDictionaries(
+                val merged = mergeDictionaries(
                     defaultTiles = defaultDefinitions,
                     userTiles = userDefinitions,
                 )
 
-                if (tilesUseTts) {
-                    merged = merged.map { it.copy(audioUri = null) }
-                }
-
                 fileDefinitions += merged
             }
+        }
+
+        val mergedFileMap = fileDefinitions.associateBy { definition ->
+            definition.languageCode to definition.id
         }
 
         try {
             val roomDefinitions = aacTileDao
                 .getAllTilesSync()
                 .map { tile ->
+                    val key = tile.languageCode to tile.id
+                    val existingFileDef = mergedFileMap[key]
+                    val defaultDef = defaultTilesByKey[key]
+                    val preservedExplicitCustom = existingFileDef
+                        ?.takeIf {
+                            normalizeAudioReference(it.audioUri) ==
+                                normalizeAudioReference(tile.audioUri)
+                        }
+                        ?.isCustomAudio
+                        ?: false
                     TileDefinition(
                         id = tile.id,
                         label = tile.label,
@@ -141,6 +166,12 @@ class AACRepository(
                         ttsTextFeminine = tile.ttsTextFeminine,
                         emoji = tile.emoji,
                         audioUri = tile.audioUri,
+                        isCustomAudio = resolveIsCustomAudio(
+                            audioUri = tile.audioUri,
+                            explicitIsCustomAudio = preservedExplicitCustom,
+                            defaultAudioUri = defaultDef?.audioUri,
+                            hasDefaultDefinition = defaultDef != null,
+                        ),
                         imageUri = tile.imageUri,
                         backgroundColorHex =
                             tile.backgroundColorHex,
@@ -488,11 +519,20 @@ class AACRepository(
             isHidden = request.isHidden,
         )
 
-        insertTile(databaseTile)
+        insertTile(
+            tile = databaseTile,
+            isCustomAudio = request.isCustomAudio || !request.audioUri.isNullOrBlank(),
+        )
     }
 
-    suspend fun insertTile(tile: AACTile) {
-        val definition = createDefinitionFromTile(tile)
+    suspend fun insertTile(
+        tile: AACTile,
+        isCustomAudio: Boolean = !tile.audioUri.isNullOrBlank(),
+    ) {
+        val definition = createDefinitionFromTile(
+            tile = tile,
+            isCustomAudio = isCustomAudio,
+        )
 
         withContext(Dispatchers.IO) {
             saveDefinitionToDisk(definition)
@@ -553,8 +593,14 @@ class AACRepository(
         tiles.forEach { insertTile(it) }
     }
 
-    suspend fun updateTile(tile: AACTile) {
-        val definition = createDefinitionFromTile(tile)
+    suspend fun updateTile(
+        tile: AACTile,
+        isCustomAudio: Boolean = !tile.audioUri.isNullOrBlank(),
+    ) {
+        val definition = createDefinitionFromTile(
+            tile = tile,
+            isCustomAudio = isCustomAudio,
+        )
 
         withContext(Dispatchers.IO) {
             saveDefinitionToDisk(definition)
@@ -607,7 +653,10 @@ class AACRepository(
             clickCount = layoutState.clickCount,
         )
 
-        updateTile(databaseTile)
+        updateTile(
+            tile = databaseTile,
+            isCustomAudio = definition.isCustomAudio && !definition.audioUri.isNullOrBlank(),
+        )
     }
 
     suspend fun deleteTile(tile: AACTile) {
@@ -678,7 +727,10 @@ class AACRepository(
         deleteTile(databaseTile)
     }
 
-    private fun createDefinitionFromTile(tile: AACTile): TileDefinition {
+    private fun createDefinitionFromTile(
+        tile: AACTile,
+        isCustomAudio: Boolean = !tile.audioUri.isNullOrBlank(),
+    ): TileDefinition {
         return TileDefinition(
             id = tile.id,
             label = tile.label,
@@ -687,6 +739,7 @@ class AACRepository(
             ttsTextFeminine = tile.ttsTextFeminine,
             emoji = tile.emoji,
             audioUri = tile.audioUri,
+            isCustomAudio = isCustomAudio && !tile.audioUri.isNullOrBlank(),
             imageUri = tile.imageUri,
             backgroundColorHex = tile.backgroundColorHex,
             partOfSpeech = tile.partOfSpeech,
@@ -703,6 +756,30 @@ class AACRepository(
             defaultCellIndex = tile.cellIndex,
             defaultLinkedCategoryId = tile.linkedCategoryId
         )
+    }
+
+    private fun resolveIsCustomAudio(
+        audioUri: String?,
+        explicitIsCustomAudio: Boolean,
+        defaultAudioUri: String?,
+        hasDefaultDefinition: Boolean,
+    ): Boolean {
+        val cleanAudio = audioUri?.trim()?.takeIf { it.isNotEmpty() } ?: return false
+        if (explicitIsCustomAudio) return true
+        if (!hasDefaultDefinition) return true
+        return normalizeAudioReference(cleanAudio) != normalizeAudioReference(defaultAudioUri)
+    }
+
+    private fun normalizeAudioReference(rawUri: String?): String? {
+        val trimmed = rawUri?.trim()?.takeIf { it.isNotEmpty() } ?: return null
+        val normalized = trimmed.replace('\\', '/').removePrefix("file://")
+        val marker = "/audio_tiles/"
+        val idx = normalized.lastIndexOf(marker)
+        return if (idx >= 0) {
+            normalized.substring(idx + 1)
+        } else {
+            normalized
+        }
     }
 
     override suspend fun incrementClickCount(

@@ -35,13 +35,10 @@ class SystemSettingsViewModel(
     private val settingsRepository: SettingsRepository,
     private val aacRepository: AACRepository,
     private val profileRepository: ProfileRepository,
+    private val backupService: BackupService,
+    private val languageDownloadHelper: LanguageDownloadHelper =
+        LanguageDownloadHelper(application),
 ) : AndroidViewModel(application) {
-
-    private val backupService =
-        BackupService(
-            application,
-            aacRepository,
-        )
 
     private val backupManager =
         BackupManager(
@@ -51,9 +48,6 @@ class SystemSettingsViewModel(
             profileRepository = profileRepository,
             scope = viewModelScope,
         )
-
-    private val languageDownloadHelper =
-        LanguageDownloadHelper(application)
 
     private val operationState =
         MutableStateFlow(
@@ -70,7 +64,7 @@ class SystemSettingsViewModel(
         combine(
             settingsRepository.speakOnTilePressFlow,
             settingsRepository.tilesUseTtsFlow,
-            settingsRepository.languageCodeFlow,
+            settingsRepository.interfaceLanguageCodeFlow,
             settingsRepository.userGenderFlow,
         ) {
                 speakOnTilePress,
@@ -90,16 +84,16 @@ class SystemSettingsViewModel(
     private val systemOperationStatus =
         combine(
             languageDownloadHelper.downloadStatus,
-            backupManager.status,
+            backupManager.result,
             operationState,
         ) {
                 downloadStatus,
-                backupStatus,
+                backupResult,
                 operation ->
 
             SystemOperationStatus(
                 downloadStatus = downloadStatus,
-                backupStatus = backupStatus,
+                backupStatus = backupResult?.takeIf { it.isSuccess }?.message,
                 operation = operation,
             )
         }
@@ -127,6 +121,9 @@ class SystemSettingsViewModel(
 
                 languageDownloadStatus =
                     status.downloadStatus,
+
+                pendingLanguageRetryCode =
+                    status.operation.pendingLanguageRetryCode,
 
                 showResetConfirmation =
                     status
@@ -194,6 +191,10 @@ class SystemSettingsViewModel(
                 )
             }
 
+            SystemSettingsAction.RetryLanguageChange -> {
+                retryLanguageChange()
+            }
+
             SystemSettingsAction.SaveBackupClicked -> {
                 requestBackupDestination()
             }
@@ -247,7 +248,7 @@ class SystemSettingsViewModel(
 
             SystemSettingsAction
                 .StatusMessageConsumed -> {
-                backupManager.clearStatus()
+                backupManager.clearResult()
             }
 
             SystemSettingsAction.ErrorConsumed -> {
@@ -309,6 +310,15 @@ class SystemSettingsViewModel(
         }
     }
 
+    private fun retryLanguageChange() {
+        val retryLanguage = operationState.value.pendingLanguageRetryCode
+        if (retryLanguage == null) {
+            languageDownloadHelper.clearError()
+            return
+        }
+        changeLanguage(retryLanguage)
+    }
+
     private fun changeLanguage(
         requestedLanguage: String,
     ) {
@@ -321,6 +331,10 @@ class SystemSettingsViewModel(
             normalizedLanguage ==
             state.value.languageCode
         ) {
+            languageDownloadHelper.clearError()
+            operationState.update { currentState ->
+                currentState.copy(pendingLanguageRetryCode = null)
+            }
             return
         }
 
@@ -331,10 +345,23 @@ class SystemSettingsViewModel(
             return
         }
 
+        languageDownloadHelper.clearError()
+        operationState.update { currentState ->
+            currentState.copy(
+                pendingLanguageRetryCode = null,
+                errorMessage = null,
+            )
+        }
+
         languageDownloadHelper.downloadLanguage(
             languageCode = normalizedLanguage,
         ) { downloadSucceeded ->
             if (!downloadSucceeded) {
+                operationState.update { currentState ->
+                    currentState.copy(
+                        pendingLanguageRetryCode = normalizedLanguage,
+                    )
+                }
                 showError(
                     message =
                         "Failed to download the selected language.",
@@ -346,20 +373,25 @@ class SystemSettingsViewModel(
             viewModelScope.launch {
                 runCatching {
                     settingsRepository
-                        .updateLanguageCode(
+                        .updateInterfaceLanguageCode(
                             normalizedLanguage
                         )
-
-                    aacRepository.prepareLanguage(
-                        languageCode =
-                            normalizedLanguage,
-                    )
                 }.onSuccess {
+                    operationState.update { currentState ->
+                        currentState.copy(
+                            pendingLanguageRetryCode = null,
+                        )
+                    }
                     emitEffect(
                         SystemSettingsEffect
                             .RecreateActivity
                     )
                 }.onFailure { error ->
+                    operationState.update { currentState ->
+                        currentState.copy(
+                            pendingLanguageRetryCode = normalizedLanguage,
+                        )
+                    }
                     showError(
                         message = error.message
                             ?: "Failed to change language.",
@@ -390,7 +422,7 @@ class SystemSettingsViewModel(
             return
         }
 
-        backupManager.clearStatus()
+        backupManager.clearResult()
 
         operationState.update { currentState ->
             currentState.copy(
@@ -399,16 +431,16 @@ class SystemSettingsViewModel(
             )
         }
 
+        observeBackupOperationCompletion(
+            operation =
+                SystemBackupOperation.EXPORT,
+        )
+
         backupManager.exportDatabase(
             uri = uri,
             contentResolver =
                 getApplication<Application>()
                     .contentResolver,
-        )
-
-        observeBackupOperationCompletion(
-            operation =
-                SystemBackupOperation.EXPORT,
         )
     }
 
@@ -419,7 +451,7 @@ class SystemSettingsViewModel(
             return
         }
 
-        backupManager.clearStatus()
+        backupManager.clearResult()
 
         operationState.update { currentState ->
             currentState.copy(
@@ -428,16 +460,16 @@ class SystemSettingsViewModel(
             )
         }
 
+        observeBackupOperationCompletion(
+            operation =
+                SystemBackupOperation.IMPORT,
+        )
+
         backupManager.importDatabase(
             uri = uri,
             contentResolver =
                 getApplication<Application>()
                     .contentResolver,
-        )
-
-        observeBackupOperationCompletion(
-            operation =
-                SystemBackupOperation.IMPORT,
         )
     }
 
@@ -480,7 +512,7 @@ class SystemSettingsViewModel(
             return
         }
 
-        backupManager.clearStatus()
+        backupManager.clearResult()
 
         operationState.update { currentState ->
             currentState.copy(
@@ -490,20 +522,20 @@ class SystemSettingsViewModel(
             )
         }
 
-        backupManager.resetToDefault()
-
         observeBackupOperationCompletion(
             operation =
                 SystemBackupOperation.RESET,
         )
+
+        backupManager.resetToDefault()
     }
 
     private fun observeBackupOperationCompletion(
         operation: SystemBackupOperation,
     ) {
         viewModelScope.launch {
-            val message =
-                backupManager.status
+            val result =
+                backupManager.result
                     .filterNotNull()
                     .first()
 
@@ -533,11 +565,18 @@ class SystemSettingsViewModel(
                 }
             }
 
-            emitEffect(
-                SystemSettingsEffect.ShowMessage(
-                    message = message,
+            if (result.isSuccess) {
+                emitEffect(
+                    SystemSettingsEffect.ShowMessage(
+                        message = result.message,
+                    )
                 )
-            )
+            } else {
+                backupManager.clearResult()
+                showError(
+                    message = result.message,
+                )
+            }
         }
     }
 
@@ -599,6 +638,7 @@ private data class SystemSettingsOperationState(
     val isExporting: Boolean = false,
     val isSharing: Boolean = false,
     val isResetting: Boolean = false,
+    val pendingLanguageRetryCode: String? = null,
     val errorMessage: String? = null,
 )
 

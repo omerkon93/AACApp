@@ -19,6 +19,7 @@ data class TileDefinition(
 
     val emoji: String? = null,
     val audioUri: String? = null,
+    val isCustomAudio: Boolean = false,
     val imageUri: String? = null,
     val backgroundColorHex: String? = null,
 

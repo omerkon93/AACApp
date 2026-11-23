@@ -175,4 +175,84 @@ class LanguageDownloadHelperTest {
         
         assertEquals(true, completion1)
     }
+
+    @Test
+    fun `test bundled resources short-circuit offline install`() = runTest {
+        whenever(splitInstallManager.installedLanguages).thenReturn(emptySet())
+        val offlineHelper = LanguageDownloadHelper(
+            context = context,
+            installTimeoutMs = 500L,
+            localResourceChecker = { _, code -> code == "en" || code == "he" },
+        )
+
+        var completed: Boolean? = null
+        offlineHelper.downloadLanguage("en") { success ->
+            completed = success
+        }
+
+        assertTrue(offlineHelper.isLanguageInstalled("he"))
+        assertTrue(offlineHelper.isLanguageInstalled("en"))
+        assertEquals(true, completed)
+        assertEquals(DownloadStatus.Success, offlineHelper.downloadStatus.value)
+        verify(splitInstallManager, never()).startInstall(any())
+        offlineHelper.unregister()
+    }
+
+    @Test
+    fun `test offline timeout emits retryable error and cancels install`() = runTest {
+        whenever(splitInstallManager.installedLanguages).thenReturn(emptySet())
+        val task = mockTask(77)
+        val cancelTask = mockTask<Void?>(null)
+        whenever(splitInstallManager.startInstall(any())).thenReturn(task)
+        whenever(splitInstallManager.cancelInstall(77)).thenReturn(cancelTask)
+
+        val helperScope = kotlinx.coroutines.CoroutineScope(
+            kotlinx.coroutines.SupervisorJob() + testDispatcher,
+        )
+        val timeoutHelper = LanguageDownloadHelper(
+            context = context,
+            installTimeoutMs = 100L,
+            localResourceChecker = { _, _ -> false },
+            scope = helperScope,
+        )
+
+        var completed: Boolean? = null
+        timeoutHelper.downloadLanguage("fr") { success ->
+            completed = success
+        }
+        testScheduler.advanceTimeBy(150L)
+        testScheduler.runCurrent()
+
+        assertEquals(false, completed)
+        assertTrue(timeoutHelper.downloadStatus.value is DownloadStatus.Error)
+        verify(splitInstallManager).cancelInstall(77)
+
+        timeoutHelper.clearError()
+        assertEquals(DownloadStatus.Idle, timeoutHelper.downloadStatus.value)
+        timeoutHelper.unregister()
+    }
+
+    @Test
+    fun `test failed status emits error and invokes failure callback`() = runTest {
+        whenever(splitInstallManager.installedLanguages).thenReturn(emptySet())
+        val task = mockTask(88)
+        whenever(splitInstallManager.startInstall(any())).thenReturn(task)
+
+        val listenerCaptor = argumentCaptor<SplitInstallStateUpdatedListener>()
+        verify(splitInstallManager).registerListener(listenerCaptor.capture())
+
+        var completed: Boolean? = null
+        helper.downloadLanguage("es") { success ->
+            completed = success
+        }
+
+        val failedState = mock(SplitInstallSessionState::class.java)
+        whenever(failedState.status()).thenReturn(SplitInstallSessionStatus.FAILED)
+        whenever(failedState.sessionId()).thenReturn(88)
+        whenever(failedState.errorCode()).thenReturn(-10)
+        listenerCaptor.firstValue.onStateUpdate(failedState)
+
+        assertEquals(false, completed)
+        assertTrue(helper.downloadStatus.value is DownloadStatus.Error)
+    }
 }

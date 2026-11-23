@@ -61,6 +61,7 @@ fun TileEditDialogContent(
     onPlayPreview: (
         ttsText: String,
         audioUri: String?,
+        isCustomAudio: Boolean,
     ) -> Unit,
     onAction: (TileEditorAction) -> Unit,
 ) {
@@ -293,6 +294,10 @@ fun TileEditDialogContent(
                             languageCode =
                                 state.languageCode,
                             audioService = audioService,
+                            ttsText = state.ttsText,
+                            onTestAudio = { ttsText, uri ->
+                                onPlayPreview(ttsText, uri, true)
+                            },
                         )
                     }
 
@@ -400,6 +405,7 @@ fun TileEditDialogContent(
                             tileType = state.tileType,
                             isHidden = state.isHidden,
                             audioUri = state.audioUri,
+                            isCustomAudio = state.isCustomAudio,
                             backgroundColor = tileColor,
                             aspectRatio =
                                 previewAspectRatio,
@@ -483,9 +489,10 @@ private fun TileEditorPreview(
     tileType: TileType,
     isHidden: Boolean,
     audioUri: String?,
+    isCustomAudio: Boolean,
     backgroundColor: androidx.compose.ui.graphics.Color,
     aspectRatio: Float,
-    onPlayPreview: (String, String?) -> Unit,
+    onPlayPreview: (String, String?, Boolean) -> Unit,
 ) {
     val displayLabel = label.ifBlank {
         stringResource(R.string.label_placeholder)
@@ -517,7 +524,7 @@ private fun TileEditorPreview(
             tileType = tileType,
             isHidden = isHidden,
             onClick = {
-                onPlayPreview(ttsText, audioUri)
+                onPlayPreview(ttsText, audioUri, isCustomAudio)
             },
             modifier = Modifier
                 .width(200.dp)

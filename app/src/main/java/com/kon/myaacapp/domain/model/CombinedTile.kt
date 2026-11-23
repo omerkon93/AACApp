@@ -25,6 +25,9 @@ data class CombinedTile(
     val audioUri: String?
         get() = definition.audioUri
 
+    val isCustomAudio: Boolean
+        get() = definition.isCustomAudio
+
     val backgroundColorHex: String?
         get() = definition.backgroundColorHex
 

@@ -3,27 +3,33 @@ package com.kon.myaacapp.data.repository
 import android.content.Context
 import android.util.Log
 import com.kon.myaacapp.R
+import com.kon.myaacapp.core.locale.LocaleHelper
 import com.kon.myaacapp.domain.model.ProfileCreationMode
+import com.kon.myaacapp.domain.model.TileDefinition
 import com.kon.myaacapp.domain.model.UserProfile
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.MutableStateFlow
-import kotlinx.coroutines.flow.SharingStarted
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.flow.combine
+import kotlinx.coroutines.flow.distinctUntilChanged
+import kotlinx.coroutines.flow.filterNotNull
 import kotlinx.coroutines.flow.first
-import kotlinx.coroutines.flow.stateIn
+import kotlinx.coroutines.flow.map
 import kotlinx.coroutines.flow.update
+import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 import kotlinx.serialization.json.Json
 import java.io.File
+import java.io.FileOutputStream
 import java.util.UUID
 import java.util.zip.ZipInputStream
 
 class ProfileRepository(
     private val context: Context,
-    private val settingsRepository: SettingsRepository,
+    internal val settingsRepository: SettingsRepository,
     internal val scope: CoroutineScope,
 ) {
     companion object {
@@ -55,18 +61,35 @@ class ProfileRepository(
     val profiles: StateFlow<List<UserProfile>> =
         _profiles.asStateFlow()
 
-    val activeProfile: StateFlow<UserProfile?> = combine(
-        profiles,
-        settingsRepository.activeProfileIdFlow,
-    ) { profileList, activeId ->
-        profileList.find { profile ->
-            profile.profileId == activeId
-        } ?: profileList.firstOrNull()
-    }.stateIn(
-        scope = scope,
-        started = SharingStarted.Eagerly,
-        initialValue = null,
-    )
+    private val _activeProfile =
+        MutableStateFlow<UserProfile?>(null)
+
+    val activeProfile: StateFlow<UserProfile?> =
+        _activeProfile.asStateFlow()
+
+    init {
+        scope.launch {
+            combine(
+                _profiles,
+                settingsRepository.activeProfileIdFlow,
+            ) { profileList, activeId ->
+                profileList.find { profile ->
+                    profile.profileId == activeId
+                } ?: profileList.firstOrNull()
+            }.collect { resolved ->
+                _activeProfile.value = resolved
+            }
+        }
+    }
+
+    val activeBoardLanguage: Flow<String> = activeProfile
+        .filterNotNull()
+        .map { profile ->
+            LocaleHelper.normalize(
+                profile.activeLanguageCode.ifBlank { DEFAULT_LANGUAGE_CODE },
+            )
+        }
+        .distinctUntilChanged()
 
     suspend fun reload() =
         withContext(Dispatchers.IO) {
@@ -74,6 +97,7 @@ class ProfileRepository(
             loadProfilesSync()
             bootstrapDefaultProfileSync()
             ensureValidActiveProfile()
+            _activeProfile.value = resolveCurrentActiveProfile()
         }
 
     private fun ensureProfilesDirectory() {
@@ -205,9 +229,18 @@ class ProfileRepository(
         )
     }
 
+    private suspend fun resolveCurrentActiveProfile(): UserProfile? {
+        val profileList = _profiles.value
+        val activeId = settingsRepository.activeProfileIdFlow.first()
+        return profileList.find { profile ->
+            profile.profileId == activeId
+        } ?: profileList.firstOrNull()
+    }
+
     suspend fun createProfile(
         name: String,
         creationMode: ProfileCreationMode,
+        boardLanguageCode: String = DEFAULT_LANGUAGE_CODE,
     ) = withContext(Dispatchers.IO) {
         val normalizedName = name.trim()
 
@@ -215,10 +248,24 @@ class ProfileRepository(
             return@withContext
         }
 
-        val currentProfile = activeProfile.value
+        val currentProfile = resolveCurrentActiveProfile()
 
         val defaultProfile = _profiles.value.find { profile ->
             profile.profileId == DEFAULT_PROFILE_ID
+        }
+
+        val initialLanguageCode = when (creationMode) {
+            ProfileCreationMode.DUPLICATE_CURRENT -> {
+                normalizeSupportedLanguageOrNull(currentProfile?.activeLanguageCode)
+                    ?: DEFAULT_LANGUAGE_CODE
+            }
+
+            ProfileCreationMode.DEFAULT_TEMPLATE,
+            ProfileCreationMode.BLANK,
+            -> {
+                normalizeSupportedLanguageOrNull(boardLanguageCode)
+                    ?: DEFAULT_LANGUAGE_CODE
+            }
         }
 
         val initialLayout = when (creationMode) {
@@ -227,7 +274,21 @@ class ProfileRepository(
             }
 
             ProfileCreationMode.DEFAULT_TEMPLATE -> {
-                defaultProfile?.layout?.toMap().orEmpty()
+                val factoryLayout = loadFactoryDefaultProfile()
+                    ?.layout
+                    ?.mapValues { (_, layoutState) ->
+                        layoutState.copy(
+                            clickCount = 0,
+                            isHidden = false,
+                        )
+                    }
+
+                factoryLayout ?: defaultProfile?.layout?.mapValues { (_, layoutState) ->
+                    layoutState.copy(
+                        clickCount = 0,
+                        isHidden = false,
+                    )
+                }.orEmpty()
             }
 
             ProfileCreationMode.BLANK -> {
@@ -235,18 +296,8 @@ class ProfileRepository(
             }
         }
 
-        val initialLanguageCode = when (creationMode) {
-            ProfileCreationMode.DEFAULT_TEMPLATE -> {
-                defaultProfile?.activeLanguageCode
-                    ?: DEFAULT_LANGUAGE_CODE
-            }
-
-            ProfileCreationMode.DUPLICATE_CURRENT,
-            ProfileCreationMode.BLANK,
-                -> {
-                currentProfile?.activeLanguageCode
-                    ?: DEFAULT_LANGUAGE_CODE
-            }
+        if (creationMode != ProfileCreationMode.DUPLICATE_CURRENT) {
+            ensureStarterDictionaryForLanguageSync(initialLanguageCode)
         }
 
         val newProfile = UserProfile(
@@ -267,17 +318,19 @@ class ProfileRepository(
         settingsRepository.updateActiveProfileId(
             newProfile.profileId
         )
+        _activeProfile.value = newProfile
     }
 
     suspend fun switchProfile(
         profileId: String,
     ) {
-        val profileExists = _profiles.value.any { profile ->
+        val targetProfile = _profiles.value.find { profile ->
             profile.profileId == profileId
         }
 
-        if (profileExists) {
+        if (targetProfile != null) {
             settingsRepository.updateActiveProfileId(profileId)
+            _activeProfile.value = targetProfile
         }
     }
 
@@ -308,21 +361,26 @@ class ProfileRepository(
             }
         }
 
-        if (activeProfile.value?.profileId == profileId) {
+        if (resolveCurrentActiveProfile()?.profileId == profileId ||
+            _activeProfile.value?.profileId == profileId
+        ) {
+            val fallbackProfile = _profiles.value.firstOrNull()
             val fallbackProfileId =
-                _profiles.value.firstOrNull()?.profileId
-                    ?: DEFAULT_PROFILE_ID
+                fallbackProfile?.profileId ?: DEFAULT_PROFILE_ID
 
             settingsRepository.updateActiveProfileId(
                 fallbackProfileId
             )
+            _activeProfile.value = fallbackProfile
+        } else {
+            _activeProfile.value = resolveCurrentActiveProfile()
         }
     }
 
     suspend fun resetActiveProfileToDefault(): Boolean =
         withContext(Dispatchers.IO) {
             val currentProfile =
-                activeProfile.value ?: return@withContext false
+                resolveCurrentActiveProfile() ?: return@withContext false
 
             val factoryProfile =
                 loadFactoryDefaultProfile()
@@ -369,6 +427,7 @@ class ProfileRepository(
                     }
                 }
             }
+            _activeProfile.value = resetProfile
 
             true
         }
@@ -454,6 +513,172 @@ class ProfileRepository(
             _profiles.update { currentProfiles ->
                 currentProfiles + updatedProfile
             }
+        }
+        _activeProfile.value = resolveCurrentActiveProfile()
+    }
+
+    suspend fun repairProfilesLanguageForLegacyMigration(
+        legacyLanguageCode: String,
+        hasExplicitLegacyPreference: Boolean,
+        activeProfileId: String?,
+    ) = withContext(Dispatchers.IO) {
+        val normalizedLegacy = normalizeSupportedLanguageOrNull(legacyLanguageCode)
+            ?: DEFAULT_LANGUAGE_CODE
+        val currentProfiles = _profiles.value
+        if (currentProfiles.isEmpty()) {
+            return@withContext
+        }
+
+        val updatedProfiles = currentProfiles.map { profile ->
+            val currentCanonical = normalizeSupportedLanguageOrNull(profile.activeLanguageCode)
+            val isTargetActiveProfile =
+                (activeProfileId != null && profile.profileId == activeProfileId) ||
+                    (activeProfileId == null && currentProfiles.size == 1)
+
+            val desiredLanguage = when {
+                isTargetActiveProfile && hasExplicitLegacyPreference -> normalizedLegacy
+                currentCanonical != null -> currentCanonical
+                else -> normalizedLegacy
+            }
+
+            if (profile.activeLanguageCode == desiredLanguage) {
+                profile
+            } else {
+                val updated = profile.copy(activeLanguageCode = desiredLanguage)
+                if (saveProfileInternal(updated)) updated else profile
+            }
+        }
+
+        _profiles.value = updatedProfiles
+        _activeProfile.value = resolveCurrentActiveProfile()
+    }
+
+    private fun ensureStarterDictionaryForLanguageSync(languageCode: String) {
+        val targetZipEntry = "tiles/$languageCode/default_dictionary.json"
+        val audioPrefix = "audio_tiles/$languageCode/"
+        var bundledDictionaryJson: String? = null
+        val filesCanonicalPrefix = context.filesDir.canonicalPath + File.separator
+
+        runCatching {
+            context.assets.open(INITIAL_DATA_ASSET).use { assetInputStream ->
+                ZipInputStream(assetInputStream.buffered()).use { zipInputStream ->
+                    var entry = zipInputStream.nextEntry
+                    while (entry != null) {
+                        val normalizedName = entry.name
+                            .replace('\\', '/')
+                            .removePrefix("/")
+
+                        if (!entry.isDirectory) {
+                            when {
+                                normalizedName == targetZipEntry -> {
+                                    bundledDictionaryJson = zipInputStream
+                                        .bufferedReader()
+                                        .readText()
+                                        .removePrefix("\uFEFF")
+                                }
+
+                                normalizedName.startsWith(audioPrefix) -> {
+                                    val destAudioFile = File(context.filesDir, normalizedName)
+                                    val destCanonical = runCatching { destAudioFile.canonicalPath }.getOrNull()
+                                    if (destCanonical != null &&
+                                        destCanonical.startsWith(filesCanonicalPrefix) &&
+                                        !destAudioFile.exists()
+                                    ) {
+                                        destAudioFile.parentFile?.mkdirs()
+                                        FileOutputStream(destAudioFile).use { output ->
+                                            zipInputStream.copyTo(output)
+                                        }
+                                    }
+                                }
+                            }
+                        }
+
+                        zipInputStream.closeEntry()
+                        entry = zipInputStream.nextEntry
+                    }
+                }
+            }
+        }.onFailure { error ->
+            Log.w(TAG, "Unable to read starter dictionary from $INITIAL_DATA_ASSET for $languageCode", error)
+        }
+
+        val rawBundled = bundledDictionaryJson ?: return
+        val bundledDefs = runCatching {
+            json.decodeFromString<List<TileDefinition>>(rawBundled)
+        }.getOrNull() ?: return
+
+        val resolvedBundledDefs = bundledDefs.map { definition ->
+            val resolvedAudio = resolveMediaReferenceIfExists(definition.audioUri)
+            val resolvedImage = resolveMediaReferenceIfExists(definition.imageUri)
+            definition.copy(
+                audioUri = resolvedAudio,
+                imageUri = resolvedImage,
+                isCustomAudio = if (resolvedAudio == null) false else definition.isCustomAudio,
+            )
+        }
+
+        val destinationFile = File(context.filesDir, targetZipEntry)
+        val existingDefs = if (destinationFile.exists()) {
+            runCatching {
+                json.decodeFromString<List<TileDefinition>>(
+                    destinationFile.readText().removePrefix("\uFEFF")
+                )
+            }.getOrDefault(emptyList())
+        } else {
+            emptyList()
+        }
+
+        val mergedDefs = (existingDefs + resolvedBundledDefs)
+            .associateBy { it.languageCode to it.id }
+            .values
+            .toList()
+
+        if (destinationFile.exists() && existingDefs == mergedDefs) {
+            return
+        }
+
+        destinationFile.parentFile?.mkdirs()
+        val tempFile = File(destinationFile.parentFile, "${destinationFile.name}.tmp")
+        runCatching {
+            tempFile.writeText(json.encodeToString(mergedDefs))
+            if (destinationFile.exists() && !destinationFile.delete()) {
+                error("Failed to replace ${destinationFile.name}")
+            }
+            if (!tempFile.renameTo(destinationFile)) {
+                tempFile.copyTo(destinationFile, overwrite = true)
+                tempFile.delete()
+            }
+        }.onFailure { error ->
+            tempFile.delete()
+            Log.e(TAG, "Failed to update starter dictionary for $languageCode", error)
+        }
+    }
+
+    private fun resolveMediaReferenceIfExists(rawUri: String?): String? {
+        val trimmed = rawUri?.trim()?.takeIf { it.isNotEmpty() } ?: return null
+        if (trimmed.startsWith("http://", ignoreCase = true) ||
+            trimmed.startsWith("https://", ignoreCase = true) ||
+            trimmed.startsWith("android.resource://", ignoreCase = true)
+        ) {
+            return trimmed
+        }
+
+        val normalized = trimmed.replace('\\', '/').removePrefix("file://").removePrefix("/")
+        val candidateFile = if (normalized.startsWith("/")) {
+            File(normalized)
+        } else {
+            File(context.filesDir, normalized)
+        }
+        return if (candidateFile.isFile) candidateFile.absolutePath else null
+    }
+
+    private fun normalizeSupportedLanguageOrNull(raw: String?): String? {
+        val trimmed = raw?.trim()?.takeIf { it.isNotEmpty() } ?: return null
+        val primary = trimmed.lowercase().substringBefore('-').substringBefore('_')
+        return when (LocaleHelper.normalize(primary)) {
+            "he" -> "he"
+            "en" -> "en"
+            else -> null
         }
     }
 

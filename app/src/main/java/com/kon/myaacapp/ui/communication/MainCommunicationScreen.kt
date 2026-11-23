@@ -48,6 +48,7 @@ import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
@@ -58,12 +59,15 @@ import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.platform.LocalConfiguration
+import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.platform.LocalLayoutDirection
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.text.input.PasswordVisualTransformation
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.text.style.TextOverflow
+import androidx.compose.ui.unit.LayoutDirection
 import androidx.compose.ui.unit.TextUnit
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
@@ -73,9 +77,9 @@ import com.kon.myaacapp.R
 import com.kon.myaacapp.domain.model.CombinedTile
 import com.kon.myaacapp.domain.model.TileType
 import com.kon.myaacapp.domain.service.Gender
+import com.kon.myaacapp.service.image.ImageStorageService
 import com.kon.myaacapp.ui.theme.FitzgeraldTileContent
 import com.kon.myaacapp.ui.theme.resolveFitzgeraldColor
-import java.io.File
 
 @Composable
 fun MainCommunicationScreen(
@@ -96,6 +100,13 @@ fun MainCommunicationScreen(
         )
 
         return
+    }
+
+    val interfaceLayoutDir = LocalLayoutDirection.current
+    val boardLayoutDir = if (state.languageCode == "he") {
+        LayoutDirection.Rtl
+    } else {
+        LayoutDirection.Ltr
     }
 
     MainCommunicationScreenContent(
@@ -185,6 +196,9 @@ fun MainCommunicationScreen(
 
         homeInActionBar =
             state.homeInActionBar,
+
+        boardLayoutDirection = boardLayoutDir,
+        interfaceLayoutDirection = interfaceLayoutDir,
     )
 }
 
@@ -212,23 +226,32 @@ fun MainCommunicationScreenContent(
     showBackButton: Boolean,
     showBackspaceButton: Boolean,
     showSpeakButton: Boolean,
-    homeInActionBar: Boolean
+    homeInActionBar: Boolean,
+    boardLayoutDirection: LayoutDirection = LocalLayoutDirection.current,
+    interfaceLayoutDirection: LayoutDirection = LocalLayoutDirection.current,
 ) {
     var showPinDialog by remember { mutableStateOf(false) }
 
     if (showPinDialog) {
-        AdminPinDialog(
-            onDismiss = { showPinDialog = false },
-            onConfirm = {
-                showPinDialog = false
-                onNavigateToAdmin()
-            }
-        )
+        CompositionLocalProvider(
+            LocalLayoutDirection provides interfaceLayoutDirection,
+        ) {
+            AdminPinDialog(
+                onDismiss = { showPinDialog = false },
+                onConfirm = {
+                    showPinDialog = false
+                    onNavigateToAdmin()
+                },
+            )
+        }
     }
 
-    Column(
-        modifier = Modifier.fillMaxSize()
+    CompositionLocalProvider(
+        LocalLayoutDirection provides boardLayoutDirection,
     ) {
+        Column(
+            modifier = Modifier.fillMaxSize()
+        ) {
         Column(
             modifier = Modifier
                 .weight(1f)
@@ -353,6 +376,7 @@ fun MainCommunicationScreenContent(
             )
         }
     }
+    }
 }
 
 @Composable
@@ -441,11 +465,9 @@ fun SentenceBar(
                         }
                     }
 
-                val imageModel = remember(tile.definition.imageUri) {
-                    tile.definition.imageUri?.let { uri ->
-                        val file = File(uri)
-                        if (file.exists()) file else uri
-                    }
+                val context = LocalContext.current
+                val imageModel = remember(tile.definition.imageUri, context) {
+                    ImageStorageService.resolveImageModel(context, tile.definition.imageUri)
                 }
 
                 val emojiText = tile.definition.emoji
@@ -667,7 +689,7 @@ fun AdminPinDialog(onDismiss: () -> Unit, onConfirm: () -> Unit) {
                 )
                 if (error) {
                     Text(
-                        "PIN שגוי",
+                        text = stringResource(R.string.wrong_pin),
                         color = MaterialTheme.colorScheme.error,
                         style = MaterialTheme.typography.bodySmall
                     )
@@ -750,11 +772,9 @@ fun TileUI(
 
     val isFolder = tileType == TileType.FOLDER
 
-    val imageModel = remember(imageUri) {
-        imageUri?.let {
-            val file = File(it)
-            if (file.exists()) file else it
-        }
+    val context = LocalContext.current
+    val imageModel = remember(imageUri, context) {
+        ImageStorageService.resolveImageModel(context, imageUri)
     }
 
     Card(

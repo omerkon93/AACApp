@@ -27,9 +27,13 @@ sealed interface AdminListEffect {
     data object StopRecording :
         AdminListEffect
 
+    data object CancelRecording :
+        AdminListEffect
+
     data class PlayAudioPreview(
         val ttsText: String,
         val audioUri: String?,
+        val isCustomAudio: Boolean = true,
     ) : AdminListEffect
 
     data class ShowError(

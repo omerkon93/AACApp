@@ -14,6 +14,8 @@ data class SystemSettingsState(
     val languageDownloadStatus: DownloadStatus =
         DownloadStatus.Idle,
 
+    val pendingLanguageRetryCode: String? = null,
+
     val showResetConfirmation: Boolean = false,
 
     val isImporting: Boolean = false,

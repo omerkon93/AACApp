@@ -119,6 +119,12 @@ fun AdminSystemSettings(
         )
     }
 
+    val onRetryLanguageClick: () -> Unit = {
+        onAction(
+            SystemSettingsAction.RetryLanguageChange
+        )
+    }
+
     val onSaveBackupClick: () -> Unit = {
         onAction(
             SystemSettingsAction.SaveBackupClicked
@@ -261,6 +267,11 @@ fun AdminSystemSettings(
 
                 Spacer(modifier = Modifier.height(12.dp))
                 Text(stringResource(R.string.language), style = MaterialTheme.typography.bodyMedium)
+                Text(
+                    stringResource(R.string.interface_language_hint),
+                    style = MaterialTheme.typography.bodySmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                )
                 Spacer(modifier = Modifier.height(4.dp))
                 Row(
                     modifier = Modifier.fillMaxWidth(),
@@ -308,14 +319,29 @@ fun AdminSystemSettings(
                         color = MaterialTheme.colorScheme.primary
                     )
 
-                    is DownloadStatus.Error -> Text(
-                        stringResource(
-                            R.string.lang_download_failed,
-                            downloadStatus.message
-                        ),
-                        style = MaterialTheme.typography.labelSmall,
-                        color = MaterialTheme.colorScheme.error
-                    )
+                    is DownloadStatus.Error -> Row(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .padding(top = 4.dp),
+                        horizontalArrangement = Arrangement.SpaceBetween,
+                        verticalAlignment = Alignment.CenterVertically,
+                    ) {
+                        Text(
+                            stringResource(
+                                R.string.lang_download_failed,
+                                downloadStatus.message
+                            ),
+                            style = MaterialTheme.typography.labelSmall,
+                            color = MaterialTheme.colorScheme.error,
+                            modifier = Modifier.weight(1f),
+                        )
+                        TextButton(
+                            onClick = onRetryLanguageClick,
+                            enabled = state.canChangeLanguage,
+                        ) {
+                            Text(stringResource(R.string.retry))
+                        }
+                    }
 
                     else -> {}
                 }

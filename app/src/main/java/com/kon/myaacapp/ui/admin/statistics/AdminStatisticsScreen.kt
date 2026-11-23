@@ -219,22 +219,26 @@ fun OverviewBentoGrid(
         )
     }
 
+    val totalWordsTitle = stringResource(R.string.total_words_count)
+    val totalWordsDesc = stringResource(R.string.total_words_info_desc)
+    val avgTimeTitle = stringResource(R.string.avg_time_per_session)
+    val avgTimeDesc = stringResource(R.string.avg_time_info_desc)
+    val activeSessionsTitle = stringResource(R.string.active_sessions)
+    val activeSessionsDesc = stringResource(R.string.active_sessions_info_desc)
+
     Row(
         modifier = Modifier.fillMaxWidth(),
         horizontalArrangement =
             Arrangement.spacedBy(12.dp),
     ) {
         MetricCard(
-            label = stringResource(
-                R.string.total_words_count
-            ),
+            label = totalWordsTitle,
             value = totalClicks.toString(),
             color =
                 MaterialTheme.colorScheme.primaryContainer,
             onInfoClick = {
                 infoDialogContent =
-                    "סה\"כ מילים" to
-                            "סך כל הפעמים שהמשתמש לחץ על מילים להשמעה."
+                    totalWordsTitle to totalWordsDesc
             },
             modifier = Modifier.weight(1f),
         )
@@ -245,32 +249,26 @@ fun OverviewBentoGrid(
                 Arrangement.spacedBy(12.dp),
         ) {
             MetricCard(
-                label = stringResource(
-                    R.string.avg_time_per_session
-                ),
+                label = avgTimeTitle,
                 value = "${estimatedActiveMinutes}m",
                 color = MaterialTheme
                     .colorScheme
                     .secondaryContainer,
                 onInfoClick = {
                     infoDialogContent =
-                        "זמן ממוצע" to
-                                "זמן משוער שהאפליקציה הייתה פתוחה ופעילה."
+                        avgTimeTitle to avgTimeDesc
                 },
             )
 
             MetricCard(
-                label = stringResource(
-                    R.string.active_sessions
-                ),
+                label = activeSessionsTitle,
                 value = activeDays.toString(),
                 color = MaterialTheme
                     .colorScheme
                     .tertiaryContainer,
                 onInfoClick = {
                     infoDialogContent =
-                        "סשנים פעילים" to
-                                "מספר הימים שבהם תועד שימוש באפליקציה."
+                        activeSessionsTitle to activeSessionsDesc
                 },
             )
         }

@@ -19,6 +19,10 @@ sealed interface ProfileManagerAction {
         val value: ProfileCreationMode,
     ) : ProfileManagerAction
 
+    data class BoardLanguageChanged(
+        val value: String,
+    ) : ProfileManagerAction
+
     data object CreateProfileClicked :
         ProfileManagerAction
 

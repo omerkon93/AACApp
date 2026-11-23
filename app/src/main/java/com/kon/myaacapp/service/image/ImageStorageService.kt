@@ -155,4 +155,25 @@ class ImageStorageService(private val context: Context) {
             temporaryFile,
         )
     }
+
+    companion object {
+        fun resolveImageModel(context: Context, imageUri: String?): Any? {
+            val trimmed = imageUri?.trim()?.takeIf { it.isNotEmpty() } ?: return null
+            if (
+                trimmed.startsWith("content://", ignoreCase = true) ||
+                trimmed.startsWith("file://", ignoreCase = true) ||
+                trimmed.startsWith("http://", ignoreCase = true) ||
+                trimmed.startsWith("https://", ignoreCase = true) ||
+                trimmed.startsWith("android.resource://", ignoreCase = true)
+            ) {
+                return trimmed
+            }
+            val directFile = File(trimmed)
+            if (directFile.isAbsolute) {
+                return if (directFile.isFile) directFile else null
+            }
+            val relativeFile = File(context.filesDir, trimmed)
+            return if (relativeFile.isFile) relativeFile else null
+        }
+    }
 }

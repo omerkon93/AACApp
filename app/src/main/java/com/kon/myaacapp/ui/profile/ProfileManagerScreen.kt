@@ -12,6 +12,8 @@ import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
+import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
 import androidx.compose.material.icons.filled.Add
@@ -41,6 +43,7 @@ import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import com.kon.myaacapp.R
+import com.kon.myaacapp.core.locale.LocaleHelper
 import com.kon.myaacapp.domain.model.ProfileCreationMode
 import com.kon.myaacapp.domain.model.UserProfile
 
@@ -162,9 +165,14 @@ fun ProfileManagerScreen(
     }
 
     if (state.showCreateDialog) {
+        val activeBoardLang = LocaleHelper.normalize(
+            state.activeProfile?.activeLanguageCode?.ifBlank { "he" } ?: "he",
+        )
         CreateProfileDialog(
             profileName = state.profileName,
             creationMode = state.creationMode,
+            boardLanguageCode = state.boardLanguageCode,
+            sourceBoardLanguageCode = activeBoardLang,
             canCreate = state.canCreateProfile,
             isCreating = state.isCreatingProfile,
             onProfileNameChange = { value ->
@@ -177,6 +185,12 @@ fun ProfileManagerScreen(
                 onAction(
                     ProfileManagerAction
                         .CreationModeChanged(value)
+                )
+            },
+            onBoardLanguageChange = { value ->
+                onAction(
+                    ProfileManagerAction
+                        .BoardLanguageChanged(value)
                 )
             },
             onDismiss = {
@@ -305,6 +319,17 @@ fun ProfileItem(
                         style = MaterialTheme.typography.titleMedium,
                         fontWeight = if (isActive) FontWeight.Bold else FontWeight.Normal
                     )
+                    val boardLanguageLabel =
+                        if (LocaleHelper.normalize(profile.activeLanguageCode) == "en") {
+                            stringResource(R.string.english)
+                        } else {
+                            stringResource(R.string.hebrew)
+                        }
+                    Text(
+                        text = boardLanguageLabel,
+                        style = MaterialTheme.typography.bodySmall,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    )
                     if (isActive) {
                         Text(
                             text = stringResource(R.string.active_profile),
@@ -340,11 +365,14 @@ fun ProfileItem(
 fun CreateProfileDialog(
     profileName: String,
     creationMode: ProfileCreationMode,
+    boardLanguageCode: String,
+    sourceBoardLanguageCode: String,
     canCreate: Boolean,
     isCreating: Boolean,
     onProfileNameChange: (String) -> Unit,
     onCreationModeChange:
         (ProfileCreationMode) -> Unit,
+    onBoardLanguageChange: (String) -> Unit,
     onDismiss: () -> Unit,
     onCreate: () -> Unit,
 ) {
@@ -363,6 +391,7 @@ fun CreateProfileDialog(
         },
         text = {
             Column(
+                modifier = Modifier.verticalScroll(rememberScrollState()),
                 verticalArrangement =
                     Arrangement.spacedBy(12.dp),
             ) {
@@ -461,6 +490,67 @@ fun CreateProfileDialog(
                         }
                     },
                 )
+
+                Text(
+                    text = stringResource(
+                        R.string.profile_board_language
+                    ),
+                    style =
+                        MaterialTheme.typography.titleSmall,
+                    fontWeight = FontWeight.Bold,
+                )
+
+                if (creationMode == ProfileCreationMode.DUPLICATE_CURRENT) {
+                    val sourceLanguageLabel = if (sourceBoardLanguageCode == "en") {
+                        stringResource(R.string.english)
+                    } else {
+                        stringResource(R.string.hebrew)
+                    }
+                    Card(
+                        modifier = Modifier.fillMaxWidth(),
+                        colors = CardDefaults.cardColors(
+                            containerColor = MaterialTheme.colorScheme.surfaceVariant,
+                        ),
+                    ) {
+                        Text(
+                            text = stringResource(
+                                R.string.profile_duplicate_keeps_language,
+                                sourceLanguageLabel,
+                            ),
+                            style = MaterialTheme.typography.bodySmall,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant,
+                            modifier = Modifier.padding(12.dp),
+                        )
+                    }
+                } else {
+                    Text(
+                        text = stringResource(
+                            R.string.profile_board_language_hint
+                        ),
+                        style = MaterialTheme.typography.bodySmall,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    )
+
+                    Row(
+                        modifier = Modifier.fillMaxWidth(),
+                        horizontalArrangement = Arrangement.spacedBy(8.dp),
+                    ) {
+                        BoardLanguageOptionCard(
+                            label = stringResource(R.string.hebrew),
+                            selected = boardLanguageCode == "he",
+                            enabled = !isCreating,
+                            onClick = { onBoardLanguageChange("he") },
+                            modifier = Modifier.weight(1f),
+                        )
+                        BoardLanguageOptionCard(
+                            label = stringResource(R.string.english),
+                            selected = boardLanguageCode == "en",
+                            enabled = !isCreating,
+                            onClick = { onBoardLanguageChange("en") },
+                            modifier = Modifier.weight(1f),
+                        )
+                    }
+                }
             }
         },
         confirmButton = {
@@ -489,6 +579,53 @@ fun CreateProfileDialog(
             }
         },
     )
+}
+
+@Composable
+private fun BoardLanguageOptionCard(
+    label: String,
+    selected: Boolean,
+    enabled: Boolean,
+    onClick: () -> Unit,
+    modifier: Modifier = Modifier,
+) {
+    Card(
+        modifier = modifier.clickable(enabled = enabled, onClick = onClick),
+        colors = CardDefaults.cardColors(
+            containerColor = if (selected) {
+                MaterialTheme.colorScheme.primaryContainer
+            } else {
+                MaterialTheme.colorScheme.surfaceVariant
+            }
+        ),
+        border = if (selected) {
+            BorderStroke(
+                width = 2.dp,
+                color = MaterialTheme.colorScheme.primary,
+            )
+        } else {
+            null
+        },
+    ) {
+        Row(
+            modifier = Modifier
+                .fillMaxWidth()
+                .padding(horizontal = 8.dp, vertical = 10.dp),
+            verticalAlignment = Alignment.CenterVertically,
+        ) {
+            RadioButton(
+                selected = selected,
+                onClick = if (enabled) onClick else null,
+                enabled = enabled,
+            )
+            Spacer(modifier = Modifier.width(4.dp))
+            Text(
+                text = label,
+                style = MaterialTheme.typography.titleSmall,
+                fontWeight = if (selected) FontWeight.Bold else FontWeight.Normal,
+            )
+        }
+    }
 }
 
 @Composable

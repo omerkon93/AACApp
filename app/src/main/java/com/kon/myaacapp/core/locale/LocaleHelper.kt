@@ -30,29 +30,24 @@ object LocaleHelper {
     }
 
     /**
-     * Wraps the context with the selected locale.
+     * Wraps the context with the selected locale and updates process default locale.
      */
     fun wrap(context: Context, languageCode: String): Context {
         val normalized = normalize(languageCode)
-
-        // FIX: Replaced the deprecated Locale(String) constructor with the modern
-        // BCP 47 language tag builder, which is much safer and standard-compliant.
         val locale = Locale.forLanguageTag(normalized)
 
-        // FIX: Since your minSdk is 26+, we completely removed the SDK version check.
-        // We can confidently use the modern `.locales` list directly.
-        val currentLocale = context.resources.configuration.locales[0]
-
-        // Context check fast-return
-        if (currentLocale.language == locale.language) {
-            return context
-        }
-
         Locale.setDefault(locale)
+        return createLocalizedContext(context, normalized)
+    }
 
-        // Deep-copy the configuration to prevent global Context corruption
+    /**
+     * Creates a localized configuration context without mutating JVM default locale.
+     */
+    fun createLocalizedContext(context: Context, languageCode: String): Context {
+        val normalized = normalize(languageCode)
+        val locale = Locale.forLanguageTag(normalized)
+
         val config = Configuration(context.resources.configuration)
-
         config.setLocale(locale)
         config.setLayoutDirection(locale)
 

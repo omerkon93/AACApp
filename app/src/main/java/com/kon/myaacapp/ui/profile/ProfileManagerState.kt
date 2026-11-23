@@ -15,6 +15,8 @@ data class ProfileManagerState(
     val creationMode: ProfileCreationMode =
         ProfileCreationMode.BLANK,
 
+    val boardLanguageCode: String = "he",
+
     val profilePendingDeletion: UserProfile? = null,
 
     val isCreatingProfile: Boolean = false,

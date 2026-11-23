@@ -127,6 +127,15 @@ interface AACTileDao {
     @Query("SELECT * FROM tile_click_events")
     fun getAllClickEvents(): Flow<List<TileClickEvent>>
 
+    @Query("SELECT * FROM tile_click_events")
+    suspend fun getAllClickEventsSync(): List<TileClickEvent>
+
+    @Insert(onConflict = OnConflictStrategy.REPLACE)
+    suspend fun insertPlacements(placements: List<TilePlacement>)
+
+    @Insert(onConflict = OnConflictStrategy.REPLACE)
+    suspend fun insertClickEvents(events: List<TileClickEvent>)
+
     @Query("DELETE FROM tile_click_events")
     suspend fun deleteAllClickEvents()
 

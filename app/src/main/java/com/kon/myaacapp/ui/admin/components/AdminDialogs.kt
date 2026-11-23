@@ -47,6 +47,7 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.layout.ContentScale
+import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
@@ -56,6 +57,7 @@ import androidx.compose.ui.unit.sp
 import coil.compose.AsyncImage
 import com.kon.myaacapp.R
 import com.kon.myaacapp.domain.model.CombinedTile
+import com.kon.myaacapp.service.image.ImageStorageService
 
 @Composable
 fun TileActionDialog(
@@ -77,6 +79,10 @@ fun TileActionDialog(
                 modifier = fillWidthModifier,
                 verticalArrangement = Arrangement.spacedBy(12.dp)
             ) {
+                val context = LocalContext.current
+                val imageModel = remember(tile.imageUri, context) {
+                    ImageStorageService.resolveImageModel(context, tile.imageUri)
+                }
                 Box(
                     modifier = Modifier
                         .size(80.dp)
@@ -85,9 +91,9 @@ fun TileActionDialog(
                         .background(MaterialTheme.colorScheme.surfaceVariant),
                     contentAlignment = Alignment.Center
                 ) {
-                    if (tile.imageUri != null) {
+                    if (imageModel != null) {
                         AsyncImage(
-                            model = tile.imageUri,
+                            model = imageModel,
                             contentDescription = null,
                             modifier = Modifier.fillMaxSize(),
                             contentScale = ContentScale.Crop
@@ -254,6 +260,11 @@ private fun PickerTileItem(
     // Memoize the specific click lambda for this tile ID
     val onClick = remember(tile.id, onTileSelected) { { onTileSelected(tile) } }
 
+    val context = LocalContext.current
+    val imageModel = remember(tile.imageUri, context) {
+        ImageStorageService.resolveImageModel(context, tile.imageUri)
+    }
+
     Card(
         modifier = Modifier
             .aspectRatio(1f)
@@ -261,9 +272,9 @@ private fun PickerTileItem(
         border = BorderStroke(1.dp, MaterialTheme.colorScheme.outlineVariant)
     ) {
         Box(modifier = Modifier.fillMaxSize()) {
-            if (tile.imageUri != null) {
+            if (imageModel != null) {
                 AsyncImage(
-                    model = tile.imageUri,
+                    model = imageModel,
                     contentDescription = null,
                     modifier = Modifier.fillMaxSize()
                         .clip(androidx.compose.foundation.shape.RoundedCornerShape(8.dp)),

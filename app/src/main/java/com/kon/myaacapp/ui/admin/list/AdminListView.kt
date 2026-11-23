@@ -57,6 +57,7 @@ import androidx.compose.ui.draw.clip
 import androidx.compose.ui.draw.scale
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.layout.ContentScale
+import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.platform.LocalWindowInfo
 import androidx.compose.ui.res.stringResource
@@ -674,8 +675,10 @@ fun AdminListView(
             },
             title = {
                 Text(
-                    text =
-                        "הקלטה מהירה עבור: ${tile.label}",
+                    text = stringResource(
+                        R.string.quick_record_title,
+                        tile.label,
+                    ),
                     textAlign = TextAlign.Center,
                     modifier =
                         Modifier.fillMaxWidth(),
@@ -694,9 +697,13 @@ fun AdminListView(
                     Text(
                         text =
                             if (state.isRecording) {
-                                "מקליט כעת... לחץ לעצירה"
+                                stringResource(
+                                    R.string.quick_record_recording_hint
+                                )
                             } else {
-                                "לחץ על המיקרופון כדי להתחיל להקליט"
+                                stringResource(
+                                    R.string.quick_record_idle_hint
+                                )
                             },
                         style =
                             MaterialTheme.typography.bodyMedium,
@@ -744,9 +751,13 @@ fun AdminListView(
                                 },
                             contentDescription =
                                 if (state.isRecording) {
-                                    "עצור הקלטה"
+                                    stringResource(
+                                        R.string.stop_record_action
+                                    )
                                 } else {
-                                    "התחל להקליט"
+                                    stringResource(
+                                        R.string.quick_record_action
+                                    )
                                 },
                             tint =
                                 if (state.isRecording) {
@@ -783,12 +794,23 @@ fun AdminListView(
                                 ),
                         ) {
                             Text(
-                                text = "השמע בדיקה",
+                                text = stringResource(
+                                    R.string.preview_recording_button
+                                ),
                                 color = MaterialTheme
                                     .colorScheme
                                     .onSecondaryContainer,
                             )
                         }
+                    }
+
+                    state.errorMessage?.let { error ->
+                        Text(
+                            text = error,
+                            color = MaterialTheme.colorScheme.error,
+                            style = MaterialTheme.typography.bodySmall,
+                            textAlign = TextAlign.Center,
+                        )
                     }
                 }
             },
@@ -802,7 +824,11 @@ fun AdminListView(
                     },
                     enabled = state.canSaveRecording,
                 ) {
-                    Text("שמור הקלטה")
+                    Text(
+                        text = stringResource(
+                            R.string.save_recording_button
+                        )
+                    )
                 }
             },
             dismissButton = {
@@ -816,7 +842,11 @@ fun AdminListView(
                     enabled =
                         !state.isSavingRecording,
                 ) {
-                    Text("ביטול")
+                    Text(
+                        text = stringResource(
+                            R.string.cancel
+                        )
+                    )
                 }
             },
         )
@@ -906,6 +936,13 @@ fun AdminListRowItem(
                 }
             }
 
+            val context = LocalContext.current
+            val imageModel = remember(tile.definition.imageUri, context) {
+                com.kon.myaacapp.service.image.ImageStorageService.resolveImageModel(
+                    context,
+                    tile.definition.imageUri,
+                )
+            }
             Box(
                 modifier = Modifier
                     .size(56.dp)
@@ -913,9 +950,9 @@ fun AdminListRowItem(
                     .background(MaterialTheme.colorScheme.surfaceVariant),
                 contentAlignment = Alignment.Center
             ) {
-                if (tile.definition.imageUri != null) {
+                if (imageModel != null) {
                     AsyncImage(
-                        model = tile.definition.imageUri,
+                        model = imageModel,
                         contentDescription = null,
                         modifier = Modifier.fillMaxSize(),
                         contentScale = ContentScale.Crop

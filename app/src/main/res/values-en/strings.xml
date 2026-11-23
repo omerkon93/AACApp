@@ -31,11 +31,15 @@
     <string name="general_settings">General Settings</string>
     <string name="speak_on_press">Speak on tile press</string>
     <string name="language">Language</string>
+    <string name="interface_language_hint">Caregiver menus and settings language</string>
     <string name="hebrew">Hebrew</string>
     <string name="english">English</string>
     <string name="downloading_lang">Downloading language (%1$d%%)…</string>
     <string name="installing_lang">Installing language…</string>
     <string name="lang_download_failed">Language download failed: %1$s</string>
+    <string name="retry">Retry</string>
+    <string name="wrong_pin">Wrong PIN</string>
+    <string name="tile_hidden">Hidden</string>
     <string name="grammatical_gender">Grammatical Gender</string>
     <string name="male">Male</string>
     <string name="female">Female</string>
@@ -48,6 +52,7 @@
     <string name="export_success">Backup saved successfully</string>
     <string name="export_failed">Failed to save backup</string>
     <string name="import_success">Backup imported successfully</string>
+    <string name="import_success_with_missing_media">Backup imported, but %1$d media file(s) were missing from the archive and could not be restored.</string>
     <string name="import_failed">Failed to import backup</string>
 
     <!-- Factory Resets & Data Clearing -->
@@ -115,6 +120,14 @@
     <string name="section_audio">Part 3: Audio</string>
     <string name="custom_voice_recording">Custom Voice Recording</string>
     <string name="stop_recording">Stop (%1$ss)</string>
+    <string name="recording_silent_error">No sound was detected in the recording. Please try again.</string>
+    <string name="recording_silent_kept_previous">No sound was detected. Your previous recording was kept.</string>
+    <string name="recording_save_failed_error">Failed to save the recording. Please try again.</string>
+    <string name="recording_save_failed_kept_previous">Failed to save the recording. Your previous recording was kept.</string>
+    <string name="recording_cancelled_error">Recording was cancelled.</string>
+    <string name="recording_cancelled_kept_previous">Recording was cancelled. Your previous recording was kept.</string>
+    <string name="recording_start_failed_error">Could not start recording. Check microphone permissions and try again.</string>
+    <string name="recording_permission_denied">Microphone permission is required to record audio.</string>
     <string name="section_advanced">Part 4: Advanced</string>
     <string name="parent_category_label">Add to Category (Parent Folder)</string>
     <string name="root_home">Home (Root)</string>
@@ -205,6 +218,9 @@
     <string name="profile_mode_default_description">Use the factory-default communication board.</string>
     <string name="profile_mode_blank">Start blank</string>
     <string name="profile_mode_blank_description">Create an empty board and add tiles manually.</string>
+    <string name="profile_board_language">Board language</string>
+    <string name="profile_board_language_hint">Language for this profile’s board tiles and speech, independent of menu language.</string>
+    <string name="profile_duplicate_keeps_language">Keeps the active profile’s board language (%1$s).</string>
 
     <!-- Layout Settings -->
     <string name="admin_tab_layout">Layout</string>
@@ -228,4 +244,19 @@
     <string name="setting_grid_rows">Grid Rows (Portrait)</string>
     <string name="save_layout_as_default">Save layout settings as default</string>
     <string name="restore_default_layout_settings">Restore default layout settings</string>
+    <string name="layout_preview_title">Preview</string>
+    <string name="layout_preview_sentence_bar">Sentence Bar</string>
+    <string name="layout_preview_tile_size">Tile &amp; Image Size</string>
+    <string name="layout_preview_action_button_size">Action Button Size</string>
+    <string name="layout_preview_sample_i">I</string>
+    <string name="layout_preview_sample_want">want</string>
+    <string name="layout_preview_sample_more">More</string>
+    <string name="quick_record_title">Quick Record: %1$s</string>
+    <string name="quick_record_recording_hint">Recording… Tap to stop</string>
+    <string name="quick_record_idle_hint">Tap the microphone to start recording</string>
+    <string name="preview_recording_button">Play Preview</string>
+    <string name="save_recording_button">Save Recording</string>
+    <string name="total_words_info_desc">Total number of times the user tapped words to speak.</string>
+    <string name="avg_time_info_desc">Estimated time the app was open and active.</string>
+    <string name="active_sessions_info_desc">Number of days app usage was recorded.</string>
 </resources>

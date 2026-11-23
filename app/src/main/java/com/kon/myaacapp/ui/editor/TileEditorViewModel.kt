@@ -90,6 +90,7 @@ class TileEditorViewModel(
             emoji = definition?.emoji.orEmpty(),
             imageUri = definition?.imageUri,
             audioUri = definition?.audioUri,
+            isCustomAudio = definition?.isCustomAudio ?: false,
 
             backgroundColorHex =
                 definition?.backgroundColorHex.orEmpty(),
@@ -171,7 +172,13 @@ class TileEditorViewModel(
             }
 
             is TileEditorAction.AudioUriChanged -> {
-                updateState { it.copy(audioUri = action.value) }
+                val cleanAudioUri = action.value?.trim()?.takeIf { it.isNotEmpty() }
+                updateState {
+                    it.copy(
+                        audioUri = cleanAudioUri,
+                        isCustomAudio = cleanAudioUri != null,
+                    )
+                }
             }
 
             is TileEditorAction.BackgroundColorChanged -> {
@@ -461,6 +468,7 @@ class TileEditorViewModel(
                     .ifBlank { null },
 
             audioUri = state.audioUri,
+            isCustomAudio = state.isCustomAudio && !state.audioUri.isNullOrBlank(),
             imageUri = state.imageUri,
 
             backgroundColorHex =
@@ -518,6 +526,7 @@ class TileEditorViewModel(
                         .ifBlank { null },
 
                 audioUri = state.audioUri,
+                isCustomAudio = state.isCustomAudio && !state.audioUri.isNullOrBlank(),
                 imageUri = state.imageUri,
 
                 backgroundColorHex =

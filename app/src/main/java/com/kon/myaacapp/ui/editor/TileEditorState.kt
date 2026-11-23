@@ -21,6 +21,7 @@ data class TileEditorState(
     val emoji: String = "",
     val imageUri: String? = null,
     val audioUri: String? = null,
+    val isCustomAudio: Boolean = false,
     val backgroundColorHex: String = "",
 
     val partOfSpeech: String = "",

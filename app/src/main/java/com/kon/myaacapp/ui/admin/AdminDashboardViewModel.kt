@@ -57,14 +57,18 @@ class AdminDashboardViewModel(
         _effects.asSharedFlow()
 
     private val languageCode =
-        settingsRepository.languageCodeFlow
+        profileRepository.activeBoardLanguage
             .map { value ->
                 LocaleHelper.normalize(value)
             }
             .stateIn(
                 scope = viewModelScope,
                 started = SharingStarted.Eagerly,
-                initialValue = "he",
+                initialValue = LocaleHelper.normalize(
+                    profileRepository.activeProfile.value?.activeLanguageCode
+                        ?.takeIf { it.isNotBlank() }
+                        ?: "he"
+                ),
             )
 
     private val allTiles =

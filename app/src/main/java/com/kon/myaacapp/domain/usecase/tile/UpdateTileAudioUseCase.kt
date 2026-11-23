@@ -14,9 +14,11 @@ class UpdateTileAudioUseCase(
             "Tile ID cannot be blank."
         }
 
+        val cleanAudioUri = audioUri?.trim()?.takeIf { it.isNotEmpty() }
         val updatedTile = tile.copy(
             definition = tile.definition.copy(
-                audioUri = audioUri,
+                audioUri = cleanAudioUri,
+                isCustomAudio = cleanAudioUri != null,
             ),
         )
 

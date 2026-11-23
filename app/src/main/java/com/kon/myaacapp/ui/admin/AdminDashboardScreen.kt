@@ -148,7 +148,7 @@ fun AdminDashboardScreen(
     val gridTileContainerScale =
         state.gridTileContainerScale
 
-    val layoutDir = if (langCode == "he") {
+    val boardLayoutDir = if (langCode == "he") {
         LayoutDirection.Rtl
     } else {
         LayoutDirection.Ltr
@@ -207,10 +207,7 @@ fun AdminDashboardScreen(
             }
         }
 
-    CompositionLocalProvider(
-        LocalLayoutDirection provides layoutDir
-    ) {
-        Scaffold(
+    Scaffold(
             topBar = {
                 CenterAlignedTopAppBar(
                     title = {
@@ -229,7 +226,7 @@ fun AdminDashboardScreen(
                                 }
 
                                 AdminTab.LAYOUT -> {
-                                    "תצוגה"
+                                    stringResource(R.string.admin_tab_layout)
                                 }
 
                                 AdminTab.STATISTICS -> {
@@ -316,10 +313,14 @@ fun AdminDashboardScreen(
                             onEditTile = onEditTileGrid,
                             onCreateTile = onCreateTileGrid,
                         ) { state, onAction ->
-                            AdminEditableGridScreen(
-                                state = state,
-                                onAction = onAction,
-                            )
+                            CompositionLocalProvider(
+                                LocalLayoutDirection provides boardLayoutDir
+                            ) {
+                                AdminEditableGridScreen(
+                                    state = state,
+                                    onAction = onAction,
+                                )
+                            }
                         }
                     }
 
@@ -338,8 +339,13 @@ fun AdminDashboardScreen(
                             onDeleteTile = { tile ->
                                 onDeleteTileList(tile)
                             },
-                            onPlayPreview =
-                                audioPreviewManager::playPreview,
+                            onPlayPreview = { ttsText, audioUri, isCustomAudio ->
+                                audioPreviewManager.playPreview(
+                                    ttsText = ttsText,
+                                    audioUri = audioUri,
+                                    isCustomAudio = isCustomAudio,
+                                )
+                            },
                         ) { state, onAction ->
                             AdminListView(
                                 state = state,
@@ -391,7 +397,6 @@ fun AdminDashboardScreen(
                 }
             }
         }
-    }
 
     if (showTilePicker) {
         TilePickerDialog(
@@ -494,8 +499,14 @@ fun AdminDashboardScreen(
             TileEditDialogContent(
                 state = state,
                 audioService = audioRecordingService,
-                onPlayPreview =
-                    audioPreviewManager::playPreview,
+                onPlayPreview = { ttsText, audioUri, isCustomAudio ->
+                    audioPreviewManager.playPreview(
+                        ttsText = ttsText,
+                        audioUri = audioUri,
+                        isCustomAudio = isCustomAudio,
+                        tileId = state.tileId.ifBlank { null },
+                    )
+                },
                 onAction = onAction,
             )
         }
