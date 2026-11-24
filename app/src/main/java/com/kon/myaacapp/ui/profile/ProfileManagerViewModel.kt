@@ -6,9 +6,11 @@ import com.kon.myaacapp.core.locale.LocaleHelper
 import com.kon.myaacapp.data.repository.AACRepository
 import com.kon.myaacapp.data.repository.CreateProfileResult
 import com.kon.myaacapp.data.repository.ProfileRepository
+import com.kon.myaacapp.data.repository.SelectFreeCustomProfileResult
 import com.kon.myaacapp.domain.entitlement.BillingFeedback
 import com.kon.myaacapp.domain.entitlement.FamilyEntitlementProvider
 import com.kon.myaacapp.domain.entitlement.FamilyUpgradeOutcome
+import com.kon.myaacapp.domain.entitlement.ProfileAvailabilityPartition
 import com.kon.myaacapp.domain.entitlement.ProfileLimitPolicy
 import com.kon.myaacapp.domain.entitlement.StoreFamilyEntitlementProvider
 import com.kon.myaacapp.domain.model.ProfileCreationMode
@@ -43,29 +45,66 @@ class ProfileManagerViewModel(
     val effects: SharedFlow<ProfileManagerEffect> =
         _effects.asSharedFlow()
 
-    val state: StateFlow<ProfileManagerState> =
+    private val repositorySnapshot =
         combine(
             profileRepository.profiles,
             profileRepository.activeProfile,
+            profileRepository.profileAvailability,
+        ) { profiles, activeProfile, availability ->
+            ProfileRepositorySnapshot(
+                profiles = profiles,
+                activeProfile = activeProfile,
+                availability = availability,
+            )
+        }
+
+    val state: StateFlow<ProfileManagerState> =
+        combine(
+            repositorySnapshot,
             familyEntitlementProvider.entitlementState,
             editorState,
             operationState,
         ) {
-                profiles,
-                activeProfile,
+                repoSnapshot,
                 entitlement,
                 editor,
                 operation ->
 
+            val profiles = repoSnapshot.profiles
+            val activeProfile = repoSnapshot.activeProfile
+            val effectivePartition =
+                if (repoSnapshot.availability.availableProfiles.isNotEmpty() || profiles.isEmpty()) {
+                    repoSnapshot.availability
+                } else {
+                    ProfileLimitPolicy.partitionProfiles(
+                        profiles = profiles,
+                        activeProfileId = activeProfile?.profileId,
+                        selectedCustomProfileId = null,
+                        entitlement = entitlement,
+                    )
+                }
+
             ProfileManagerState(
                 profiles = profiles,
                 activeProfile = activeProfile,
+                availableProfiles = effectivePartition.availableProfiles,
+                archivedProfiles = effectivePartition.archivedProfiles,
+                selectedCustomProfileId = effectivePartition.selectedCustomProfileId,
+                draftFreeProfileId = editor.draftFreeProfileId?.takeIf { candidate ->
+                    effectivePartition.canChooseFreeProfile && profiles.any { it.profileId == candidate }
+                },
+                isFreeSlotLocked = effectivePartition.isFreeSlotLocked,
+                canChooseFreeProfile = effectivePartition.canChooseFreeProfile,
 
                 showCreateDialog =
                     editor.showCreateDialog,
 
                 showLimitDialog =
                     editor.showLimitDialog && !entitlement.hasFamilyEntitlement,
+
+                showConfirmFreeProfileDialog =
+                    editor.showConfirmFreeProfileDialog &&
+                        effectivePartition.canChooseFreeProfile,
 
                 showBillingUnavailableNotice =
                     editor.showBillingUnavailableNotice,
@@ -196,6 +235,42 @@ class ProfileManagerViewModel(
 
             is ProfileManagerAction.SwitchProfileClicked -> {
                 switchProfile(
+                    profileId = action.profileId,
+                )
+            }
+
+            is ProfileManagerAction.SelectFreeCustomProfileClicked -> {
+                selectFreeCustomProfile(
+                    profileId = action.profileId,
+                )
+            }
+
+            ProfileManagerAction.OpenConfirmFreeProfileDialog -> {
+                if (!operationState.value.isBusy && state.value.canChooseFreeProfile) {
+                    editorState.update { currentState ->
+                        currentState.copy(
+                            showConfirmFreeProfileDialog = true,
+                        )
+                    }
+                }
+            }
+
+            ProfileManagerAction.DismissConfirmFreeProfileDialog -> {
+                editorState.update { currentState ->
+                    currentState.copy(
+                        showConfirmFreeProfileDialog = false,
+                    )
+                }
+            }
+
+            ProfileManagerAction.DiscardFreeProfileChoice -> {
+                editorState.update {
+                    it.copy(draftFreeProfileId = null, showConfirmFreeProfileDialog = false)
+                }
+            }
+
+            is ProfileManagerAction.ConfirmFreeCustomProfileClicked -> {
+                confirmFreeCustomProfile(
                     profileId = action.profileId,
                 )
             }
@@ -474,14 +549,18 @@ class ProfileManagerViewModel(
             return
         }
 
-        val profileExists =
-            currentState.profiles.any { profile ->
+        val isAvailable =
+            currentState.availableProfiles.any { profile ->
                 profile.profileId == profileId
             }
 
-        if (!profileExists) {
+        if (!isAvailable) {
             showError(
-                message = "The selected profile was not found.",
+                message = if (currentState.canChooseFreeProfile) {
+                    "This profile is archived. Select and confirm it before switching, or upgrade to Family."
+                } else {
+                    "This profile is archived and available with Family."
+                },
             )
 
             return
@@ -499,16 +578,18 @@ class ProfileManagerViewModel(
                 profileRepository.switchProfile(
                     profileId = profileId,
                 )
-            }.onSuccess {
+            }.onSuccess { switched ->
                 operationState.update { currentState ->
                     currentState.copy(
                         isSwitchingProfile = false,
                     )
                 }
 
-                _effects.emit(
-                    ProfileManagerEffect.ProfileSwitched
-                )
+                if (switched) {
+                    _effects.emit(
+                        ProfileManagerEffect.ProfileSwitched
+                    )
+                }
             }.onFailure { error ->
                 operationState.update { currentState ->
                     currentState.copy(
@@ -520,6 +601,125 @@ class ProfileManagerViewModel(
                     message =
                         error.message
                             ?: "Failed to switch profile.",
+                )
+            }
+        }
+    }
+
+    private fun selectFreeCustomProfile(
+        profileId: String,
+    ) {
+        val currentState = state.value
+        if (operationState.value.isBusy) {
+            return
+        }
+        if (!currentState.canChooseFreeProfile) {
+            showError(
+                message = "The Free custom profile choice is already locked. Upgrade to Family to use all profiles.",
+            )
+            return
+        }
+
+        val profileExists =
+            currentState.profiles.any { profile ->
+                profile.profileId == profileId
+            }
+        if (!profileExists || profileId == DEFAULT_PROFILE_ID) {
+            showError(
+                message = "The selected profile was not found.",
+            )
+            return
+        }
+
+        editorState.update { it.copy(draftFreeProfileId = profileId) }
+    }
+
+    private fun confirmFreeCustomProfile(
+        profileId: String,
+    ) {
+        val currentState = state.value
+        if (operationState.value.isBusy) {
+            return
+        }
+        if (!currentState.canChooseFreeProfile) {
+            editorState.update { it.copy(showConfirmFreeProfileDialog = false) }
+            showError(
+                message = "The Free custom profile choice is already locked. Upgrade to Family to use all profiles.",
+            )
+            return
+        }
+
+        val profileExists =
+            currentState.profiles.any { profile ->
+                profile.profileId == profileId
+            }
+        if (!profileExists || profileId == DEFAULT_PROFILE_ID) {
+            editorState.update { it.copy(showConfirmFreeProfileDialog = false) }
+            showError("The selected profile was not found.")
+            return
+        }
+
+        operationState.update { state ->
+            state.copy(
+                isSwitchingProfile = true,
+                errorMessage = null,
+            )
+        }
+
+        viewModelScope.launch {
+            runCatching {
+                profileRepository.confirmFreeCustomProfile(
+                    profileId = profileId,
+                )
+            }.onSuccess { result ->
+                operationState.update { state ->
+                    state.copy(
+                        isSwitchingProfile = false,
+                    )
+                }
+                editorState.update {
+                    it.copy(
+                        showConfirmFreeProfileDialog = false,
+                        draftFreeProfileId = if (result is SelectFreeCustomProfileResult.Success) {
+                            null
+                        } else {
+                            it.draftFreeProfileId
+                        },
+                    )
+                }
+
+                when (result) {
+                    is SelectFreeCustomProfileResult.Success -> {
+                        if (result.activeProfileChanged) {
+                            _effects.emit(
+                                ProfileManagerEffect.ProfileSwitched
+                            )
+                        }
+                    }
+
+                    SelectFreeCustomProfileResult.Locked -> {
+                        showError(
+                            "The Free custom profile choice is already locked. Upgrade to Family to use all profiles.",
+                        )
+                    }
+
+                    SelectFreeCustomProfileResult.NotApplicable -> Unit
+
+                    SelectFreeCustomProfileResult.InvalidTarget -> {
+                        showError("The selected profile was not found.")
+                    }
+                }
+            }.onFailure { error ->
+                operationState.update { state ->
+                    state.copy(
+                        isSwitchingProfile = false,
+                    )
+                }
+
+                showError(
+                    message =
+                        error.message
+                            ?: "Failed to confirm Free profile.",
                 )
             }
         }
@@ -636,8 +836,10 @@ class ProfileManagerViewModel(
 }
 
 private data class ProfileEditorState(
+    val draftFreeProfileId: String? = null,
     val showCreateDialog: Boolean = false,
     val showLimitDialog: Boolean = false,
+    val showConfirmFreeProfileDialog: Boolean = false,
     val showBillingUnavailableNotice: Boolean = false,
     val profileName: String = "",
     val creationMode: ProfileCreationMode =
@@ -660,6 +862,12 @@ private data class ProfileOperationState(
                     isDeletingProfile ||
                     isUpdatingEntitlement
 }
+
+private data class ProfileRepositorySnapshot(
+    val profiles: List<UserProfile>,
+    val activeProfile: UserProfile?,
+    val availability: ProfileAvailabilityPartition,
+)
 
 private fun <T> kotlinx.coroutines.flow.Flow<T>.asStateFlow(
     scope: kotlinx.coroutines.CoroutineScope,

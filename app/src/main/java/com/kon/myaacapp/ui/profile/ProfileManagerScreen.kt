@@ -1,5 +1,6 @@
 package com.kon.myaacapp.ui.profile
 
+import androidx.activity.compose.BackHandler
 import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
@@ -19,8 +20,10 @@ import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
 import androidx.compose.material.icons.filled.Add
 import androidx.compose.material.icons.filled.Delete
+import androidx.compose.material.icons.filled.Inventory2
 import androidx.compose.material.icons.filled.Person
 import androidx.compose.material.icons.filled.Star
+import androidx.compose.material.icons.filled.SwapHoriz
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Button
 import androidx.compose.material3.ButtonDefaults
@@ -39,8 +42,14 @@ import androidx.compose.material3.Scaffold
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.remember
+import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
@@ -61,6 +70,23 @@ fun ProfileManagerScreen(
 ) {
     val isCreateBlocked = !state.canCreateAnotherProfile
     val fabMuted = state.isBusy || isCreateBlocked
+    var leaveAfterChoice by remember { mutableStateOf(false) }
+    val handleBack: () -> Unit = {
+        if (state.draftFreeProfileId == null) {
+            onNavigateBack()
+        } else if (!state.isBusy) {
+            leaveAfterChoice = true
+            onAction(ProfileManagerAction.OpenConfirmFreeProfileDialog)
+        }
+    }
+
+    BackHandler(enabled = state.draftFreeProfileId != null, onBack = handleBack)
+    LaunchedEffect(state.isFreeSlotLocked, leaveAfterChoice) {
+        if (state.isFreeSlotLocked && leaveAfterChoice) {
+            leaveAfterChoice = false
+            onNavigateBack()
+        }
+    }
 
     Scaffold(
         topBar = {
@@ -74,7 +100,7 @@ fun ProfileManagerScreen(
                 },
                 navigationIcon = {
                     IconButton(
-                        onClick = onNavigateBack,
+                        onClick = handleBack,
                     ) {
                         Icon(
                             imageVector =
@@ -158,37 +184,179 @@ fun ProfileManagerScreen(
                 )
             }
 
-            items(
-                items = state.profiles,
-                key = { profile ->
-                    profile.profileId
-                },
-            ) { profile ->
-                val isActive =
-                    profile.profileId ==
-                            state.activeProfile?.profileId
+            if (state.isProfileLimitEnforced && !state.hasFamilyEntitlement) {
+                val pendingCustom = state.pendingFreeCustomProfile
+                if (state.canChooseFreeProfile && pendingCustom != null) {
+                    val starterProfileName =
+                        state.profiles
+                            .firstOrNull { it.profileId == "default" }
+                            ?.profileName
+                    item(key = "free_profile_choice_card") {
+                        val starterName =
+                            starterProfileName ?: stringResource(R.string.default_profile_name)
+                        FreeProfileChoiceCard(
+                            starterName = starterName,
+                            pendingCustomName = pendingCustom.profileName,
+                            archivedCount = state.archivedProfileCount,
+                            isBusy = state.isBusy,
+                            onConfirmClick = {
+                                onAction(ProfileManagerAction.OpenConfirmFreeProfileDialog)
+                            },
+                        )
+                    }
+                }
 
-                ProfileItem(
-                    profile = profile,
-                    isActive = isActive,
-                    onSwitch = { profileId ->
-                        onAction(
-                            ProfileManagerAction
-                                .SwitchProfileClicked(
-                                    profileId = profileId,
-                                )
-                        )
+                item(key = "available_profiles_header") {
+                    Text(
+                        text = stringResource(
+                            R.string.profile_section_available,
+                            state.availableProfileCount,
+                            state.freeProfileLimit,
+                        ),
+                        style = MaterialTheme.typography.titleSmall,
+                        fontWeight = FontWeight.Bold,
+                        modifier = Modifier.padding(top = 8.dp, bottom = 2.dp),
+                    )
+                }
+
+                items(
+                    items = state.availableProfiles,
+                    key = { profile ->
+                        profile.profileId
                     },
-                    onDelete = { selectedProfile ->
-                        onAction(
-                            ProfileManagerAction
-                                .DeleteProfileClicked(
-                                    profile =
-                                        selectedProfile,
+                ) { profile ->
+                    val isActive =
+                        profile.profileId ==
+                                state.activeProfile?.profileId
+
+                    ProfileItem(
+                        profile = profile,
+                        isActive = isActive,
+                        isArchived = false,
+                        canMakeAvailable = false,
+                        showPlanBadges = true,
+                        isBusy = state.isBusy,
+                        onSwitch = { profileId ->
+                            onAction(
+                                ProfileManagerAction
+                                    .SwitchProfileClicked(
+                                        profileId = profileId,
+                                    )
+                            )
+                        },
+                        onMakeAvailable = {},
+                        onDelete = { selectedProfile ->
+                            onAction(
+                                ProfileManagerAction
+                                    .DeleteProfileClicked(
+                                        profile =
+                                            selectedProfile,
+                                    )
+                            )
+                        },
+                    )
+                }
+
+                if (state.hasArchivedProfiles) {
+                    item(key = "archived_profiles_header") {
+                        Column(
+                            modifier = Modifier.padding(top = 12.dp, bottom = 2.dp),
+                            verticalArrangement = Arrangement.spacedBy(4.dp),
+                        ) {
+                            Text(
+                                text = stringResource(
+                                    R.string.profile_section_archived,
+                                    state.archivedProfileCount,
+                                ),
+                                style = MaterialTheme.typography.titleSmall,
+                                fontWeight = FontWeight.Bold,
+                            )
+                            Text(
+                                text = stringResource(
+                                    if (state.canChooseFreeProfile) {
+                                        R.string.profile_section_archived_hint
+                                    } else {
+                                        R.string.profile_section_archived_locked_hint
+                                    },
+                                ),
+                                style = MaterialTheme.typography.bodySmall,
+                                color = MaterialTheme.colorScheme.onSurfaceVariant,
+                            )
+                        }
+                    }
+
+                    items(
+                        items = state.archivedProfiles,
+                        key = { profile ->
+                            "archived_${profile.profileId}"
+                        },
+                    ) { profile ->
+                        ProfileItem(
+                            profile = profile,
+                            isActive = false,
+                            isArchived = true,
+                            canMakeAvailable = state.canChooseFreeProfile,
+                            showPlanBadges = true,
+                            isBusy = state.isBusy,
+                            onSwitch = {},
+                            onMakeAvailable = { profileId ->
+                                onAction(
+                                    ProfileManagerAction
+                                        .SelectFreeCustomProfileClicked(
+                                            profileId = profileId,
+                                        )
                                 )
+                            },
+                            onDelete = { selectedProfile ->
+                                onAction(
+                                    ProfileManagerAction
+                                        .DeleteProfileClicked(
+                                            profile =
+                                                selectedProfile,
+                                        )
+                                )
+                            },
                         )
+                    }
+                }
+            } else {
+                val displayProfiles = state.availableProfiles.ifEmpty { state.profiles }
+                items(
+                    items = displayProfiles,
+                    key = { profile ->
+                        profile.profileId
                     },
-                )
+                ) { profile ->
+                    val isActive =
+                        profile.profileId ==
+                                state.activeProfile?.profileId
+
+                    ProfileItem(
+                        profile = profile,
+                        isActive = isActive,
+                        isArchived = false,
+                        showPlanBadges = false,
+                        isBusy = state.isBusy,
+                        onSwitch = { profileId ->
+                            onAction(
+                                ProfileManagerAction
+                                    .SwitchProfileClicked(
+                                        profileId = profileId,
+                                    )
+                            )
+                        },
+                        onMakeAvailable = {},
+                        onDelete = { selectedProfile ->
+                            onAction(
+                                ProfileManagerAction
+                                    .DeleteProfileClicked(
+                                        profile =
+                                            selectedProfile,
+                                    )
+                            )
+                        },
+                    )
+                }
             }
         }
     }
@@ -248,6 +416,40 @@ fun ProfileManagerScreen(
             },
             onDismiss = {
                 onAction(ProfileManagerAction.DismissLimitDialog)
+            },
+        )
+    }
+
+    val dialogPendingCustom = state.pendingFreeCustomProfile
+    if (state.showConfirmFreeProfileDialog && state.canChooseFreeProfile && dialogPendingCustom != null) {
+        val starterName =
+            state.profiles
+                .firstOrNull { it.profileId == "default" }
+                ?.profileName
+                ?: stringResource(R.string.default_profile_name)
+        ConfirmFreeCustomProfileDialog(
+            starterName = starterName,
+            chosenProfileName = dialogPendingCustom.profileName,
+            isBusy = state.isBusy,
+            onConfirm = {
+                onAction(
+                    ProfileManagerAction.ConfirmFreeCustomProfileClicked(
+                        profileId = dialogPendingCustom.profileId,
+                    ),
+                )
+            },
+            onDismiss = {
+                leaveAfterChoice = false
+                onAction(ProfileManagerAction.DismissConfirmFreeProfileDialog)
+            },
+            onDiscard = if (leaveAfterChoice) {
+                {
+                    leaveAfterChoice = false
+                    onAction(ProfileManagerAction.DiscardFreeProfileChoice)
+                    onNavigateBack()
+                }
+            } else {
+                null
             },
         )
     }
@@ -384,7 +586,10 @@ private fun ProfilePlanSummaryCard(
                     )
                     if (isCanceledPendingExpiry) {
                         Text(
-                            text = stringResource(R.string.profile_plan_family_canceled_active_body),
+                            text = stringResource(
+                                R.string.profile_plan_family_canceled_active_body,
+                                state.freeProfileLimit,
+                            ),
                             style = MaterialTheme.typography.bodySmall,
                         )
                     }
@@ -419,7 +624,8 @@ private fun ProfilePlanSummaryCard(
                         stringResource(
                             R.string.profile_plan_free_over_limit_count,
                             state.savedProfileCount,
-                            state.freeProfileLimit,
+                            state.availableProfileCount,
+                            state.archivedProfileCount,
                         )
                     } else {
                         stringResource(
@@ -465,6 +671,15 @@ private fun ProfilePlanSummaryCard(
                             fontWeight = FontWeight.Medium,
                         )
                     }
+
+                    Text(
+                        text = stringResource(
+                            R.string.profile_plan_family_downgrade_disclosure,
+                            state.freeProfileLimit,
+                        ),
+                        style = MaterialTheme.typography.bodySmall,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    )
 
                     if (formattedOfferPrice != null) {
                         Text(
@@ -595,6 +810,14 @@ private fun ProfileLimitReachedDialog(
                         fontWeight = FontWeight.Medium,
                     )
                 }
+                Text(
+                    text = stringResource(
+                        R.string.profile_plan_family_downgrade_disclosure,
+                        state.freeProfileLimit,
+                    ),
+                    style = MaterialTheme.typography.bodySmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                )
                 if (formattedOfferPrice != null) {
                     Text(
                         text = stringResource(
@@ -780,42 +1003,167 @@ private fun resolveBillingFeedbackMessage(state: ProfileManagerState): String? {
     }
 }
 
+@Composable
+private fun FreeProfileChoiceCard(
+    starterName: String,
+    pendingCustomName: String,
+    archivedCount: Int,
+    isBusy: Boolean,
+    onConfirmClick: () -> Unit,
+) {
+    Card(
+        modifier = Modifier.fillMaxWidth(),
+        colors = CardDefaults.cardColors(
+            containerColor = MaterialTheme.colorScheme.secondaryContainer,
+        ),
+    ) {
+        Column(
+            modifier = Modifier
+                .fillMaxWidth()
+                .padding(14.dp),
+            verticalArrangement = Arrangement.spacedBy(8.dp),
+        ) {
+            Text(
+                text = stringResource(R.string.profile_free_choice_title),
+                style = MaterialTheme.typography.titleSmall,
+                fontWeight = FontWeight.Bold,
+            )
+            Text(
+                text = stringResource(
+                    R.string.profile_free_choice_body,
+                    starterName,
+                    pendingCustomName,
+                    archivedCount,
+                ),
+                style = MaterialTheme.typography.bodySmall,
+            )
+            Button(
+                onClick = onConfirmClick,
+                enabled = !isBusy,
+            ) {
+                Text(
+                    text = stringResource(
+                        R.string.profile_free_choice_confirm_button,
+                        pendingCustomName,
+                    ),
+                )
+            }
+        }
+    }
+}
+
+@Composable
+private fun ConfirmFreeCustomProfileDialog(
+    starterName: String,
+    chosenProfileName: String,
+    isBusy: Boolean,
+    onConfirm: () -> Unit,
+    onDismiss: () -> Unit,
+    onDiscard: (() -> Unit)?,
+) {
+    AlertDialog(
+        onDismissRequest = {
+            if (!isBusy) {
+                onDismiss()
+            }
+        },
+        title = {
+            Text(
+                text = stringResource(R.string.profile_free_choice_dialog_title),
+            )
+        },
+        text = {
+            Text(
+                text = stringResource(
+                    R.string.profile_free_choice_dialog_body,
+                    starterName,
+                    chosenProfileName,
+                ),
+            )
+        },
+        confirmButton = {
+            Button(
+                onClick = onConfirm,
+                enabled = !isBusy,
+            ) {
+                Text(
+                    text = stringResource(R.string.profile_free_choice_confirm_action),
+                )
+            }
+        },
+        dismissButton = {
+            TextButton(
+                onClick = onDiscard ?: onDismiss,
+                enabled = !isBusy,
+            ) {
+                Text(
+                    text = stringResource(
+                        if (onDiscard != null) R.string.profile_free_choice_discard else R.string.cancel,
+                    ),
+                )
+            }
+        },
+    )
+}
+
 // FIX: Modified signature to accept parameters in the lambdas.
 // This allows the parent to pass stable function references.
 @Composable
 fun ProfileItem(
     profile: UserProfile,
     isActive: Boolean,
+    isArchived: Boolean = false,
+    canMakeAvailable: Boolean = false,
+    showPlanBadges: Boolean = false,
+    isBusy: Boolean = false,
     onSwitch: (String) -> Unit,
+    onMakeAvailable: (String) -> Unit = {},
     onDelete: (UserProfile) -> Unit,
 ) {
+    val containerColors = when {
+        isActive ->
+            CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.primaryContainer)
+
+        isArchived ->
+            CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surfaceVariant)
+
+        else ->
+            CardDefaults.cardColors()
+    }
+
     Card(
         modifier = Modifier.fillMaxWidth(),
-        colors = if (isActive) {
-            CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.primaryContainer)
-        } else {
-            CardDefaults.cardColors()
-        }
+        colors = containerColors,
     ) {
         Row(
             modifier = Modifier
                 .padding(16.dp)
                 .fillMaxWidth(),
             verticalAlignment = Alignment.CenterVertically,
-            horizontalArrangement = Arrangement.SpaceBetween
+            horizontalArrangement = Arrangement.SpaceBetween,
         ) {
-            Row(verticalAlignment = Alignment.CenterVertically, modifier = Modifier.weight(1f)) {
+            Row(
+                verticalAlignment = Alignment.CenterVertically,
+                modifier = Modifier.weight(1f),
+            ) {
                 Icon(
-                    if (isActive) Icons.Default.Star else Icons.Default.Person,
+                    imageVector = when {
+                        isActive -> Icons.Default.Star
+                        isArchived -> Icons.Default.Inventory2
+                        else -> Icons.Default.Person
+                    },
                     contentDescription = null,
-                    tint = if (isActive) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.onSurfaceVariant
+                    tint = when {
+                        isActive -> MaterialTheme.colorScheme.primary
+                        else -> MaterialTheme.colorScheme.onSurfaceVariant
+                    },
                 )
                 Spacer(Modifier.width(16.dp))
-                Column {
+                Column(verticalArrangement = Arrangement.spacedBy(2.dp)) {
                     Text(
                         text = profile.profileName,
                         style = MaterialTheme.typography.titleMedium,
-                        fontWeight = if (isActive) FontWeight.Bold else FontWeight.Normal
+                        fontWeight = if (isActive) FontWeight.Bold else FontWeight.Normal,
                     )
                     val boardLanguageLabel =
                         if (LocaleHelper.normalize(profile.activeLanguageCode) == "en") {
@@ -832,26 +1180,77 @@ fun ProfileItem(
                         Text(
                             text = stringResource(R.string.active_profile),
                             style = MaterialTheme.typography.labelSmall,
-                            color = MaterialTheme.colorScheme.primary
+                            color = MaterialTheme.colorScheme.primary,
+                        )
+                    }
+                    if (showPlanBadges) {
+                        val statusLabel = when {
+                            isArchived && !canMakeAvailable ->
+                                stringResource(R.string.profile_status_available_with_family)
+                            isArchived ->
+                                stringResource(R.string.profile_status_archived)
+                            profile.profileId == "default" ->
+                                stringResource(R.string.profile_status_starter)
+                            else ->
+                                stringResource(R.string.profile_status_available)
+                        }
+                        Text(
+                            text = statusLabel,
+                            style = MaterialTheme.typography.labelSmall,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant,
+                            modifier = Modifier.testTag("profile_status_${profile.profileId}"),
                         )
                     }
                 }
             }
 
-            Row {
-                if (!isActive) {
-                    IconButton(onClick = { onSwitch(profile.profileId) }) {
-                        Icon(
-                            Icons.Default.Star,
-                            contentDescription = stringResource(R.string.switch_profile)
-                        )
+            Row(verticalAlignment = Alignment.CenterVertically) {
+                if (isArchived) {
+                    if (canMakeAvailable) {
+                        OutlinedButton(
+                            onClick = { onMakeAvailable(profile.profileId) },
+                            enabled = !isBusy,
+                            modifier = Modifier.testTag("make_available_${profile.profileId}"),
+                        ) {
+                            Icon(
+                                imageVector = Icons.Default.SwapHoriz,
+                                contentDescription = null,
+                            )
+                            Spacer(Modifier.width(4.dp))
+                            Text(text = stringResource(R.string.profile_make_available))
+                        }
                     }
                     if (profile.profileId != "default") {
-                        IconButton(onClick = { onDelete(profile) }) {
+                        IconButton(
+                            onClick = { onDelete(profile) },
+                            enabled = !isBusy,
+                        ) {
                             Icon(
                                 Icons.Default.Delete,
                                 contentDescription = stringResource(R.string.delete_profile),
-                                tint = MaterialTheme.colorScheme.error
+                                tint = MaterialTheme.colorScheme.error,
+                            )
+                        }
+                    }
+                } else if (!isActive) {
+                    IconButton(
+                        onClick = { onSwitch(profile.profileId) },
+                        enabled = !isBusy,
+                    ) {
+                        Icon(
+                            Icons.Default.Star,
+                            contentDescription = stringResource(R.string.switch_profile),
+                        )
+                    }
+                    if (profile.profileId != "default") {
+                        IconButton(
+                            onClick = { onDelete(profile) },
+                            enabled = !isBusy,
+                        ) {
+                            Icon(
+                                Icons.Default.Delete,
+                                contentDescription = stringResource(R.string.delete_profile),
+                                tint = MaterialTheme.colorScheme.error,
                             )
                         }
                     }

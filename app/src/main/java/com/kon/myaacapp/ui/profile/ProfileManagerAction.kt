@@ -48,6 +48,22 @@ sealed interface ProfileManagerAction {
         val profileId: String,
     ) : ProfileManagerAction
 
+    data class SelectFreeCustomProfileClicked(
+        val profileId: String,
+    ) : ProfileManagerAction
+
+    data object OpenConfirmFreeProfileDialog :
+        ProfileManagerAction
+
+    data object DismissConfirmFreeProfileDialog :
+        ProfileManagerAction
+
+    data object DiscardFreeProfileChoice : ProfileManagerAction
+
+    data class ConfirmFreeCustomProfileClicked(
+        val profileId: String,
+    ) : ProfileManagerAction
+
     data class DeleteProfileClicked(
         val profile: UserProfile,
     ) : ProfileManagerAction

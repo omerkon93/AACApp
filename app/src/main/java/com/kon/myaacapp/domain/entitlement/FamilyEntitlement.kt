@@ -1,5 +1,6 @@
 package com.kon.myaacapp.domain.entitlement
 
+import com.kon.myaacapp.domain.model.UserProfile
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
@@ -57,8 +58,25 @@ data class FamilyEntitlementState(
         get() = tier == ProfilePlanTier.FAMILY
 }
 
+data class ProfileAvailabilityPartition(
+    val availableProfiles: List<UserProfile> = emptyList(),
+    val archivedProfiles: List<UserProfile> = emptyList(),
+    val availableProfileIds: Set<String> = emptySet(),
+    val selectedCustomProfileId: String? = null,
+    val isFreeSlotLocked: Boolean = false,
+    val canChooseFreeProfile: Boolean = false,
+) {
+    val archivedProfileIds: Set<String>
+        get() = archivedProfiles.mapTo(HashSet()) { it.profileId }
+
+    fun isAvailable(profileId: String): Boolean = profileId in availableProfileIds
+
+    fun isArchived(profileId: String): Boolean = profileId in archivedProfileIds
+}
+
 object ProfileLimitPolicy {
     const val FREE_PROFILE_LIMIT = 2
+    const val DEFAULT_PROFILE_ID = "default"
 
     fun canCreateProfile(
         savedProfileCount: Int,
@@ -80,6 +98,133 @@ object ProfileLimitPolicy {
         return entitlement.isProfileCapEnforced &&
             !entitlement.hasFamilyEntitlement &&
             savedProfileCount >= entitlement.freeProfileLimit
+    }
+
+    fun partitionProfiles(
+        profiles: List<UserProfile>,
+        activeProfileId: String?,
+        selectedCustomProfileId: String?,
+        isFreeSlotLocked: Boolean = false,
+        entitlement: FamilyEntitlementState,
+        defaultProfileId: String = DEFAULT_PROFILE_ID,
+    ): ProfileAvailabilityPartition {
+        if (profiles.isEmpty()) {
+            return ProfileAvailabilityPartition()
+        }
+
+        if (!entitlement.isProfileCapEnforced || entitlement.hasFamilyEntitlement) {
+            val allIds = profiles.mapTo(LinkedHashSet()) { it.profileId }
+            val resolvedCustom =
+                activeProfileId?.takeIf { it != defaultProfileId && it in allIds }
+                    ?: selectedCustomProfileId?.takeIf { it != defaultProfileId && it in allIds }
+                    ?: profiles.firstOrNull { it.profileId != defaultProfileId }?.profileId
+            return ProfileAvailabilityPartition(
+                availableProfiles = profiles,
+                archivedProfiles = emptyList(),
+                availableProfileIds = allIds,
+                selectedCustomProfileId = resolvedCustom,
+                isFreeSlotLocked = false,
+                canChooseFreeProfile = false,
+            )
+        }
+
+        val starterProfile = profiles.firstOrNull { it.profileId == defaultProfileId }
+        val customProfiles = profiles.filter { it.profileId != defaultProfileId }
+        val customIds = customProfiles.mapTo(HashSet()) { it.profileId }
+
+        if (starterProfile != null) {
+            val maxCustomCount = (entitlement.freeProfileLimit - 1).coerceAtLeast(0)
+
+            if (isFreeSlotLocked) {
+                val lockedCustomId = selectedCustomProfileId?.takeIf { it != defaultProfileId }
+                val availableCustom =
+                    if (maxCustomCount > 0 && lockedCustomId != null && lockedCustomId in customIds) {
+                        listOf(customProfiles.first { it.profileId == lockedCustomId })
+                    } else {
+                        emptyList()
+                    }
+                val available = listOf(starterProfile) + availableCustom
+                val availableIds = available.mapTo(LinkedHashSet()) { it.profileId }
+                val archived = customProfiles.filterNot { it.profileId in availableIds }
+                return ProfileAvailabilityPartition(
+                    availableProfiles = available,
+                    archivedProfiles = archived,
+                    availableProfileIds = availableIds,
+                    selectedCustomProfileId = lockedCustomId,
+                    isFreeSlotLocked = true,
+                    canChooseFreeProfile = false,
+                )
+            }
+
+            if (maxCustomCount == 0 || customProfiles.isEmpty()) {
+                return ProfileAvailabilityPartition(
+                    availableProfiles = listOf(starterProfile),
+                    archivedProfiles = customProfiles,
+                    availableProfileIds = setOf(starterProfile.profileId),
+                    selectedCustomProfileId = null,
+                    isFreeSlotLocked = false,
+                    canChooseFreeProfile = false,
+                )
+            }
+
+            val primaryCustomId =
+                activeProfileId?.takeIf { it != defaultProfileId && it in customIds }
+                    ?: selectedCustomProfileId?.takeIf { it != defaultProfileId && it in customIds }
+                    ?: customProfiles.first().profileId
+
+            val chosenCustom = customProfiles.filter { it.profileId == primaryCustomId } +
+                customProfiles.filterNot { it.profileId == primaryCustomId }
+            val availableCustom = chosenCustom.take(maxCustomCount)
+            val availableCustomIds = availableCustom.mapTo(HashSet()) { it.profileId }
+
+            val available = listOf(starterProfile) + availableCustom
+            val archived = customProfiles.filterNot { it.profileId in availableCustomIds }
+            return ProfileAvailabilityPartition(
+                availableProfiles = available,
+                archivedProfiles = archived,
+                availableProfileIds = available.mapTo(LinkedHashSet()) { it.profileId },
+                selectedCustomProfileId = availableCustom.firstOrNull()?.profileId,
+                isFreeSlotLocked = false,
+                canChooseFreeProfile = archived.isNotEmpty(),
+            )
+        }
+
+        // Defensive fallback if no starter profile is present.
+        val limit = entitlement.freeProfileLimit.coerceAtLeast(1)
+        val prioritized = buildList {
+            if (isFreeSlotLocked) {
+                selectedCustomProfileId?.let { lockedId ->
+                    profiles.firstOrNull { it.profileId == lockedId }?.let(::add)
+                }
+            } else {
+                activeProfileId?.let { activeId ->
+                    profiles.firstOrNull { it.profileId == activeId }?.let(::add)
+                }
+                selectedCustomProfileId?.let { selectedId ->
+                    profiles.firstOrNull { it.profileId == selectedId && it !in this }?.let(::add)
+                }
+                profiles.forEach { profile ->
+                    if (profile !in this) {
+                        add(profile)
+                    }
+                }
+            }
+        }
+        val available = prioritized.take(limit)
+        val availableIds = available.mapTo(LinkedHashSet()) { it.profileId }
+        val archived = profiles.filterNot { it.profileId in availableIds }
+        return ProfileAvailabilityPartition(
+            availableProfiles = available,
+            archivedProfiles = archived,
+            availableProfileIds = availableIds,
+            selectedCustomProfileId = if (isFreeSlotLocked) {
+                selectedCustomProfileId
+            } else {
+                available.firstOrNull()?.profileId
+            },
+            isFreeSlotLocked = isFreeSlotLocked,
+            canChooseFreeProfile = !isFreeSlotLocked && archived.isNotEmpty(),
+        )
     }
 }
 

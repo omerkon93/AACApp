@@ -299,12 +299,15 @@ class PlayBillingFamilyEntitlementProviderTest {
                 "https://play.google.com/store/account/subscriptions?sku=$PRODUCT_ID&package=$PKG",
                 provider.getSubscriptionManagementUri(),
             )
-            assertTrue(repo.createProfile("Third", ProfileCreationMode.BLANK, "he") is CreateProfileResult.Success)
-            assertEquals(3, repo.profiles.value.size)
+            val third = (repo.createProfile("Third", ProfileCreationMode.BLANK, "he") as CreateProfileResult.Success).profile
+            val fourth = (repo.createProfile("Fourth", ProfileCreationMode.BLANK, "en") as CreateProfileResult.Success).profile
+            assertEquals(4, repo.profiles.value.size)
+            assertEquals(4, repo.profileAvailability.value.availableProfiles.size)
 
             // Actual expiry: Play returns OK with empty purchases
             gateway.ownedPurchases = emptyList()
             provider.refreshEntitlements()
+            testScheduler.advanceUntilIdle()
 
             val expiredState = provider.currentEntitlement()
             assertEquals(ProfilePlanTier.FREE, expiredState.tier)
@@ -312,13 +315,50 @@ class PlayBillingFamilyEntitlementProviderTest {
             assertEquals(ProfilePlanTier.FREE, cache.read().tier)
             assertEquals(SubscriptionBillingState.EXPIRED, cache.read().subscriptionState)
 
-            // All 3 existing profiles stay usable; new creation blocked while >= 2
-            assertEquals(3, repo.profiles.value.size)
-            repo.switchProfile(repo.profiles.value[1].profileId)
+            // 2 profiles remain available (default + active fourth); 2 archived; creation blocked
+            assertEquals(4, repo.profiles.value.size)
+            assertEquals(setOf("default", fourth.profileId), repo.profileAvailability.value.availableProfileIds)
+            assertEquals(2, repo.profileAvailability.value.archivedProfiles.size)
+            assertTrue(repo.profileAvailability.value.canChooseFreeProfile)
+            assertFalse(repo.switchProfile(third.profileId))
             assertEquals(
-                CreateProfileResult.LimitReached(3, 2),
-                repo.createProfile("Fourth Blocked", ProfileCreationMode.BLANK, "en"),
+                CreateProfileResult.LimitReached(4, 2),
+                repo.createProfile("Fifth Blocked", ProfileCreationMode.BLANK, "en"),
             )
+
+            // Confirm one custom profile for the Free period; further selection is locked
+            assertTrue(
+                repo.confirmFreeCustomProfile(third.profileId)
+                    is com.kon.myaacapp.data.repository.SelectFreeCustomProfileResult.Success,
+            )
+            assertTrue(repo.profileAvailability.value.isFreeSlotLocked)
+            assertEquals(
+                com.kon.myaacapp.data.repository.SelectFreeCustomProfileResult.Locked,
+                repo.confirmFreeCustomProfile(fourth.profileId),
+            )
+
+            // Renewing Family unlocks all 4 and clears lock; a later confirmed expiry starts a new one-time choice
+            gateway.ownedPurchases = listOf(
+                GatewayPurchase(
+                    orderId = "GPA.renewed",
+                    packageName = PKG,
+                    products = listOf(PRODUCT_ID),
+                    purchaseToken = "tok_renewed",
+                    purchaseState = GatewayPurchaseState.PURCHASED,
+                    isAcknowledged = true,
+                    isAutoRenewing = true,
+                ),
+            )
+            provider.refreshEntitlements()
+            testScheduler.advanceUntilIdle()
+            assertEquals(4, repo.profileAvailability.value.availableProfiles.size)
+            assertFalse(repo.profileAvailability.value.isFreeSlotLocked)
+
+            gateway.ownedPurchases = emptyList()
+            provider.refreshEntitlements()
+            testScheduler.advanceUntilIdle()
+            assertFalse(repo.profileAvailability.value.isFreeSlotLocked)
+            assertTrue(repo.profileAvailability.value.canChooseFreeProfile)
             scope.cancel()
         }
 
@@ -425,6 +465,16 @@ class PlayBillingFamilyEntitlementProviderTest {
             assertTrue(restoreOutcome is FamilyUpgradeOutcome.Failed)
             assertEquals(BillingFeedback.TEMPORARY_ERROR, provider.currentEntitlement().lastBillingFeedback)
             assertEquals(ProfilePlanTier.FAMILY, provider.currentEntitlement().tier)
+
+            // Even with 4 saved profiles, offline / transient billing errors keep all 4 available
+            val repo = createProfileRepo(provider, scope)
+            assertTrue(repo.createProfile("Child 2", ProfileCreationMode.BLANK, "en") is CreateProfileResult.Success)
+            assertTrue(repo.createProfile("Child 3", ProfileCreationMode.BLANK, "he") is CreateProfileResult.Success)
+            assertTrue(repo.createProfile("Child 4", ProfileCreationMode.BLANK, "en") is CreateProfileResult.Success)
+            provider.refreshEntitlements()
+            testScheduler.advanceUntilIdle()
+            assertEquals(4, repo.profileAvailability.value.availableProfiles.size)
+            assertTrue(repo.profileAvailability.value.archivedProfiles.isEmpty())
             scope.cancel()
         }
 

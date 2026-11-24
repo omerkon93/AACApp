@@ -23,6 +23,7 @@ import java.io.IOException
 @Serializable
 data class ExportedBoardSettings(
     val activeProfileId: String? = null,
+    val selectedCustomProfileId: String? = null,
     val gridColumns: Int = 3,
     val gridRows: Int = 5,
     val gridTileScale: Float = 1.0f,
@@ -48,6 +49,7 @@ data class ExportedBoardSettings(
 @Serializable
 data class BoardSettingsSnapshot(
     val activeProfileId: String? = null,
+    val selectedCustomProfileId: String? = null,
     val gridColumns: Int? = null,
     val gridRows: Int? = null,
     val gridTileScale: Float? = null,
@@ -66,6 +68,7 @@ data class BoardSettingsSnapshot(
     val languageCode: String? = null,
     val interfaceLanguageCode: String? = null,
     val languageSeparationMigrated: Boolean? = null,
+    val freeCustomProfileLocked: Boolean? = null,
 )
 
 // Kept at the top level as per DataStore best practices to guarantee a single instance
@@ -104,6 +107,8 @@ class SettingsRepository(
         val INTERFACE_LANGUAGE_CODE = stringPreferencesKey("interface_language_code")
         val LANGUAGE_SEPARATION_MIGRATED = booleanPreferencesKey("language_separation_migrated")
         val ACTIVE_PROFILE_ID = stringPreferencesKey("active_profile_id")
+        val SELECTED_CUSTOM_PROFILE_ID = stringPreferencesKey("selected_custom_profile_id")
+        val FREE_CUSTOM_PROFILE_LOCKED = booleanPreferencesKey("free_custom_profile_locked")
 
         // 👉 NEW LAYOUT SETTINGS KEYS
         val GRID_TILE_SCALE = floatPreferencesKey("grid_tile_scale")
@@ -175,6 +180,18 @@ class SettingsRepository(
         }
         // OPTIMIZATION: Firewalls the flow. If the user changes 'Speak on Press',
         // this flow will ignore the DataStore file update and NOT emit a duplicate profile ID.
+        .distinctUntilChanged()
+
+    val selectedCustomProfileIdFlow: Flow<String?> = basePreferencesFlow
+        .map { preferences ->
+            preferences[PreferencesKeys.SELECTED_CUSTOM_PROFILE_ID]
+        }
+        .distinctUntilChanged()
+
+    val freeCustomProfileLockedFlow: Flow<Boolean> = basePreferencesFlow
+        .map { preferences ->
+            preferences[PreferencesKeys.FREE_CUSTOM_PROFILE_LOCKED] ?: false
+        }
         .distinctUntilChanged()
 
     val speakOnTilePressFlow: Flow<Boolean> = basePreferencesFlow
@@ -329,6 +346,57 @@ class SettingsRepository(
     suspend fun updateActiveProfileId(profileId: String) {
         store.edit { preferences ->
             preferences[PreferencesKeys.ACTIVE_PROFILE_ID] = profileId
+        }
+    }
+
+    suspend fun updateSelectedCustomProfileId(profileId: String?) {
+        store.edit { preferences ->
+            if (!profileId.isNullOrBlank()) {
+                preferences[PreferencesKeys.SELECTED_CUSTOM_PROFILE_ID] = profileId
+            } else {
+                preferences.remove(PreferencesKeys.SELECTED_CUSTOM_PROFILE_ID)
+            }
+        }
+    }
+
+    suspend fun updateActiveAndSelectedCustomProfile(
+        activeProfileId: String,
+        selectedCustomProfileId: String?,
+    ) {
+        store.edit { preferences ->
+            preferences[PreferencesKeys.ACTIVE_PROFILE_ID] = activeProfileId
+            if (!selectedCustomProfileId.isNullOrBlank()) {
+                preferences[PreferencesKeys.SELECTED_CUSTOM_PROFILE_ID] = selectedCustomProfileId
+            } else {
+                preferences.remove(PreferencesKeys.SELECTED_CUSTOM_PROFILE_ID)
+            }
+        }
+    }
+
+    suspend fun readFreeCustomProfileLocked(): Boolean {
+        val preferences = basePreferencesFlow.first()
+        return preferences[PreferencesKeys.FREE_CUSTOM_PROFILE_LOCKED] ?: false
+    }
+
+    suspend fun updateFreeCustomProfileLocked(locked: Boolean) {
+        store.edit { preferences ->
+            preferences[PreferencesKeys.FREE_CUSTOM_PROFILE_LOCKED] = locked
+        }
+    }
+
+    suspend fun updateFreeProfileSlot(
+        activeProfileId: String,
+        selectedCustomProfileId: String?,
+        isFreeSlotLocked: Boolean,
+    ) {
+        store.edit { preferences ->
+            preferences[PreferencesKeys.ACTIVE_PROFILE_ID] = activeProfileId
+            if (!selectedCustomProfileId.isNullOrBlank()) {
+                preferences[PreferencesKeys.SELECTED_CUSTOM_PROFILE_ID] = selectedCustomProfileId
+            } else {
+                preferences.remove(PreferencesKeys.SELECTED_CUSTOM_PROFILE_ID)
+            }
+            preferences[PreferencesKeys.FREE_CUSTOM_PROFILE_LOCKED] = isFreeSlotLocked
         }
     }
 
@@ -572,6 +640,7 @@ class SettingsRepository(
 
         return ExportedBoardSettings(
             activeProfileId = preferences[PreferencesKeys.ACTIVE_PROFILE_ID],
+            selectedCustomProfileId = preferences[PreferencesKeys.SELECTED_CUSTOM_PROFILE_ID],
             gridColumns = (preferences[PreferencesKeys.GRID_COLUMNS] ?: FACTORY_GRID_COLUMNS)
                 .coerceIn(1, 8),
             gridRows = (preferences[PreferencesKeys.GRID_ROWS] ?: FACTORY_GRID_ROWS)
@@ -607,6 +676,7 @@ class SettingsRepository(
     suspend fun applyExportedBoardSettings(
         settings: ExportedBoardSettings,
         resolvedActiveProfileId: String? = settings.activeProfileId,
+        resolvedSelectedCustomProfileId: String? = settings.selectedCustomProfileId,
     ) {
         val normalizedGender = runCatching {
             Gender.valueOf(settings.userGender).name
@@ -625,6 +695,12 @@ class SettingsRepository(
                 preferences[PreferencesKeys.ACTIVE_PROFILE_ID] = resolvedActiveProfileId
             } else {
                 preferences.remove(PreferencesKeys.ACTIVE_PROFILE_ID)
+            }
+            if (!resolvedSelectedCustomProfileId.isNullOrBlank()) {
+                preferences[PreferencesKeys.SELECTED_CUSTOM_PROFILE_ID] =
+                    resolvedSelectedCustomProfileId
+            } else {
+                preferences.remove(PreferencesKeys.SELECTED_CUSTOM_PROFILE_ID)
             }
             preferences[PreferencesKeys.GRID_COLUMNS] = settings.gridColumns.coerceIn(1, 8)
             preferences[PreferencesKeys.GRID_ROWS] = settings.gridRows.coerceIn(1, 10)
@@ -653,6 +729,7 @@ class SettingsRepository(
         val preferences = basePreferencesFlow.first()
         return BoardSettingsSnapshot(
             activeProfileId = preferences[PreferencesKeys.ACTIVE_PROFILE_ID],
+            selectedCustomProfileId = preferences[PreferencesKeys.SELECTED_CUSTOM_PROFILE_ID],
             gridColumns = preferences[PreferencesKeys.GRID_COLUMNS],
             gridRows = preferences[PreferencesKeys.GRID_ROWS],
             gridTileScale = preferences[PreferencesKeys.GRID_TILE_SCALE],
@@ -671,6 +748,7 @@ class SettingsRepository(
             languageCode = preferences[PreferencesKeys.LANGUAGE_CODE],
             interfaceLanguageCode = preferences[PreferencesKeys.INTERFACE_LANGUAGE_CODE],
             languageSeparationMigrated = preferences[PreferencesKeys.LANGUAGE_SEPARATION_MIGRATED],
+            freeCustomProfileLocked = preferences[PreferencesKeys.FREE_CUSTOM_PROFILE_LOCKED],
         )
     }
 
@@ -685,6 +763,7 @@ class SettingsRepository(
             }
 
             setOrRemove(PreferencesKeys.ACTIVE_PROFILE_ID, snapshot.activeProfileId)
+            setOrRemove(PreferencesKeys.SELECTED_CUSTOM_PROFILE_ID, snapshot.selectedCustomProfileId)
             setOrRemove(PreferencesKeys.GRID_COLUMNS, snapshot.gridColumns)
             setOrRemove(PreferencesKeys.GRID_ROWS, snapshot.gridRows)
             setOrRemove(PreferencesKeys.GRID_TILE_SCALE, snapshot.gridTileScale)
@@ -705,6 +784,10 @@ class SettingsRepository(
             setOrRemove(
                 PreferencesKeys.LANGUAGE_SEPARATION_MIGRATED,
                 snapshot.languageSeparationMigrated,
+            )
+            setOrRemove(
+                PreferencesKeys.FREE_CUSTOM_PROFILE_LOCKED,
+                snapshot.freeCustomProfileLocked,
             )
         }
     }

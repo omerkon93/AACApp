@@ -5,6 +5,8 @@ import android.util.Log
 import com.kon.myaacapp.R
 import com.kon.myaacapp.core.locale.LocaleHelper
 import com.kon.myaacapp.domain.entitlement.FamilyEntitlementProvider
+import com.kon.myaacapp.domain.entitlement.FamilyEntitlementState
+import com.kon.myaacapp.domain.entitlement.ProfileAvailabilityPartition
 import com.kon.myaacapp.domain.entitlement.ProfileLimitPolicy
 import com.kon.myaacapp.domain.entitlement.StoreFamilyEntitlementProvider
 import com.kon.myaacapp.domain.model.ProfileCreationMode
@@ -45,6 +47,19 @@ sealed interface CreateProfileResult {
     data object InvalidName : CreateProfileResult
 
     data object SaveFailed : CreateProfileResult
+}
+
+sealed interface SelectFreeCustomProfileResult {
+    data class Success(
+        val selectedProfile: UserProfile,
+        val activeProfileChanged: Boolean,
+    ) : SelectFreeCustomProfileResult
+
+    data object Locked : SelectFreeCustomProfileResult
+
+    data object NotApplicable : SelectFreeCustomProfileResult
+
+    data object InvalidTarget : SelectFreeCustomProfileResult
 }
 
 class ProfileRepository(
@@ -91,17 +106,36 @@ class ProfileRepository(
     val activeProfile: StateFlow<UserProfile?> =
         _activeProfile.asStateFlow()
 
+    private val _profileAvailability =
+        MutableStateFlow(ProfileAvailabilityPartition())
+
+    val profileAvailability: StateFlow<ProfileAvailabilityPartition> =
+        _profileAvailability.asStateFlow()
+
     init {
         scope.launch {
             combine(
                 _profiles,
                 settingsRepository.activeProfileIdFlow,
-            ) { profileList, activeId ->
-                profileList.find { profile ->
-                    profile.profileId == activeId
-                } ?: profileList.firstOrNull()
-            }.collect { resolved ->
-                _activeProfile.value = resolved
+                settingsRepository.selectedCustomProfileIdFlow,
+                settingsRepository.freeCustomProfileLockedFlow,
+                familyEntitlementProvider.entitlementState,
+            ) { profileList, activeId, selectedCustomId, isFreeLocked, entitlement ->
+                val shouldUnlock = entitlement.hasFamilyEntitlement && isFreeLocked
+                val resolved = resolveStateForInputs(
+                    profileList = profileList,
+                    activeId = activeId,
+                    selectedCustomId = selectedCustomId,
+                    isFreeSlotLocked = isFreeLocked && !entitlement.hasFamilyEntitlement,
+                    entitlement = entitlement,
+                )
+                shouldUnlock to resolved
+            }.collect { (shouldUnlock, resolved) ->
+                if (shouldUnlock) {
+                    settingsRepository.updateFreeCustomProfileLocked(false)
+                }
+                _profileAvailability.value = resolved.first
+                _activeProfile.value = resolved.second
             }
         }
     }
@@ -122,7 +156,6 @@ class ProfileRepository(
                 loadProfilesSync()
                 bootstrapDefaultProfileSync()
                 ensureValidActiveProfile()
-                _activeProfile.value = resolveCurrentActiveProfile()
             }
         }
 
@@ -215,8 +248,13 @@ class ProfileRepository(
 
         _profiles.value = listOf(defaultProfile)
 
-        settingsRepository.updateActiveProfileId(
-            DEFAULT_PROFILE_ID
+        settingsRepository.updateActiveAndSelectedCustomProfile(
+            activeProfileId = DEFAULT_PROFILE_ID,
+            selectedCustomProfileId = null,
+        )
+        recomputeResolvedStateLocked(
+            activeIdOverride = DEFAULT_PROFILE_ID,
+            selectedCustomIdOverride = null,
         )
 
         Log.d(
@@ -230,37 +268,143 @@ class ProfileRepository(
         val availableProfiles = _profiles.value
 
         if (availableProfiles.isEmpty()) {
+            _profileAvailability.value = ProfileAvailabilityPartition()
+            _activeProfile.value = null
             return
         }
 
         val storedProfileId =
             settingsRepository.activeProfileIdFlow.first()
+        val storedSelectedCustomId =
+            settingsRepository.selectedCustomProfileIdFlow.first()
+        val storedFreeLocked =
+            settingsRepository.freeCustomProfileLockedFlow.first()
+        val entitlement = familyEntitlementProvider.currentEntitlement()
 
-        val storedProfileExists =
-            availableProfiles.any { profile ->
-                profile.profileId == storedProfileId
+        if (entitlement.hasFamilyEntitlement && storedFreeLocked) {
+            settingsRepository.updateFreeCustomProfileLocked(false)
+        }
+        val effectiveLocked = storedFreeLocked && !entitlement.hasFamilyEntitlement
+
+        val partition = ProfileLimitPolicy.partitionProfiles(
+            profiles = availableProfiles,
+            activeProfileId = storedProfileId,
+            selectedCustomProfileId = storedSelectedCustomId,
+            isFreeSlotLocked = effectiveLocked,
+            entitlement = entitlement,
+            defaultProfileId = DEFAULT_PROFILE_ID,
+        )
+
+        val resolvedActiveId =
+            if (storedProfileId != null && partition.isAvailable(storedProfileId)) {
+                storedProfileId
+            } else {
+                partition.availableProfiles.find { profile ->
+                    profile.profileId == DEFAULT_PROFILE_ID
+                }?.profileId ?: partition.availableProfiles.first().profileId
             }
 
-        if (storedProfileExists) {
-            return
+        val resolvedSelectedCustomId =
+            if (effectiveLocked) {
+                storedSelectedCustomId
+            } else {
+                partition.selectedCustomProfileId
+            }
+
+        if (
+            resolvedActiveId != storedProfileId ||
+            resolvedSelectedCustomId != storedSelectedCustomId
+        ) {
+            settingsRepository.updateActiveAndSelectedCustomProfile(
+                activeProfileId = resolvedActiveId,
+                selectedCustomProfileId = resolvedSelectedCustomId,
+            )
         }
 
-        val fallbackProfile =
-            availableProfiles.find { profile ->
-                profile.profileId == DEFAULT_PROFILE_ID
-            } ?: availableProfiles.first()
-
-        settingsRepository.updateActiveProfileId(
-            fallbackProfile.profileId
+        recomputeResolvedStateLocked(
+            activeIdOverride = resolvedActiveId,
+            selectedCustomIdOverride = resolvedSelectedCustomId,
+            isFreeLockedOverride = effectiveLocked,
         )
     }
 
     private suspend fun resolveCurrentActiveProfile(): UserProfile? {
         val profileList = _profiles.value
         val activeId = settingsRepository.activeProfileIdFlow.first()
-        return profileList.find { profile ->
-            profile.profileId == activeId
-        } ?: profileList.firstOrNull()
+        val selectedCustomId = settingsRepository.selectedCustomProfileIdFlow.first()
+        val entitlement = familyEntitlementProvider.currentEntitlement()
+        val isFreeLocked =
+            settingsRepository.freeCustomProfileLockedFlow.first() &&
+                !entitlement.hasFamilyEntitlement
+        val (_, resolvedActive) = resolveStateForInputs(
+            profileList = profileList,
+            activeId = activeId,
+            selectedCustomId = selectedCustomId,
+            isFreeSlotLocked = isFreeLocked,
+            entitlement = entitlement,
+        )
+        return resolvedActive
+    }
+
+    private suspend fun recomputeResolvedStateLocked(
+        activeIdOverride: String? = null,
+        selectedCustomIdOverride: String? = null,
+        isFreeLockedOverride: Boolean = false,
+        useOverrides: Boolean = true,
+    ) {
+        val entitlement = familyEntitlementProvider.currentEntitlement()
+        val activeId = if (useOverrides) {
+            activeIdOverride
+        } else {
+            settingsRepository.activeProfileIdFlow.first()
+        }
+        val selectedCustomId = if (useOverrides) {
+            selectedCustomIdOverride
+        } else {
+            settingsRepository.selectedCustomProfileIdFlow.first()
+        }
+        val effectiveLocked = if (useOverrides) {
+            isFreeLockedOverride && !entitlement.hasFamilyEntitlement
+        } else {
+            settingsRepository.freeCustomProfileLockedFlow.first() &&
+                !entitlement.hasFamilyEntitlement
+        }
+        val (partition, resolvedActive) = resolveStateForInputs(
+            profileList = _profiles.value,
+            activeId = activeId,
+            selectedCustomId = selectedCustomId,
+            isFreeSlotLocked = effectiveLocked,
+            entitlement = entitlement,
+        )
+        _profileAvailability.value = partition
+        _activeProfile.value = resolvedActive
+    }
+
+    private fun resolveStateForInputs(
+        profileList: List<UserProfile>,
+        activeId: String?,
+        selectedCustomId: String?,
+        isFreeSlotLocked: Boolean,
+        entitlement: FamilyEntitlementState,
+    ): Pair<ProfileAvailabilityPartition, UserProfile?> {
+        if (profileList.isEmpty()) {
+            return ProfileAvailabilityPartition() to null
+        }
+
+        val partition = ProfileLimitPolicy.partitionProfiles(
+            profiles = profileList,
+            activeProfileId = activeId,
+            selectedCustomProfileId = selectedCustomId,
+            isFreeSlotLocked = isFreeSlotLocked,
+            entitlement = entitlement,
+            defaultProfileId = DEFAULT_PROFILE_ID,
+        )
+        val resolvedActive =
+            partition.availableProfiles.find { it.profileId == activeId }
+                ?: partition.availableProfiles.find { it.profileId == DEFAULT_PROFILE_ID }
+                ?: partition.availableProfiles.firstOrNull()
+
+        return partition to resolvedActive
     }
 
     suspend fun createProfile(
@@ -354,10 +498,21 @@ class ProfileRepository(
                 existing + newProfile
             }
 
-            settingsRepository.updateActiveProfileId(
-                newProfile.profileId
+            val currentLocked = settingsRepository.freeCustomProfileLockedFlow.first()
+            if (entitlement.hasFamilyEntitlement && currentLocked) {
+                settingsRepository.updateFreeCustomProfileLocked(false)
+            }
+            val effectiveLocked = currentLocked && !entitlement.hasFamilyEntitlement
+
+            settingsRepository.updateActiveAndSelectedCustomProfile(
+                activeProfileId = newProfile.profileId,
+                selectedCustomProfileId = newProfile.profileId,
             )
-            _activeProfile.value = newProfile
+            recomputeResolvedStateLocked(
+                activeIdOverride = newProfile.profileId,
+                selectedCustomIdOverride = newProfile.profileId,
+                isFreeLockedOverride = effectiveLocked,
+            )
 
             CreateProfileResult.Success(newProfile)
         }
@@ -365,16 +520,96 @@ class ProfileRepository(
 
     suspend fun switchProfile(
         profileId: String,
-    ) = withContext(Dispatchers.IO) {
+    ): Boolean = withContext(Dispatchers.IO) {
         profileMutex.withLock {
-            val targetProfile = _profiles.value.find { profile ->
+            val storedActiveId = settingsRepository.activeProfileIdFlow.first()
+            val storedSelectedCustomId = settingsRepository.selectedCustomProfileIdFlow.first()
+            val storedFreeLocked = settingsRepository.freeCustomProfileLockedFlow.first()
+            val entitlement = familyEntitlementProvider.currentEntitlement()
+            if (entitlement.hasFamilyEntitlement && storedFreeLocked) {
+                settingsRepository.updateFreeCustomProfileLocked(false)
+            }
+            val effectiveLocked = storedFreeLocked && !entitlement.hasFamilyEntitlement
+
+            val (partition, currentActive) = resolveStateForInputs(
+                profileList = _profiles.value,
+                activeId = storedActiveId,
+                selectedCustomId = storedSelectedCustomId,
+                isFreeSlotLocked = effectiveLocked,
+                entitlement = entitlement,
+            )
+
+            val targetProfile = partition.availableProfiles.find { profile ->
                 profile.profileId == profileId
+            } ?: return@withLock false
+
+            val nextSelectedCustomId = when {
+                effectiveLocked -> storedSelectedCustomId
+                targetProfile.profileId != DEFAULT_PROFILE_ID -> targetProfile.profileId
+                else -> currentActive?.profileId?.takeIf { it != DEFAULT_PROFILE_ID }
+                    ?: partition.selectedCustomProfileId
             }
 
-            if (targetProfile != null) {
-                settingsRepository.updateActiveProfileId(profileId)
-                _activeProfile.value = targetProfile
+            settingsRepository.updateActiveAndSelectedCustomProfile(
+                activeProfileId = targetProfile.profileId,
+                selectedCustomProfileId = nextSelectedCustomId,
+            )
+            recomputeResolvedStateLocked(
+                activeIdOverride = targetProfile.profileId,
+                selectedCustomIdOverride = nextSelectedCustomId,
+                isFreeLockedOverride = effectiveLocked,
+            )
+            true
+        }
+    }
+
+    suspend fun confirmFreeCustomProfile(
+        profileId: String,
+    ): SelectFreeCustomProfileResult = withContext(Dispatchers.IO) {
+        profileMutex.withLock {
+            val entitlement = familyEntitlementProvider.currentEntitlement()
+            if (!entitlement.isProfileCapEnforced || entitlement.hasFamilyEntitlement) {
+                return@withLock SelectFreeCustomProfileResult.NotApplicable
             }
+            if (settingsRepository.readFreeCustomProfileLocked()) {
+                return@withLock SelectFreeCustomProfileResult.Locked
+            }
+            if (profileId == DEFAULT_PROFILE_ID) {
+                return@withLock SelectFreeCustomProfileResult.InvalidTarget
+            }
+
+            val targetProfile = _profiles.value.find { profile ->
+                profile.profileId == profileId
+            } ?: return@withLock SelectFreeCustomProfileResult.InvalidTarget
+
+            val currentActive = resolveCurrentActiveProfile()
+            val currentActiveId = currentActive?.profileId
+            val shouldSwitchActive =
+                currentActiveId != null &&
+                    currentActiveId != DEFAULT_PROFILE_ID &&
+                    currentActiveId != profileId
+
+            val nextActiveId = if (shouldSwitchActive) {
+                profileId
+            } else {
+                currentActiveId ?: DEFAULT_PROFILE_ID
+            }
+
+            settingsRepository.updateFreeProfileSlot(
+                activeProfileId = nextActiveId,
+                selectedCustomProfileId = profileId,
+                isFreeSlotLocked = true,
+            )
+            recomputeResolvedStateLocked(
+                activeIdOverride = nextActiveId,
+                selectedCustomIdOverride = profileId,
+                isFreeLockedOverride = true,
+            )
+
+            SelectFreeCustomProfileResult.Success(
+                selectedProfile = targetProfile,
+                activeProfileChanged = shouldSwitchActive,
+            )
         }
     }
 
@@ -406,20 +641,47 @@ class ProfileRepository(
                 }
             }
 
-            if (resolveCurrentActiveProfile()?.profileId == profileId ||
-                _activeProfile.value?.profileId == profileId
-            ) {
-                val fallbackProfile = _profiles.value.firstOrNull()
-                val fallbackProfileId =
-                    fallbackProfile?.profileId ?: DEFAULT_PROFILE_ID
+            val storedActiveId = settingsRepository.activeProfileIdFlow.first()
+            val storedSelectedCustomId = settingsRepository.selectedCustomProfileIdFlow.first()
+            val storedFreeLocked = settingsRepository.freeCustomProfileLockedFlow.first()
+            val entitlement = familyEntitlementProvider.currentEntitlement()
+            val effectiveLocked = storedFreeLocked && !entitlement.hasFamilyEntitlement
 
-                settingsRepository.updateActiveProfileId(
-                    fallbackProfileId
-                )
-                _activeProfile.value = fallbackProfile
+            val candidateActiveId = if (storedActiveId == profileId) null else storedActiveId
+            val candidateSelectedCustomId = if (effectiveLocked) {
+                storedSelectedCustomId
+            } else if (storedSelectedCustomId == profileId) {
+                null
             } else {
-                _activeProfile.value = resolveCurrentActiveProfile()
+                storedSelectedCustomId
             }
+
+            val (partition, resolvedActive) = resolveStateForInputs(
+                profileList = _profiles.value,
+                activeId = candidateActiveId,
+                selectedCustomId = candidateSelectedCustomId,
+                isFreeSlotLocked = effectiveLocked,
+                entitlement = entitlement,
+            )
+            val nextActiveId = resolvedActive?.profileId ?: DEFAULT_PROFILE_ID
+            val nextSelectedCustomId = if (effectiveLocked) {
+                storedSelectedCustomId
+            } else {
+                partition.selectedCustomProfileId
+            }
+
+            if (
+                nextActiveId != storedActiveId ||
+                nextSelectedCustomId != storedSelectedCustomId
+            ) {
+                settingsRepository.updateActiveAndSelectedCustomProfile(
+                    activeProfileId = nextActiveId,
+                    selectedCustomProfileId = nextSelectedCustomId,
+                )
+            }
+
+            _profileAvailability.value = partition
+            _activeProfile.value = resolvedActive
         }
     }
 
@@ -474,7 +736,7 @@ class ProfileRepository(
                         }
                     }
                 }
-                _activeProfile.value = resetProfile
+                recomputeResolvedStateLocked(useOverrides = false)
 
                 true
             }
@@ -563,7 +825,7 @@ class ProfileRepository(
                     currentProfiles + updatedProfile
                 }
             }
-            _activeProfile.value = resolveCurrentActiveProfile()
+            recomputeResolvedStateLocked(useOverrides = false)
         }
     }
 
@@ -601,7 +863,7 @@ class ProfileRepository(
             }
 
             _profiles.value = updatedProfiles
-            _activeProfile.value = resolveCurrentActiveProfile()
+            recomputeResolvedStateLocked(useOverrides = false)
         }
     }
 

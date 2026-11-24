@@ -3,6 +3,7 @@ package com.kon.myaacapp.ui.profile
 import android.content.Intent
 import android.net.Uri
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.ui.platform.LocalContext
@@ -29,6 +30,12 @@ fun ProfileManagerRoute(
 
     val state by profileManagerViewModel.state
         .collectAsStateWithLifecycle()
+
+    DisposableEffect(profileManagerViewModel) {
+        onDispose {
+            profileManagerViewModel.onAction(ProfileManagerAction.DiscardFreeProfileChoice)
+        }
+    }
 
     LaunchedEffect(profileManagerViewModel) {
         profileManagerViewModel.onAction(ProfileManagerAction.RefreshBillingState)

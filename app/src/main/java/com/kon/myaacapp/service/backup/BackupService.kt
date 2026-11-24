@@ -969,14 +969,48 @@ class BackupService(
     private suspend fun applyRestoredSettingsIfPresent(staged: StagedPayload): Boolean {
         val exportedSettings = staged.manifest?.settings ?: return false
 
+        val isFreeSlotLocked = settingsRepository.readFreeCustomProfileLocked()
+        val existingSelectedCustomId = settingsRepository.selectedCustomProfileIdFlow.first()
+
         val requestedActiveId = exportedSettings.activeProfileId
-        val resolvedActiveId = when {
-            !requestedActiveId.isNullOrBlank() && requestedActiveId in staged.restoredProfileIds -> {
-                requestedActiveId
+        val resolvedActiveId: String?
+        val resolvedSelectedCustomId: String?
+
+        if (isFreeSlotLocked) {
+            // Preserve the installation's locked Free choice across backup imports.
+            resolvedSelectedCustomId = existingSelectedCustomId
+            resolvedActiveId = when {
+                requestedActiveId == "default" && "default" in staged.restoredProfileIds -> "default"
+                !existingSelectedCustomId.isNullOrBlank() &&
+                    existingSelectedCustomId in staged.restoredProfileIds -> existingSelectedCustomId
+                "default" in staged.restoredProfileIds -> "default"
+                else -> null
+            }
+        } else {
+            resolvedActiveId = when {
+                !requestedActiveId.isNullOrBlank() && requestedActiveId in staged.restoredProfileIds -> {
+                    requestedActiveId
+                }
+
+                "default" in staged.restoredProfileIds -> "default"
+                else -> staged.restoredProfileIds.firstOrNull()
             }
 
-            "default" in staged.restoredProfileIds -> "default"
-            else -> staged.restoredProfileIds.firstOrNull()
+            resolvedSelectedCustomId = when {
+                !resolvedActiveId.isNullOrBlank() &&
+                    resolvedActiveId != "default" &&
+                    resolvedActiveId in staged.restoredProfileIds -> {
+                    resolvedActiveId
+                }
+
+                !exportedSettings.selectedCustomProfileId.isNullOrBlank() &&
+                    exportedSettings.selectedCustomProfileId != "default" &&
+                    exportedSettings.selectedCustomProfileId in staged.restoredProfileIds -> {
+                    exportedSettings.selectedCustomProfileId
+                }
+
+                else -> staged.restoredProfileIds.firstOrNull { it != "default" }
+            }
         }
 
         val restoredBoardLanguage = exportedSettings.resolvedBoardLanguageCode()
@@ -992,6 +1026,7 @@ class BackupService(
         settingsRepository.applyExportedBoardSettings(
             settings = exportedSettings,
             resolvedActiveProfileId = resolvedActiveId,
+            resolvedSelectedCustomProfileId = resolvedSelectedCustomId,
         )
         return true
     }

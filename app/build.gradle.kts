@@ -23,7 +23,7 @@ val familySubscriptionBasePlanId =
 val enableProfileCapTestConfig =
     (project.findProperty("myaac.enableProfileCap") as? String)
         ?.toBooleanStrictOrNull()
-        ?: false
+        ?: true
 
 val appVersionCode =
     (project.findProperty("myaac.versionCode") as? String)

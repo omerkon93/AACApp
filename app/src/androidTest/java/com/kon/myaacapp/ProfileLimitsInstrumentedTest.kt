@@ -12,21 +12,28 @@ import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalLayoutDirection
 import androidx.compose.ui.platform.LocalResources
 import androidx.compose.ui.test.assertIsDisplayed
+import androidx.compose.ui.test.assertTextEquals
 import androidx.compose.ui.test.hasAnyAncestor
 import androidx.compose.ui.test.hasClickAction
+import androidx.compose.ui.test.hasContentDescription
+import androidx.compose.ui.test.hasScrollAction
 import androidx.compose.ui.test.hasSetTextAction
+import androidx.compose.ui.test.hasTestTag
 import androidx.compose.ui.test.hasText
 import androidx.compose.ui.test.isDialog
 import androidx.compose.ui.test.junit4.createComposeRule
 import androidx.compose.ui.test.onAllNodesWithText
 import androidx.compose.ui.test.onNodeWithContentDescription
+import androidx.compose.ui.test.onNodeWithTag
 import androidx.compose.ui.test.onNodeWithText
 import androidx.compose.ui.test.performClick
 import androidx.compose.ui.test.performScrollTo
+import androidx.compose.ui.test.performScrollToNode
 import androidx.compose.ui.test.performTextInput
 import androidx.compose.ui.unit.LayoutDirection
 import androidx.datastore.preferences.core.PreferenceDataStoreFactory
 import androidx.room.Room
+import androidx.test.espresso.Espresso.pressBack
 import androidx.test.ext.junit.runners.AndroidJUnit4
 import androidx.test.platform.app.InstrumentationRegistry
 import com.kon.myaacapp.core.locale.LocaleHelper
@@ -34,12 +41,14 @@ import com.kon.myaacapp.data.local.AACDatabase
 import com.kon.myaacapp.data.repository.AACRepository
 import com.kon.myaacapp.data.repository.CreateProfileResult
 import com.kon.myaacapp.data.repository.ProfileRepository
+import com.kon.myaacapp.data.repository.SelectFreeCustomProfileResult
 import com.kon.myaacapp.data.repository.SettingsRepository
 import com.kon.myaacapp.domain.entitlement.ConfigurableFamilyEntitlementProvider
 import com.kon.myaacapp.domain.entitlement.FamilyEntitlementProvider
 import com.kon.myaacapp.domain.entitlement.FamilyEntitlementState
 import com.kon.myaacapp.domain.entitlement.ProfilePlanTier
 import com.kon.myaacapp.domain.entitlement.StoreFamilyEntitlementProvider
+import com.kon.myaacapp.domain.entitlement.SubscriptionBillingState
 import com.kon.myaacapp.domain.model.CreateTileRequest
 import com.kon.myaacapp.domain.model.ProfileCreationMode
 import com.kon.myaacapp.domain.model.TileLayoutState
@@ -49,6 +58,7 @@ import com.kon.myaacapp.domain.service.BackupManager
 import com.kon.myaacapp.domain.usecase.tile.IncrementTileClickUseCase
 import com.kon.myaacapp.domain.usecase.tile.ObserveTilesUseCase
 import com.kon.myaacapp.service.audio.AudioRecordingService
+import com.kon.myaacapp.service.audio.TilePlaybackPath
 import com.kon.myaacapp.service.backup.BackupService
 import com.kon.myaacapp.ui.communication.CommunicationSessionController
 import com.kon.myaacapp.ui.communication.CommunicationViewModel
@@ -58,6 +68,7 @@ import com.kon.myaacapp.ui.profile.ProfileManagerViewModel
 import com.kon.myaacapp.ui.theme.MyAACAppTheme
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.Job
 import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.cancel
 import kotlinx.coroutines.flow.MutableStateFlow
@@ -113,10 +124,18 @@ class ProfileLimitsInstrumentedTest {
     ): IsolatedStack {
         val runId = UUID.randomUUID().toString().take(8)
         val root = File(testRootDir, "user_${userTag}_$runId").apply { mkdirs() }
+        val dbName = "limits_${userTag}_$runId.db"
+        return openStackAt(root, dbName, entitlementProvider)
+    }
+
+    private fun openStackAt(
+        root: File,
+        dbName: String,
+        entitlementProvider: FamilyEntitlementProvider,
+    ): IsolatedStack {
         val filesDir = File(root, "files").apply { mkdirs() }
         val cacheDir = File(root, "cache").apply { mkdirs() }
         val dataStoreFile = File(root, "datastore/settings.preferences_pb")
-        val dbName = "limits_${userTag}_$runId.db"
         val context = IsolatedAppContext(targetContext, filesDir, cacheDir)
 
         val scope = CoroutineScope(SupervisorJob() + Dispatchers.IO)
@@ -164,6 +183,7 @@ class ProfileLimitsInstrumentedTest {
         )
 
         return IsolatedStack(
+            rootDir = root,
             filesDir = filesDir,
             dbName = dbName,
             context = context,
@@ -344,11 +364,20 @@ class ProfileLimitsInstrumentedTest {
 
         composeRule.waitUntil(timeoutMillis = 3_000L) {
             composeRule.onAllNodesWithText(
-                enContext.getString(R.string.profile_plan_free_over_limit_count, 3, 2),
+                enContext.getString(R.string.profile_plan_free_over_limit_count, 3, 2, 1),
             ).fetchSemanticsNodes().isNotEmpty()
         }
         composeRule.onNodeWithText(enContext.getString(R.string.profile_plan_limit_reached_title))
             .assertIsDisplayed()
+        composeRule.onNodeWithText(
+            enContext.getString(R.string.profile_plan_family_downgrade_disclosure, 2),
+        ).assertIsDisplayed()
+
+        // Active custom profile ("Dana HE") + Starter stay available; "Maya EN" is archived
+        val mayaId = stack.profileRepository.profiles.value.first { it.profileName == "Maya EN" }.profileId
+        val danaId = stack.profileRepository.profiles.value.first { it.profileName == "Dana HE" }.profileId
+        assertEquals(setOf("default", danaId), stack.profileRepository.profileAvailability.value.availableProfileIds)
+        assertEquals(setOf(mayaId), stack.profileRepository.profileAvailability.value.archivedProfileIds)
 
         // Verify 3rd profile ("Dana HE") opens, speaks Hebrew TTS, edits, and exports backup after expiry
         showBoardState.value = true
@@ -388,7 +417,7 @@ class ProfileLimitsInstrumentedTest {
                 stack.profileRepository.activeProfile.value!!.layout.containsKey("custom_test_yes"),
             )
 
-            // Export full backup with all 3 profiles
+            // Export full backup with all 3 profiles (including archived Maya EN)
             val backupZip = File(testRootDir, "post_expiry_3_profiles.zip")
             stack.backupManager.exportDatabase(
                 uri = Uri.fromFile(backupZip),
@@ -398,10 +427,58 @@ class ProfileLimitsInstrumentedTest {
             assertTrue(exportResult.isSuccess)
             assertTrue(backupZip.length() > 0L)
 
-            // Switch to Maya EN and verify English communication works too
-            stack.profileRepository.switchProfile(mayaProfile.profileId)
+            // Direct switch to archived Maya EN is blocked until caregiver swaps it in
+            assertFalse(stack.profileRepository.switchProfile(mayaProfile.profileId))
         }
 
+        // Caregiver drafts Maya EN in Profile Manager, then confirms once.
+        showBoardState.value = false
+        composeRule.waitUntil(timeoutMillis = 3_000L) {
+            composeRule.onAllNodesWithText(
+                enContext.getString(R.string.profile_free_choice_title),
+            ).fetchSemanticsNodes().isNotEmpty()
+        }
+        composeRule.onNode(hasScrollAction()).performScrollToNode(
+            hasText(enContext.getString(R.string.profile_make_available)),
+        )
+        composeRule.onNodeWithText(enContext.getString(R.string.profile_make_available))
+            .performClick()
+
+        composeRule.waitUntil(timeoutMillis = 3_000L) {
+            profileVm.state.value.pendingFreeCustomProfile?.profileName == "Maya EN"
+        }
+
+        // Confirm the one-time Free custom profile choice ("Maya EN") via the confirmation dialog
+        composeRule.onNode(hasScrollAction()).performScrollToNode(
+            hasText(enContext.getString(R.string.profile_free_choice_confirm_button, "Maya EN")),
+        )
+        composeRule.onNodeWithText(
+            enContext.getString(R.string.profile_free_choice_confirm_button, "Maya EN"),
+        ).performClick()
+        composeRule.waitUntil(timeoutMillis = 3_000L) {
+            composeRule.onAllNodesWithText(
+                enContext.getString(R.string.profile_free_choice_dialog_title),
+            ).fetchSemanticsNodes().isNotEmpty()
+        }
+        composeRule.onNodeWithText(
+            enContext.getString(R.string.profile_free_choice_confirm_action),
+        ).performClick()
+
+        composeRule.waitUntil(timeoutMillis = 3_000L) {
+            stack.profileRepository.profileAvailability.value.isFreeSlotLocked
+        }
+        assertTrue(
+            composeRule.onAllNodesWithText(enContext.getString(R.string.profile_make_available))
+                .fetchSemanticsNodes().isEmpty(),
+        )
+        composeRule.onNode(hasScrollAction()).performScrollToNode(
+            hasText(enContext.getString(R.string.profile_status_available_with_family)),
+        )
+        composeRule.onNodeWithText(enContext.getString(R.string.profile_status_available_with_family))
+            .assertIsDisplayed()
+
+        // Verify Maya EN English communication works after swap
+        showBoardState.value = true
         composeRule.waitUntil(timeoutMillis = 5_000L) {
             composeRule.onAllNodesWithText("Time and routines").fetchSemanticsNodes().isNotEmpty()
         }
@@ -421,19 +498,17 @@ class ProfileLimitsInstrumentedTest {
         // Switch back to Profile Manager, switch active to default, and delete Maya EN & Dana HE
         showBoardState.value = false
         runBlocking {
-            stack.profileRepository.switchProfile("default")
+            assertTrue(stack.profileRepository.switchProfile("default"))
         }
         composeRule.waitForIdle()
 
-        val deleteButtons = composeRule.onAllNodes(
-            androidx.compose.ui.test.hasContentDescription(
-                enContext.getString(R.string.delete_profile),
-            ),
-        )
-        assertEquals(2, deleteButtons.fetchSemanticsNodes().size)
-
         // Delete 1st non-default profile -> 2 remain -> creation still blocked
-        deleteButtons[0].performClick()
+        composeRule.onNode(hasScrollAction()).performScrollToNode(
+            hasContentDescription(enContext.getString(R.string.delete_profile)),
+        )
+        composeRule.onAllNodes(
+            hasContentDescription(enContext.getString(R.string.delete_profile)),
+        )[0].performClick()
         composeRule.waitUntil(timeoutMillis = 3_000L) {
             composeRule.onAllNodesWithText(enContext.getString(R.string.delete))
                 .fetchSemanticsNodes().isNotEmpty()
@@ -446,6 +521,9 @@ class ProfileLimitsInstrumentedTest {
             .assertIsDisplayed()
 
         // Delete 2nd non-default profile -> 1 remains -> Free creation unlocked again
+        composeRule.onNode(hasScrollAction()).performScrollToNode(
+            hasContentDescription(enContext.getString(R.string.delete_profile)),
+        )
         composeRule.onNodeWithContentDescription(enContext.getString(R.string.delete_profile))
             .performClick()
         composeRule.waitUntil(timeoutMillis = 3_000L) {
@@ -535,9 +613,11 @@ class ProfileLimitsInstrumentedTest {
             )
             assertTrue(destStack.backupManager.result.filterNotNull().first().isSuccess)
 
-            // All 3 profiles + images + recordings are restored and usable on Free
+            // All 3 profiles + images + recordings are restored; 2 available & 1 archived on Free
             val restoredProfiles = destStack.profileRepository.profiles.value
             assertEquals(3, restoredProfiles.size)
+            assertEquals(2, destStack.profileRepository.profileAvailability.value.availableProfiles.size)
+            assertEquals(1, destStack.profileRepository.profileAvailability.value.archivedProfiles.size)
 
             val restoredSnack = destStack.aacRepository.baseDefinitions.value.firstOrNull {
                 it.id == "custom_snack_test" && it.languageCode == "he"
@@ -550,10 +630,19 @@ class ProfileLimitsInstrumentedTest {
             assertArrayEquals(customImageBytes, restoredImg.readBytes())
             assertArrayEquals(customWavBytes, restoredWav.readBytes())
 
-            // Switching between all 3 restored profiles works, while new creation is blocked until < 2 remain
+            // Archived profile must be selected/confirmed before switching; fresh Free install chooses once
             val childEn = restoredProfiles.first { it.profileName == "Child EN" }
-            destStack.profileRepository.switchProfile(childEn.profileId)
+            assertTrue(destStack.profileRepository.profileAvailability.value.canChooseFreeProfile)
+            assertFalse(destStack.profileRepository.switchProfile(childEn.profileId))
+            val confirmResult = destStack.profileRepository.confirmFreeCustomProfile(childEn.profileId)
+            assertTrue(confirmResult is SelectFreeCustomProfileResult.Success)
+            assertTrue(destStack.profileRepository.profileAvailability.value.isFreeSlotLocked)
             assertEquals("en", destStack.profileRepository.activeProfile.value?.activeLanguageCode)
+            val childHe2 = restoredProfiles.first { it.profileName == "Child HE 2" }
+            assertEquals(
+                SelectFreeCustomProfileResult.Locked,
+                destStack.profileRepository.confirmFreeCustomProfile(childHe2.profileId),
+            )
             assertTrue(
                 destStack.profileRepository.createProfile("New Blocked", ProfileCreationMode.BLANK, "en")
                     is CreateProfileResult.LimitReached,
@@ -648,7 +737,7 @@ class ProfileLimitsInstrumentedTest {
         entitlementProvider.updateState {
             it.copy(
                 tier = ProfilePlanTier.FREE,
-                subscriptionState = com.kon.myaacapp.domain.entitlement.SubscriptionBillingState.PENDING_PURCHASE,
+                subscriptionState = SubscriptionBillingState.PENDING_PURCHASE,
                 hasPendingPurchase = true,
                 lastBillingFeedback = com.kon.myaacapp.domain.entitlement.BillingFeedback.PURCHASE_PENDING,
             )
@@ -664,7 +753,7 @@ class ProfileLimitsInstrumentedTest {
         entitlementProvider.updateState {
             it.copy(
                 tier = ProfilePlanTier.FAMILY,
-                subscriptionState = com.kon.myaacapp.domain.entitlement.SubscriptionBillingState.CANCELED_PENDING_EXPIRY,
+                subscriptionState = SubscriptionBillingState.CANCELED_PENDING_EXPIRY,
                 isAutoRenewing = false,
                 hasPendingPurchase = false,
                 lastBillingFeedback = com.kon.myaacapp.domain.entitlement.BillingFeedback.NONE,
@@ -833,6 +922,565 @@ class ProfileLimitsInstrumentedTest {
         )
     }
 
+    @Test
+    fun acceptance_familyWithFiveProfiles_cancelExpiryConfirmOnceRelaunchBackupAndRestoreFamily() {
+        val entitlementProvider = ConfigurableFamilyEntitlementProvider(
+            FamilyEntitlementState(
+                tier = ProfilePlanTier.FAMILY,
+                isBillingConfigured = true,
+                isProfileCapEnforced = true,
+            ),
+        )
+        val stack = createStack("acceptance_5_profiles", entitlementProvider)
+        lateinit var mayaId: String
+        lateinit var noaId: String
+        lateinit var liamId: String
+        lateinit var omerId: String
+
+        val customImageBytes = byteArrayOf(0x89.toByte(), 0x50, 0x4E, 0x47, 7, 8, 9, 10)
+        val customWavBytes = createTestWavBytes()
+        val fullFiveBackupZip = File(testRootDir, "acceptance_5_profiles_full_backup.zip")
+        val partialWithoutOmerBackupZip = File(testRootDir, "acceptance_partial_without_omer.zip")
+
+        runBlocking {
+            assertTrue(stack.coordinator.initialize())
+            stack.settingsRepository.updateInterfaceLanguageCode("en")
+            stack.settingsRepository.updateTilesUseTts(true)
+            stack.settingsRepository.updateSpeakOnTilePress(true)
+
+            val mayaRes = stack.profileRepository.createProfile(
+                "Maya EN",
+                ProfileCreationMode.DEFAULT_TEMPLATE,
+                "en",
+            ) as CreateProfileResult.Success
+            mayaId = mayaRes.profile.profileId
+
+            val noaRes = stack.profileRepository.createProfile(
+                "Noa HE",
+                ProfileCreationMode.BLANK,
+                "he",
+            ) as CreateProfileResult.Success
+            noaId = noaRes.profile.profileId
+
+            val liamRes = stack.profileRepository.createProfile(
+                "Liam EN",
+                ProfileCreationMode.DEFAULT_TEMPLATE,
+                "en",
+            ) as CreateProfileResult.Success
+            liamId = liamRes.profile.profileId
+
+            // Create 5th profile ("Omer Mix") with a custom tile + PNG image + custom WAV recording
+            val omerRes = stack.profileRepository.createProfile(
+                "Omer Mix",
+                ProfileCreationMode.DUPLICATE_CURRENT,
+                "he",
+            ) as CreateProfileResult.Success
+            omerId = omerRes.profile.profileId
+            stack.aacRepository.reload()
+
+            val customImageFile = File(stack.filesDir, "images/omer_snack.png").apply {
+                parentFile?.mkdirs()
+                writeBytes(customImageBytes)
+            }
+            val customAudioFile = File(stack.filesDir, "audio_tiles/he/omer_snack.wav").apply {
+                parentFile?.mkdirs()
+                writeBytes(customWavBytes)
+            }
+            stack.aacRepository.addTile(
+                CreateTileRequest(
+                    id = "omer_custom_snack",
+                    label = "תפוח מיוחד",
+                    ttsText = "תפוח מיוחד",
+                    imageUri = customImageFile.absolutePath,
+                    audioUri = customAudioFile.absolutePath,
+                    isCustomAudio = true,
+                    tileType = TileType.BASIC,
+                    languageCode = "he",
+                    cellIndex = 0,
+                ),
+            )
+
+            // Also build a separate 5-profile backup whose active profile is Noa HE (different from Omer Mix)
+            // to prove importing a backup into a locked Free installation does not replace Omer Mix.
+            assertTrue(stack.profileRepository.switchProfile(noaId))
+            stack.backupManager.exportDatabase(
+                uri = Uri.fromFile(fullFiveBackupZip),
+                contentResolver = targetContext.contentResolver,
+            )
+            assertTrue(stack.backupManager.result.filterNotNull().first().isSuccess)
+
+            // Leave Maya EN active before cancellation/expiry
+            assertTrue(stack.profileRepository.switchProfile(mayaId))
+            assertEquals(5, stack.profileRepository.profiles.value.size)
+            assertEquals(5, stack.profileRepository.profileAvailability.value.availableProfiles.size)
+        }
+
+        // Export a partial backup (without Omer Mix) from another Family stack to verify absent-choice import behavior
+        val partialSourceStack = createStack(
+            "acceptance_partial_source",
+            ConfigurableFamilyEntitlementProvider(
+                FamilyEntitlementState(
+                    tier = ProfilePlanTier.FAMILY,
+                    isBillingConfigured = true,
+                    isProfileCapEnforced = true,
+                ),
+            ),
+        )
+        runBlocking {
+            assertTrue(partialSourceStack.coordinator.initialize())
+            assertTrue(
+                partialSourceStack.profileRepository.createProfile(
+                    "Guest One",
+                    ProfileCreationMode.BLANK,
+                    "en",
+                ) is CreateProfileResult.Success,
+            )
+            assertTrue(
+                partialSourceStack.profileRepository.createProfile(
+                    "Guest Two",
+                    ProfileCreationMode.BLANK,
+                    "he",
+                ) is CreateProfileResult.Success,
+            )
+            partialSourceStack.backupManager.exportDatabase(
+                uri = Uri.fromFile(partialWithoutOmerBackupZip),
+                contentResolver = targetContext.contentResolver,
+            )
+            assertTrue(partialSourceStack.backupManager.result.filterNotNull().first().isSuccess)
+        }
+
+        val profileVm = ProfileManagerViewModel(
+            profileRepository = stack.profileRepository,
+            aacRepository = stack.aacRepository,
+            familyEntitlementProvider = entitlementProvider,
+        )
+        val commVm = CommunicationViewModel(
+            application = application,
+            settingsRepository = stack.settingsRepository,
+            observeTilesUseCase = ObserveTilesUseCase(stack.aacRepository),
+            incrementTileClickUseCase = IncrementTileClickUseCase(stack.aacRepository),
+            communicationSessionController = CommunicationSessionController(),
+            audioService = AudioRecordingService(stack.context),
+            profileRepository = stack.profileRepository,
+        )
+
+        val uiLangState = MutableStateFlow("en")
+        val showBoardState = MutableStateFlow(false)
+        val composeActive = MutableStateFlow(true)
+        val activeProfileVmState = MutableStateFlow(profileVm)
+        val activeCommVmState = MutableStateFlow(commVm)
+
+        composeRule.setContent {
+            val activeCompose by composeActive.collectAsState()
+            if (!activeCompose) return@setContent
+            val uiLang by uiLangState.collectAsState()
+            val showBoard by showBoardState.collectAsState()
+            val currentProfileVm by activeProfileVmState.collectAsState()
+            val currentCommVm by activeCommVmState.collectAsState()
+            val wrappedContext = LocaleHelper.wrap(targetContext, uiLang)
+            val uiDirection = if (uiLang == "he") LayoutDirection.Rtl else LayoutDirection.Ltr
+            val profileState by currentProfileVm.state.collectAsState()
+            val commState by currentCommVm.state.collectAsState()
+
+            MyAACAppTheme {
+                CompositionLocalProvider(
+                    LocalContext provides wrappedContext,
+                    LocalResources provides wrappedContext.resources,
+                    LocalConfiguration provides wrappedContext.resources.configuration,
+                    LocalLayoutDirection provides uiDirection,
+                ) {
+                    if (showBoard) {
+                        MainCommunicationScreen(
+                            state = commState,
+                            onAction = currentCommVm::onAction,
+                        )
+                    } else {
+                        ProfileManagerScreen(
+                            state = profileState,
+                            onAction = currentProfileVm::onAction,
+                            onNavigateBack = {},
+                        )
+                    }
+                }
+            }
+        }
+
+        val enContext = LocaleHelper.wrap(targetContext, "en")
+        val heContext = LocaleHelper.wrap(targetContext, "he")
+
+        // 1. Cancel renewal -> all 5 stay usable until expiry (also resilient to cached/offline mode)
+        entitlementProvider.updateState {
+            it.copy(
+                tier = ProfilePlanTier.FAMILY,
+                subscriptionState = SubscriptionBillingState.CANCELED_PENDING_EXPIRY,
+                isAutoRenewing = false,
+                isCachedOfflineEntitlement = true,
+            )
+        }
+        composeRule.waitUntil(timeoutMillis = 3_000L) {
+            composeRule.onAllNodesWithText(
+                enContext.getString(R.string.profile_plan_family_canceled_active_title),
+            ).fetchSemanticsNodes().isNotEmpty()
+        }
+        composeRule.onNodeWithText(
+            enContext.getString(R.string.profile_plan_family_canceled_active_body, 2),
+        ).assertIsDisplayed()
+        assertEquals(5, stack.profileRepository.profileAvailability.value.availableProfiles.size)
+        assertEquals(0, stack.profileRepository.profileAvailability.value.archivedProfiles.size)
+        runBlocking {
+            assertTrue(stack.profileRepository.switchProfile(liamId))
+            assertTrue(stack.profileRepository.switchProfile(mayaId))
+        }
+
+        // 2. Confirmed expiry -> child keeps using current board ("Maya EN") without forced dialog; 2 available, 3 archived
+        showBoardState.value = true
+        entitlementProvider.updateState {
+            it.copy(
+                tier = ProfilePlanTier.FREE,
+                subscriptionState = SubscriptionBillingState.EXPIRED,
+                isAutoRenewing = false,
+                isCachedOfflineEntitlement = false,
+            )
+        }
+        composeRule.waitUntil(timeoutMillis = 5_000L) {
+            stack.profileRepository.profileAvailability.value.archivedProfiles.size == 3 &&
+                composeRule.onAllNodesWithText("Time and routines").fetchSemanticsNodes().isNotEmpty()
+        }
+        // No forced selection dialog on the communication board
+        assertTrue(
+            composeRule.onAllNodesWithText(
+                enContext.getString(R.string.profile_free_choice_dialog_title),
+            ).fetchSemanticsNodes().isEmpty(),
+        )
+        assertEquals(
+            setOf("default", mayaId),
+            stack.profileRepository.profileAvailability.value.availableProfileIds,
+        )
+        assertEquals(
+            setOf(noaId, liamId, omerId),
+            stack.profileRepository.profileAvailability.value.archivedProfileIds,
+        )
+
+        // Open Profile Manager and verify Hebrew & English fixed-slot disclosures and pre-confirmation preview
+        showBoardState.value = false
+        composeRule.waitUntil(timeoutMillis = 3_000L) {
+            composeRule.onAllNodesWithText(
+                enContext.getString(R.string.profile_plan_free_over_limit_count, 5, 2, 3),
+            ).fetchSemanticsNodes().isNotEmpty()
+        }
+        composeRule.onNodeWithText(
+            enContext.getString(R.string.profile_plan_family_downgrade_disclosure, 2),
+        ).assertIsDisplayed()
+        composeRule.onNodeWithText(
+            enContext.getString(R.string.profile_upgrade_to_family),
+        ).assertIsDisplayed()
+        composeRule.onNodeWithText(
+            enContext.getString(R.string.profile_restore_family_purchase),
+        ).assertIsDisplayed()
+        composeRule.onNodeWithText(
+            enContext.getString(R.string.profile_free_choice_title),
+        ).assertIsDisplayed()
+        composeRule.onNodeWithText(
+            enContext.getString(R.string.profile_free_choice_confirm_button, "Maya EN"),
+        ).assertIsDisplayed()
+
+        uiLangState.value = "he"
+        composeRule.waitUntil(timeoutMillis = 3_000L) {
+            composeRule.onAllNodesWithText(
+                heContext.getString(R.string.profile_plan_family_downgrade_disclosure, 2),
+            ).fetchSemanticsNodes().isNotEmpty()
+        }
+        composeRule.onNodeWithText(
+            heContext.getString(R.string.profile_free_choice_title),
+        ).assertIsDisplayed()
+        composeRule.onNodeWithText(
+            heContext.getString(R.string.profile_free_choice_confirm_button, "Maya EN"),
+        ).assertIsDisplayed()
+        uiLangState.value = "en"
+        composeRule.waitForIdle()
+
+        // 3. Before confirming, pick "Omer Mix" from Archived section, then confirm once
+        composeRule.waitUntil(timeoutMillis = 3_000L) {
+            composeRule.onAllNodesWithText(
+                enContext.getString(R.string.profile_plan_free_over_limit_count, 5, 2, 3),
+            ).fetchSemanticsNodes().isNotEmpty()
+        }
+        composeRule.onNode(hasScrollAction()).performScrollToNode(
+            hasText(enContext.getString(R.string.profile_section_archived, 3)),
+        )
+        composeRule.onNodeWithText(
+            enContext.getString(R.string.profile_section_archived, 3),
+        ).assertIsDisplayed()
+        composeRule.onNode(hasScrollAction()).performScrollToNode(hasTestTag("make_available_$omerId"))
+        composeRule.onNodeWithText("Omer Mix").assertIsDisplayed()
+        composeRule.onNodeWithTag("make_available_$omerId").performClick()
+
+        composeRule.waitUntil(timeoutMillis = 3_000L) {
+            profileVm.state.value.draftFreeProfileId == omerId
+        }
+        assertEquals(mayaId, stack.profileRepository.activeProfile.value?.profileId)
+        runBlocking { assertFalse(stack.profileRepository.switchProfile(omerId)) }
+
+        composeRule.onNodeWithContentDescription(enContext.getString(R.string.back)).performClick()
+        composeRule.onNodeWithText(enContext.getString(R.string.profile_free_choice_discard)).performClick()
+        composeRule.waitUntil(timeoutMillis = 3_000L) { profileVm.state.value.draftFreeProfileId == null }
+        assertEquals(mayaId, stack.profileRepository.activeProfile.value?.profileId)
+        assertFalse(stack.profileRepository.profileAvailability.value.isFreeSlotLocked)
+
+        composeRule.onNode(hasScrollAction()).performScrollToNode(hasTestTag("make_available_$omerId"))
+        composeRule.onNodeWithTag("make_available_$omerId").performClick()
+        composeRule.waitUntil(timeoutMillis = 3_000L) {
+            profileVm.state.value.draftFreeProfileId == omerId
+        }
+        pressBack()
+        composeRule.waitUntil(timeoutMillis = 3_000L) {
+            composeRule.onAllNodesWithText(
+                enContext.getString(R.string.profile_free_choice_dialog_title),
+            ).fetchSemanticsNodes().isNotEmpty()
+        }
+        composeRule.onNodeWithText(
+            enContext.getString(
+                R.string.profile_free_choice_dialog_body,
+                enContext.getString(R.string.default_profile_name),
+                "Omer Mix",
+            ),
+        ).assertIsDisplayed()
+        composeRule.onNodeWithText(
+            enContext.getString(R.string.profile_free_choice_confirm_action),
+        ).performClick()
+
+        composeRule.waitUntil(timeoutMillis = 3_000L) {
+            stack.profileRepository.profileAvailability.value.isFreeSlotLocked
+        }
+        assertFalse(stack.profileRepository.profileAvailability.value.canChooseFreeProfile)
+        // "Make available" is removed from all archived profiles and "Available with Family" is shown
+        assertTrue(
+            composeRule.onAllNodesWithText(
+                enContext.getString(R.string.profile_make_available),
+            ).fetchSemanticsNodes().isEmpty(),
+        )
+        listOf(mayaId, noaId, liamId).forEach { archivedId ->
+            composeRule.onNode(hasScrollAction()).performScrollToNode(
+                hasTestTag("profile_status_$archivedId"),
+            )
+            composeRule.onNodeWithTag("profile_status_$archivedId")
+                .assertTextEquals(enContext.getString(R.string.profile_status_available_with_family))
+                .assertIsDisplayed()
+        }
+
+        // Verify Free switches between starter and confirmed profile while the other 3 stay archived across repeated attempts
+        runBlocking {
+            assertTrue(stack.profileRepository.switchProfile("default"))
+            assertEquals("default", stack.profileRepository.activeProfile.value?.profileId)
+            assertTrue(stack.profileRepository.switchProfile(omerId))
+            assertEquals(omerId, stack.profileRepository.activeProfile.value?.profileId)
+
+            listOf(mayaId, noaId, liamId).forEach { archivedId ->
+                assertFalse(stack.profileRepository.switchProfile(archivedId))
+                assertEquals(
+                    SelectFreeCustomProfileResult.Locked,
+                    stack.profileRepository.confirmFreeCustomProfile(archivedId),
+                )
+            }
+            assertEquals(
+                setOf("default", omerId),
+                stack.profileRepository.profileAvailability.value.availableProfileIds,
+            )
+            assertEquals(
+                setOf(mayaId, noaId, liamId),
+                stack.profileRepository.profileAvailability.value.archivedProfileIds,
+            )
+        }
+
+        // 4. Simulate relaunch and verify locked choice, archived profiles, and offline media persist
+        val savedRootDir = stack.rootDir
+        val savedDbName = stack.dbName
+
+        composeActive.value = false
+        composeRule.waitForIdle()
+        runBlocking {
+            stack.closeWithoutDeleting()
+        }
+        createdStacks.remove(stack)
+
+        val relaunchedEntitlement = ConfigurableFamilyEntitlementProvider(
+            FamilyEntitlementState(
+                tier = ProfilePlanTier.FREE,
+                subscriptionState = SubscriptionBillingState.EXPIRED,
+                isBillingConfigured = true,
+                isProfileCapEnforced = true,
+            ),
+        )
+        val relaunchedStack = openStackAt(savedRootDir, savedDbName, relaunchedEntitlement)
+        lateinit var relaunchedCommVm: CommunicationViewModel
+        runBlocking {
+            assertTrue(relaunchedStack.coordinator.initialize())
+            assertEquals(5, relaunchedStack.profileRepository.profiles.value.size)
+            assertTrue(relaunchedStack.profileRepository.profileAvailability.value.isFreeSlotLocked)
+            assertFalse(relaunchedStack.profileRepository.profileAvailability.value.canChooseFreeProfile)
+            assertEquals(omerId, relaunchedStack.profileRepository.activeProfile.value?.profileId)
+            assertEquals(
+                setOf("default", omerId),
+                relaunchedStack.profileRepository.profileAvailability.value.availableProfileIds,
+            )
+            assertEquals(
+                setOf(mayaId, noaId, liamId),
+                relaunchedStack.profileRepository.profileAvailability.value.archivedProfileIds,
+            )
+
+            // Repeated switch attempts remain blocked after relaunch
+            assertFalse(relaunchedStack.profileRepository.switchProfile(mayaId))
+            assertFalse(relaunchedStack.profileRepository.switchProfile(noaId))
+            assertFalse(relaunchedStack.profileRepository.switchProfile(liamId))
+
+            // Importing the 5-profile backup (which had Noa HE active) on this SAME locked installation
+            // neither replaces Omer Mix nor grants another selection
+            relaunchedStack.backupManager.importDatabase(
+                uri = Uri.fromFile(fullFiveBackupZip),
+                contentResolver = targetContext.contentResolver,
+            )
+            assertTrue(relaunchedStack.backupManager.result.filterNotNull().first().isSuccess)
+            relaunchedStack.profileRepository.profileAvailability.first {
+                it.isFreeSlotLocked && it.availableProfileIds == setOf("default", omerId)
+            }
+            assertFalse(relaunchedStack.profileRepository.profileAvailability.value.canChooseFreeProfile)
+            assertEquals(omerId, relaunchedStack.profileRepository.activeProfile.value?.profileId)
+            assertEquals(
+                setOf(mayaId, noaId, liamId),
+                relaunchedStack.profileRepository.profileAvailability.value.archivedProfileIds,
+            )
+            assertEquals(
+                SelectFreeCustomProfileResult.Locked,
+                relaunchedStack.profileRepository.confirmFreeCustomProfile(noaId),
+            )
+
+            // Switch between starter and chosen profile still works after backup import
+            assertTrue(relaunchedStack.profileRepository.switchProfile("default"))
+            assertTrue(relaunchedStack.profileRepository.switchProfile(omerId))
+
+            val persistedSnack = relaunchedStack.aacRepository.baseDefinitions.value.firstOrNull {
+                it.id == "omer_custom_snack" && it.languageCode == "he"
+            }
+            assertNotNull(persistedSnack)
+            assertArrayEquals(customImageBytes, File(persistedSnack!!.imageUri!!).readBytes())
+            assertArrayEquals(customWavBytes, File(persistedSnack.audioUri!!).readBytes())
+
+            relaunchedCommVm = CommunicationViewModel(
+                application = application,
+                settingsRepository = relaunchedStack.settingsRepository,
+                observeTilesUseCase = ObserveTilesUseCase(relaunchedStack.aacRepository),
+                incrementTileClickUseCase = IncrementTileClickUseCase(relaunchedStack.aacRepository),
+                communicationSessionController = CommunicationSessionController(),
+                audioService = AudioRecordingService(relaunchedStack.context),
+                profileRepository = relaunchedStack.profileRepository,
+            )
+        }
+
+        // Tap "Omer Mix"'s custom tile offline in UI and verify custom WAV recording plays
+        activeCommVmState.value = relaunchedCommVm
+        showBoardState.value = true
+        composeActive.value = true
+        composeRule.waitUntil(timeoutMillis = 5_000L) {
+            composeRule.onAllNodesWithText("תפוח מיוחד").fetchSemanticsNodes().isNotEmpty()
+        }
+        composeRule.onNodeWithText("תפוח מיוחד").performClick()
+        composeRule.waitUntil(timeoutMillis = 3_000L) {
+            relaunchedCommVm.lastPlaybackEvent.value?.tileId == "omer_custom_snack"
+        }
+        val playbackEvent = relaunchedCommVm.lastPlaybackEvent.value!!
+        assertEquals(TilePlaybackPath.AUDIO_RECORDING, playbackEvent.path)
+        assertTrue(playbackEvent.isCustomAudio)
+        assertTrue(playbackEvent.fileExists)
+        assertFalse(playbackEvent.usedFallback)
+
+        // Verify importing a backup WITHOUT Omer Mix on the SAME locked installation keeps starter usable & preserves locked choice
+        runBlocking {
+            relaunchedStack.backupManager.importDatabase(
+                uri = Uri.fromFile(partialWithoutOmerBackupZip),
+                contentResolver = targetContext.contentResolver,
+            )
+            assertTrue(relaunchedStack.backupManager.result.filterNotNull().first().isSuccess)
+            relaunchedStack.profileRepository.profileAvailability.first {
+                it.isFreeSlotLocked && it.availableProfileIds == setOf("default")
+            }
+            assertEquals("default", relaunchedStack.profileRepository.activeProfile.value?.profileId)
+            assertEquals(omerId, relaunchedStack.profileRepository.profileAvailability.value.selectedCustomProfileId)
+            assertFalse(relaunchedStack.profileRepository.profileAvailability.value.canChooseFreeProfile)
+            assertEquals(2, relaunchedStack.profileRepository.profileAvailability.value.archivedProfiles.size)
+
+            // Re-import the 5-profile backup back onto this installation and restore Family -> all 5 work again
+            relaunchedStack.backupManager.importDatabase(
+                uri = Uri.fromFile(fullFiveBackupZip),
+                contentResolver = targetContext.contentResolver,
+            )
+            assertTrue(relaunchedStack.backupManager.result.filterNotNull().first().isSuccess)
+            relaunchedEntitlement.setFamilyEntitlementActive(true)
+            relaunchedStack.profileRepository.profileAvailability.first {
+                !it.isFreeSlotLocked && it.availableProfiles.size == 5 && it.archivedProfiles.isEmpty()
+            }
+            listOf("default", mayaId, noaId, liamId, omerId).forEach { id ->
+                assertTrue(relaunchedStack.profileRepository.switchProfile(id))
+            }
+            val restoredSnack = relaunchedStack.aacRepository.baseDefinitions.value.firstOrNull {
+                it.id == "omer_custom_snack" && it.languageCode == "he"
+            }
+            assertNotNull(restoredSnack)
+            assertArrayEquals(customImageBytes, File(restoredSnack!!.imageUri!!).readBytes())
+            assertArrayEquals(customWavBytes, File(restoredSnack.audioUri!!).readBytes())
+        }
+
+        // 5. Fresh Free installation importing all 5 profiles can make its initial choice once,
+        // and restoring Family unlocks all 5 immediately without another import
+        val destEntitlement = ConfigurableFamilyEntitlementProvider(
+            FamilyEntitlementState(
+                tier = ProfilePlanTier.FREE,
+                isBillingConfigured = true,
+                isProfileCapEnforced = true,
+            ),
+        )
+        val destFreeStack = createStack("acceptance_dest_free", destEntitlement)
+        runBlocking {
+            assertTrue(destFreeStack.coordinator.initialize())
+            destFreeStack.backupManager.importDatabase(
+                uri = Uri.fromFile(fullFiveBackupZip),
+                contentResolver = targetContext.contentResolver,
+            )
+            assertTrue(destFreeStack.backupManager.result.filterNotNull().first().isSuccess)
+
+            assertEquals(5, destFreeStack.profileRepository.profiles.value.size)
+            assertEquals(2, destFreeStack.profileRepository.profileAvailability.value.availableProfiles.size)
+            assertEquals(3, destFreeStack.profileRepository.profileAvailability.value.archivedProfiles.size)
+            assertTrue(destFreeStack.profileRepository.profileAvailability.value.canChooseFreeProfile)
+            assertFalse(destFreeStack.profileRepository.profileAvailability.value.isFreeSlotLocked)
+
+            // Confirm initial choice once on fresh Free installation -> locks subsequent changes
+            assertTrue(
+                destFreeStack.profileRepository.confirmFreeCustomProfile(omerId)
+                    is SelectFreeCustomProfileResult.Success,
+            )
+            assertTrue(destFreeStack.profileRepository.profileAvailability.value.isFreeSlotLocked)
+            assertEquals(
+                SelectFreeCustomProfileResult.Locked,
+                destFreeStack.profileRepository.confirmFreeCustomProfile(mayaId),
+            )
+
+            // Restore Family -> all 5 profiles become available again without another import;
+            // later confirmed expiry starts a new one-time selection
+            destEntitlement.setFamilyEntitlementActive(true)
+            destFreeStack.profileRepository.profileAvailability.first {
+                !it.isFreeSlotLocked && it.availableProfiles.size == 5 && it.archivedProfiles.isEmpty()
+            }
+            assertTrue(destFreeStack.profileRepository.switchProfile(noaId))
+            assertTrue(destFreeStack.profileRepository.switchProfile(liamId))
+            assertTrue(destFreeStack.profileRepository.switchProfile(mayaId))
+
+            destEntitlement.setFamilyEntitlementActive(false)
+            destFreeStack.profileRepository.profileAvailability.first {
+                !it.isFreeSlotLocked && it.canChooseFreeProfile && it.availableProfiles.size == 2
+            }
+        }
+    }
+
     private fun createTestWavBytes(): ByteArray {
         val sampleRate = 44100
         val sampleCount = 2205
@@ -876,8 +1524,9 @@ class ProfileLimitsInstrumentedTest {
     }
 
     private class IsolatedStack(
+        val rootDir: File,
         val filesDir: File,
-        private val dbName: String,
+        val dbName: String,
         val context: Context,
         private val scope: CoroutineScope,
         private val database: AACDatabase,
@@ -888,6 +1537,12 @@ class ProfileLimitsInstrumentedTest {
         val backupManager: BackupManager,
         val coordinator: AppStartupCoordinator,
     ) {
+        suspend fun closeWithoutDeleting() {
+            runCatching { database.close() }
+            scope.cancel()
+            scope.coroutineContext[Job]?.join()
+        }
+
         fun dispose(targetContext: Context) {
             runCatching { database.close() }
             runCatching { targetContext.deleteDatabase(dbName) }

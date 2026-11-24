@@ -13,9 +13,16 @@ import com.kon.myaacapp.domain.model.UserProfile
 data class ProfileManagerState(
     val profiles: List<UserProfile> = emptyList(),
     val activeProfile: UserProfile? = null,
+    val availableProfiles: List<UserProfile> = emptyList(),
+    val archivedProfiles: List<UserProfile> = emptyList(),
+    val selectedCustomProfileId: String? = null,
+    val draftFreeProfileId: String? = null,
+    val isFreeSlotLocked: Boolean = false,
+    val canChooseFreeProfile: Boolean = false,
 
     val showCreateDialog: Boolean = false,
     val showLimitDialog: Boolean = false,
+    val showConfirmFreeProfileDialog: Boolean = false,
     val showBillingUnavailableNotice: Boolean = false,
     val profileName: String = "",
 
@@ -38,6 +45,22 @@ data class ProfileManagerState(
 ) {
     val savedProfileCount: Int
         get() = profiles.size
+
+    val availableProfileCount: Int
+        get() = availableProfiles.size
+
+    val archivedProfileCount: Int
+        get() = archivedProfiles.size
+
+    val hasArchivedProfiles: Boolean
+        get() = archivedProfiles.isNotEmpty()
+
+    val pendingFreeCustomProfile: UserProfile?
+        get() = profiles.firstOrNull { it.profileId == draftFreeProfileId }
+            ?: availableProfiles.firstOrNull { profile ->
+            profile.profileId != ProfileLimitPolicy.DEFAULT_PROFILE_ID &&
+                (selectedCustomProfileId == null || profile.profileId == selectedCustomProfileId)
+        } ?: profiles.firstOrNull { it.profileId == selectedCustomProfileId }
 
     val freeProfileLimit: Int
         get() = entitlement.freeProfileLimit
